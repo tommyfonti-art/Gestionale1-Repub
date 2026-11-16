@@ -181,3 +181,12 @@ input.mini.largo { width: 140px; text-align: left; }
 .occhio svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; }
 .occhio.aperto { color: var(--accento); }
 .accesso { max-width: 420px; margin: 40px auto; }
+.btn.grande { padding: 16px; font-size: 17px; }
+.ctrl-scelte .btn { width: 100%; }
+.ctrl-scelte .bottoni .btn { width: auto; }
+.unisci { font-size: 13px; color: var(--tenue); }
+.unisci select { display: block; width: 100%; margin-top: 4px; padding: 10px 12px; border: 1px solid var(--linea); border-radius: 10px; font: inherit; font-size: 16px; background: #fbfaf7; }
+@media (min-width: 900px) { .ctrl { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; align-items: start; } }
+.grande-t { font-size: 22px; margin-bottom: 4px; }
+.righe-esempio { margin: 0; padding-left: 18px; color: var(--testo); font-size: 14px; }
+.righe-esempio li { padding: 4px 0; }

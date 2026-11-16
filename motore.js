@@ -280,7 +280,11 @@
   M.trovaFornitore = function (f) {
     if (f.piva) { const x = S.fornitori.find(z => z.piva && z.piva === f.piva); if (x) return x; }
     const n = norm(f.fornitoreNome);
-    return S.fornitori.find(z => norm(z.nome) === n) || S.fornitori.find(z => n && (n.startsWith(norm(z.nome) + ' ') || norm(z.nome).startsWith(n + ' '))) || null;
+    const senzaForma = (x) => norm(x).replace(/\b(s ?r ?l|s ?p ?a|s ?n ?c|s ?a ?s|srls|unipersonale|societa|soc|coop)\b/g, ' ').replace(/\s+/g, ' ').trim();
+    const ns = senzaForma(f.fornitoreNome);
+    return S.fornitori.find(z => norm(z.nome) === n) || S.fornitori.find(z => senzaForma(z.nome) === ns)
+      || S.fornitori.find(z => n && (n.startsWith(norm(z.nome) + ' ') || norm(z.nome).startsWith(n + ' ')))
+      || S.fornitori.find(z => { const c = senzaForma(z.nome); return c.length >= 4 && (' ' + ns + ' ').includes(' ' + c + ' '); }) || null;
   };
   M.abbinaAutomatico = function (f) {
     const forn = M.trovaFornitore(f);
@@ -438,6 +442,69 @@
     });
     M.svuota();
     return tolti;
+  };
+
+  // Il contrario: il fornitore vende merce, quindi le sue fatture creano i prodotti
+  M.togliServizi = function (fornitoreId) {
+    const forn = M.fornitore(fornitoreId); if (!forn) return 0;
+    forn.servizi = false;
+    let creati = 0;
+    S.fatture.filter(x => x.fornitoreId === fornitoreId).forEach(f => {
+      if (f.stato === 'registrata') M.annullaFattura(f);
+      f.servizi = false;
+      f.righe.forEach(rg => { if (!rg.prodottoId) { rg.ignora = false; rg.automatico = false; } });
+      S.ignorati = (S.ignorati || []).filter(x => x.fornitoreId !== fornitoreId);
+      M.abbinaAutomatico(f);
+      creati += M.creaProdottiDaFattura(f).length;
+      if (!M.daAbbinare(f)) M.registraFattura(f);
+    });
+    M.svuota();
+    return creati;
+  };
+
+  // ---------- Pulizia dell'archivio ----------
+  // Toglie un prodotto creato per sbaglio (pezzo di ricambio, lavoro...) e ricorda di saltare quella riga in futuro
+  M.togliProdotto = function (pId) {
+    S.fatture.forEach(f => f.righe.forEach(rg => {
+      if (rg.prodottoId !== pId) return;
+      rg.prodottoId = null; rg.ignora = true; rg.automatico = true;
+      S.ignorati = S.ignorati || [];
+      if (!S.ignorati.some(x => x.fornitoreId === f.fornitoreId && x.descrizione === rg.descrizione)) S.ignorati.push({ fornitoreId: f.fornitoreId, codice: rg.codice, descrizione: rg.descrizione });
+    }));
+    S.ricette.forEach(r => { r.righe = (r.righe || []).filter(rg => rg.rif !== 'p:' + pId); r.asporto = (r.asporto || []).filter(a => a.rif !== 'p:' + pId); });
+    S.prodotti = S.prodotti.filter(p => p.id !== pId);
+    M.svuota();
+  };
+  // Unisce un doppione nel prodotto giusto: prezzi, magazzino, righe delle fatture e ricette passano al prodotto giusto
+  M.unisciProdotti = function (daId, aId) {
+    const da = M.prodotto(daId), a = M.prodotto(aId);
+    if (!da || !a || da === a) return 'Scegli un prodotto diverso.';
+    if (da.unita !== a.unita) return `Non posso unirli: uno è in ${da.unita}, l'altro in ${a.unita}.`;
+    const k = (da.contenuto || 1) / (a.contenuto || 1); // 1 confezione del doppione = k confezioni del prodotto giusto
+    (da.prezzi || []).forEach(e => a.prezzi.push(Object.assign({}, e, { prezzo: e.prezzo / k, listino: e.listino != null ? e.listino / k : e.listino, confezioni: e.confezioni != null ? e.confezioni * k : e.confezioni })));
+    (da.articoli || []).forEach(ar => { if (!(a.articoli || []).some(x => x.fornitoreId === ar.fornitoreId && x.descrizione === ar.descrizione)) (a.articoli = a.articoli || []).push(Object.assign({}, ar, { confezioniPerUnita: (ar.confezioniPerUnita || 1) * k })); });
+    a.giacenza = Math.round(((Number(a.giacenza) || 0) + (Number(da.giacenza) || 0) * k) * 1000) / 1000;
+    (da.allergeni || []).forEach(x => { if (!(a.allergeni || []).includes(x)) (a.allergeni = a.allergeni || []).push(x); });
+    S.fatture.forEach(f => f.righe.forEach(rg => { if (rg.prodottoId === daId) { rg.prodottoId = aId; rg.confezioniPerUnita = (Number(rg.confezioniPerUnita) || 1) * k; } }));
+    S.ricette.forEach(r => { (r.righe || []).forEach(rg => { if (rg.rif === 'p:' + daId) rg.rif = 'p:' + aId; }); (r.asporto || []).forEach(x => { if (x.rif === 'p:' + daId) x.rif = 'p:' + aId; }); });
+    S.prodotti = S.prodotti.filter(p => p.id !== daId);
+    M.svuota();
+    return null;
+  };
+  // Unisce due fornitori (es. «Doreca» e «Emilia Romagna Doreca S.r.l.»)
+  M.unisciFornitori = function (daId, aId) {
+    const da = M.fornitore(daId), a = M.fornitore(aId);
+    if (!da || !a || da === a) return;
+    ['piva', 'telefono', 'email', 'referente', 'giorniConsegna'].forEach(k => { if (!a[k] && da[k]) a[k] = da[k]; });
+    S.prodotti.forEach(p => {
+      if (p.fornitoreId === daId) p.fornitoreId = aId;
+      (p.prezzi || []).forEach(e => { if (e.fornitoreId === daId) e.fornitoreId = aId; });
+      (p.articoli || []).forEach(x => { if (x.fornitoreId === daId) x.fornitoreId = aId; });
+    });
+    S.fatture.forEach(f => { if (f.fornitoreId === daId) f.fornitoreId = aId; });
+    (S.ignorati || []).forEach(x => { if (x.fornitoreId === daId) x.fornitoreId = aId; });
+    S.fornitori = S.fornitori.filter(f => f.id !== daId);
+    M.svuota();
   };
 
   M.registraFattura = function (f) {

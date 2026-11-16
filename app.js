@@ -246,7 +246,8 @@
       </div>
       ${!S.fatture.length ? `<div class="card evidenza"><h3>Prova con una fattura</h3><p>Carica una fattura di esempio e guarda come l'app aggiorna da sola i costi di panini e drink.</p>
         <div class="bottoni">${window.FATTURE_ESEMPIO.map((x, i) => `<button class="btn" data-az="esempio" data-i="${i}">${esc(x.nome)}</button>`).join('')}</div></div>` : ''}
-      ${nuoviDaCompletare() ? `<div class="card"><h3>Prodotti nuovi da completare</h3><p class="tenue">Creati in automatico dalle fatture: controlla nome breve e formato.</p>${S.prodotti.filter(p => p.daCompletare).slice(0, 6).map(p => `<a class="riga" href="#/prodotto/${p.id}"><span>${esc(p.nomeBreve)}<small>${esc(p.nomeCompleto)}</small></span><span class="badge giallo">da completare</span></a>`).join('')}<a class="link" href="#/prodotti" data-az="vai-nuovi">Vedi tutti (${nuoviDaCompletare()}) ›</a></div>` : ''}
+      ${fornitoriDaControllare().length ? `<div class="card"><h3>Fornitori nuovi da controllare</h3><p class="tenue">Dimmi chi vende merce e chi manda solo bollette o servizi: vale per tutte le loro fatture.</p><a class="btn primario" href="#/controllo-fatture">Controllo rapido (${fornitoriDaControllare().length})</a></div>` : ''}
+      ${nuoviDaCompletare() ? `<div class="card"><h3>Prodotti nuovi da completare</h3><p class="tenue">Creati in automatico dalle fatture: controlla nome breve e formato.</p>${S.prodotti.filter(p => p.daCompletare).slice(0, 6).map(p => `<a class="riga" href="#/prodotto/${p.id}"><span>${esc(p.nomeBreve)}<small>${esc(p.nomeCompleto)}</small></span><span class="badge giallo">da completare</span></a>`).join('')}<div class="bottoni"><a class="btn primario" href="#/controllo">Controllo rapido (${nuoviDaCompletare()})</a><a class="btn" href="#/prodotti" data-az="vai-nuovi">Vedi l'elenco</a></div></div>` : ''}
       ${daFare.length ? `<div class="card"><h3>Fatture da completare</h3>${daFare.map(f => `<a class="riga" href="#/fattura/${f.id}"><span>${esc(f.fornitoreNome)} · n. ${esc(f.numero)}</span><span class="badge giallo">${M.daAbbinare(f)} righe da collegare</span></a>`).join('')}</div>` : ''}
       <div class="card"><h3>Prezzi cambiati</h3>${aumenti.length ? aumenti.slice(0, 8).map(x => `<a class="riga" href="#/prodotto/${x.p.id}"><span>${esc(x.p.nomeBreve)}<small>${dataIt(x.data)}</small></span><span class="badge ${x.v > 0 ? 'rosso' : 'verde'}">${x.v > 0 ? '+' : ''}${n2(x.v, 1)}%</span></a>`).join('') : '<p class="tenue">Nessun cambio di prezzo. Compariranno qui quando registri le fatture.</p>'}</div>
       <div class="card"><h3>Sotto la soglia del moltiplicatore</h3>${sotto.length ? sotto.map(r => { const i = M.indicatori(r); return `<a class="riga" href="#/ricetta/${r.id}"><span>${esc(r.nome)}<small>${M.TIPI_SINGOLARE[r.tipo]} · soglia × ${n2(i.soglia)}</small></span>${badgeMolt(i)}</a>`; }).join('') : '<p class="tenue">Tutte le ricette sono sopra la soglia.</p>'}</div>
@@ -273,6 +274,7 @@
   PAGINE.prodotti = function () {
     return {
       titolo: 'Prodotti', azione: '<a class="btn-top" href="#/modifica-prodotto/nuovo">＋ Nuovo</a>', html: `
+      ${nuoviDaCompletare() ? `<a class="btn primario largo" href="#/controllo">Controllo rapido dei prodotti nuovi (${nuoviDaCompletare()})</a>` : ''}
       <input class="cerca" type="search" placeholder="Cerca un prodotto" value="${esc(ui.filtroProdotti)}" data-filtro="prodotti">
       <div class="chips">${(nuoviDaCompletare() ? [['__nuovi', 'Da completare (' + nuoviDaCompletare() + ')']] : []).concat([['Tutte', 'Tutte']], categorie().map(c => [c, c])).map(([v, t]) => `<button class="chip ${ui.categoria === v ? 'on' : ''} ${v === '__nuovi' ? 'giallo' : ''}" data-az="categoria" data-v="${esc(v)}">${esc(t)}</button>`).join('')}</div>
       <div class="card lista" id="lista">${listaProdotti()}</div>`
@@ -307,7 +309,7 @@
     return {
       titolo: p.nomeBreve, indietro: '#/prodotti', azione: `<a class="btn-top" href="#/modifica-prodotto/${p.id}">Modifica</a>`, html: `
       ${p.daCompletare ? `<div class="card evidenza giallo"><h3>Creato in automatico da una fattura</h3><p>Controlla il <b>nome breve</b> (quello delle ricette), il <b>formato</b> (${esc(p.confezione)} da ${qta(p.contenuto)} ${esc(p.unita)}), la categoria e gli allergeni.</p>
-        <div class="bottoni"><a class="btn primario" href="#/modifica-prodotto/${p.id}">Controlla e modifica</a><button class="btn" data-az="completato" data-id="${p.id}">È già giusto</button>${p.creatoDa ? `<a class="btn" href="#/fattura/${p.creatoDa}">Vedi la fattura</a>` : ''}</div></div>` : ''}
+        <div class="bottoni"><a class="btn primario" href="#/controllo">Controllo rapido</a><a class="btn" href="#/modifica-prodotto/${p.id}">Modifica</a><button class="btn" data-az="completato" data-id="${p.id}">È già giusto</button>${p.creatoDa ? `<a class="btn" href="#/fattura/${p.creatoDa}">Vedi la fattura</a>` : ''}</div></div>` : ''}
       <div class="card"><div class="sottotitolo">${esc(p.nomeCompleto)}</div>
         <div class="dati">
           <div><span>Categoria</span><b>${esc(p.categoria)}</b></div>
@@ -385,6 +387,79 @@
       </div>
       <div class="card form"><label>Note<textarea data-b="note" rows="3">${esc(b.note)}</textarea></label></div>
       <div class="bottoni"><button class="btn primario" data-az="salva-prodotto">Salva</button>${id !== 'nuovo' ? '<button class="btn pericolo" data-az="elimina-prodotto">Elimina</button>' : ''}</div>`
+    };
+  };
+
+  // ----- Controllo rapido dei fornitori: vende merce oppure è un servizio? -----
+  function fornitoriDaControllare() {
+    return S.fornitori.filter(f => !f.controllato && S.fatture.some(x => x.fornitoreId === f.id));
+  }
+  PAGINE['controllo-fatture'] = function () {
+    const lista = fornitoriDaControllare().sort((x, y) => (x.servizi ? 1 : 0) - (y.servizi ? 1 : 0) || x.nome.localeCompare(y.nome));
+    if (!lista.length) return { titolo: 'Controllo fatture', indietro: '#/fatture', html: '<div class="card evidenza"><h3>Tutti i fornitori sono controllati</h3><p>Quando arriva la prima fattura di un fornitore nuovo, lo ritrovi qui.</p><a class="btn primario" href="#/fatture">Torna alle fatture</a></div>' };
+    if (ui.ctrlFIdx == null || ui.ctrlFIdx >= lista.length) ui.ctrlFIdx = 0;
+    const f = lista[ui.ctrlFIdx];
+    const sue = S.fatture.filter(x => x.fornitoreId === f.id).sort((x, y) => (x.data || '') < (y.data || '') ? 1 : -1);
+    const righe = [];
+    sue.forEach(x => x.righe.forEach(r => { if (righe.length < 8 && !righe.includes(r.descrizione)) righe.push(r.descrizione); }));
+    const prodotti = S.prodotti.filter(p => p.daCompletare && sue.some(x => x.id === p.creatoDa)).length;
+    const totale = sue.reduce((t, x) => t + (x.totale || 0), 0);
+    return {
+      titolo: `Controllo fatture · ${ui.ctrlFIdx + 1} di ${lista.length}`, indietro: '#/fatture', html: `
+      <div class="ctrl">
+      <div class="card">
+        <h3 class="grande-t">${esc(f.nome)}</h3>
+        <p class="tenue">${sue.length} ${sue.length === 1 ? 'fattura' : 'fatture'} · ${euro(totale)} in tutto${prodotti ? ` · ${prodotti} prodotti creati` : ''}</p>
+        ${f.servizi ? '<p class="msg grigio">Riconosciuto da solo come <b>servizio</b> (bollette, banca, SIAE…): le sue fatture non creano prodotti.</p>' : ''}
+        <h3>Cosa c'è nelle sue fatture</h3>
+        <ul class="righe-esempio">${righe.map(d => `<li>${esc(d)}</li>`).join('')}</ul>
+      </div>
+      <div class="bottoni colonna ctrl-scelte">
+        ${f.servizi ? `<button class="btn primario grande" data-az="ctrlf-ok" data-id="${f.id}">✓ Giusto, è un servizio</button>
+          <button class="btn" data-az="ctrlf-merce" data-id="${f.id}">No, vende merce: crea i prodotti</button>`
+        : `<button class="btn primario grande" data-az="ctrlf-ok" data-id="${f.id}">✓ Vende merce, va bene</button>
+          <button class="btn" data-az="ctrlf-servizi" data-id="${f.id}">Non vende merce (bollette, servizi, ricambi, lavori)</button>`}
+        <div class="bottoni"><button class="btn piccolo" data-az="ctrlf-indietro">‹ Precedente</button><button class="btn piccolo" data-az="ctrlf-salta">Salta ›</button><a class="btn piccolo" href="#/fornitore/${f.id}">Scheda del fornitore</a></div>
+        <p class="tenue piccolo">La scelta vale per tutte le sue fatture, anche quelle che arriveranno.</p>
+      </div></div>`
+    };
+  };
+
+  // ----- Controllo rapido dei prodotti creati dalle fatture -----
+  PAGINE.controllo = function () {
+    const lista = S.prodotti.filter(p => p.daCompletare).sort((x, y) => x.nomeBreve.localeCompare(y.nomeBreve));
+    if (!lista.length) return { titolo: 'Controllo rapido', indietro: '#/prodotti', html: '<div class="card evidenza"><h3>Tutto controllato</h3><p>Non ci sono prodotti nuovi da controllare. Quando arrivano fatture con prodotti nuovi, li ritrovi qui.</p><a class="btn primario" href="#/prodotti">Vai ai prodotti</a></div>' };
+    if (ui.ctrlIdx == null || ui.ctrlIdx >= lista.length) ui.ctrlIdx = 0;
+    const p = lista[ui.ctrlIdx];
+    const f = p.creatoDa ? S.fatture.find(x => x.id === p.creatoDa) : null;
+    const forn = M.fornitore(p.fornitoreId);
+    const rif = M.prezzoRiferimento(p);
+    const altri = S.prodotti.filter(x => x.id !== p.id && x.unita === p.unita && !x.speciale).sort((x, y) => x.nomeBreve.localeCompare(y.nomeBreve));
+    return {
+      titolo: `Controllo rapido · ${ui.ctrlIdx + 1} di ${lista.length}`, indietro: '#/prodotti', html: `
+      <div class="ctrl">
+      <div class="card form">
+        <div class="sottotitolo">Dalla fattura: <b>${esc(p.nomeCompleto)}</b><br>${esc(forn ? forn.nome : '')}${f ? ' · ' + dataIt(f.data) : ''} · ${euro(M.prezzo(p))} a ${esc(p.confezione)}${rif ? ' · ' + n2(rif.valore) + ' ' + rif.etichetta : ''}</div>
+        <label>Nome breve (quello delle ricette)<input data-ctrl="${p.id}" data-k="nomeBreve" value="${esc(p.nomeBreve)}"></label>
+        <div class="due">
+          <label>Categoria<input list="cat-ctrl" data-ctrl="${p.id}" data-k="categoria" value="${esc(p.categoria)}"><datalist id="cat-ctrl">${categorie().map(c => `<option value="${esc(c)}">`).join('')}</datalist></label>
+          <label>Confezione<input data-ctrl="${p.id}" data-k="confezione" value="${esc(p.confezione)}"></label>
+        </div>
+        <div class="due">
+          <label>Contiene<input type="number" step="any" inputmode="decimal" data-ctrl="${p.id}" data-k="contenuto" value="${esc(p.contenuto)}"></label>
+          <label>Unità<select data-ctrl="${p.id}" data-k="unita">${['ml', 'g', 'pz'].map(u => `<option ${p.unita === u ? 'selected' : ''}>${u}</option>`).join('')}</select></label>
+        </div>
+        <p class="tenue piccolo">Esempi: bottiglia da 700 ml · kg da 1000 g · pezzo da 1 pz · fusto da 30000 ml.</p>
+      </div>
+      <div class="bottoni colonna ctrl-scelte">
+        <button class="btn primario grande" data-az="ctrl-giusto" data-id="${p.id}">✓ È giusto</button>
+        <button class="btn" data-az="ctrl-materiale" data-id="${p.id}">È materiale (sacchi, bicchieri, detersivi…)</button>
+        <button class="btn" data-az="ctrl-togli" data-id="${p.id}">Non è merce: toglilo (ricambi, lavori, spese)</button>
+        ${forn ? `<button class="btn" data-az="ctrl-servizi" data-id="${forn.id}">${esc(forn.nome)} non vende merce: togli tutti i suoi</button>` : ''}
+        <label class="unisci">È un doppione di…<select data-az-change="ctrl-unisci" data-id="${p.id}"><option value="">scegli il prodotto giusto</option>${altri.map(x => `<option value="${x.id}">${esc(x.nomeBreve)} (${esc(x.confezione)} da ${qta(x.contenuto)} ${esc(x.unita)})</option>`).join('')}</select></label>
+        <div class="bottoni"><button class="btn piccolo" data-az="ctrl-indietro">‹ Precedente</button><button class="btn piccolo" data-az="ctrl-salta">Salta ›</button><a class="btn piccolo" href="#/prodotto/${p.id}">Scheda completa</a></div>
+      </div></div>
+      <p class="tenue piccolo">Sul Mac: Invio = «È giusto», freccia destra = salta.</p>`
     };
   };
 
@@ -494,8 +569,10 @@
   // ----- Fatture -----
   PAGINE.fatture = function () {
     const l = S.fatture.slice().sort((a, b) => (a.data || '') < (b.data || '') ? 1 : -1);
+    const daCtrl = fornitoriDaControllare().length;
     return {
       titolo: 'Fatture', html: `
+      ${daCtrl ? `<a class="btn primario largo" href="#/controllo-fatture">Controllo rapido: ${daCtrl} ${daCtrl === 1 ? 'fornitore' : 'fornitori'} da controllare</a>` : ''}
       <div class="card"><h3>Carica</h3>
         <div class="bottoni colonna">
           <label class="btn primario">Fatture elettroniche (.xml, .p7m o .zip)<input type="file" accept=".xml,.p7m,.zip,application/xml,text/xml,application/zip" multiple hidden data-carica="xml"></label>
@@ -612,6 +689,9 @@
       <div class="card"><h3>Spesa per mese</h3>${mk.length ? `<div class="barre">${mk.map(m => `<div class="barra"><div class="b" style="height:${mesi[m] / max * 100}%"></div><span>${m.slice(5)}/${m.slice(2, 4)}</span><small>${n2(mesi[m], 0)}</small></div>`).join('')}</div>` : '<p class="tenue">Compare quando registri le sue fatture.</p>'}</div>
       <div class="card"><h3>Prodotti</h3>${prod.map(p => `<a class="riga" href="#/prodotto/${p.id}"><span>${esc(p.nomeBreve)}</span><span>${euro(M.prezzo(p))}</span></a>`).join('') || '<p class="tenue">Nessuno.</p>'}</div>
       <div class="card"><h3>Fatture</h3>${fatt.map(x => `<a class="riga" href="#/fattura/${x.id}"><span>n. ${esc(x.numero)}<small>${dataIt(x.data)}</small></span><span>${euro(x.totale)}</span></a>`).join('') || '<p class="tenue">Nessuna.</p>'}</div>
+      <div class="card form"><h3>È lo stesso di un altro fornitore?</h3><p class="tenue piccolo">Per esempio «Doreca» ed «Emilia Romagna Doreca S.r.l.»: uniscili e fatture e prodotti finiscono in uno solo.</p>
+        <label>Unisci dentro<select id="unisci-forn"><option value="">scegli…</option>${S.fornitori.filter(x => x.id !== id).sort((x, y) => x.nome.localeCompare(y.nome)).map(x => `<option value="${x.id}">${esc(x.nome)}</option>`).join('')}</select></label>
+        <button class="btn piccolo" data-az="unisci-fornitore" data-id="${id}">Unisci</button></div>
       <button class="btn pericolo piccolo" data-az="elimina-fornitore" data-id="${id}">Elimina fornitore</button>`
     };
   };
@@ -864,7 +944,7 @@
   // ---------- Disegno ----------
   const ALTRE = [['fornitori', 'Fornitori'], ['magazzino', 'Magazzino'], ['ordini', 'Ordini'], ['scadenze', 'Scadenze'], ['vendite', 'Vendite'], ['mappa', 'Mappa del menu'], ['simulatore', 'Simulatore'], ['eventi', 'Eventi'], ['olio', 'Costo olio'], ['impostazioni', 'Impostazioni']];
   const TAB = [['pannello', 'Pannello', 'M3 12l9-8 9 8v8a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z'], ['prodotti', 'Prodotti', 'M4 7l8-4 8 4v10l-8 4-8-4zM4 7l8 4 8-4M12 11v10'], ['ricette', 'Ricette', 'M6 3h12M8 3v6l-4 12h16L16 9V3'], ['fatture', 'Fatture', 'M6 2h9l5 5v15H6zM14 2v6h6M9 13h8M9 17h8'], ['altro', 'Altro', 'M5 12h.01M12 12h.01M19 12h.01']];
-  const SEZIONE = { prodotto: 'prodotti', 'modifica-prodotto': 'prodotti', ricetta: 'ricette', 'modifica-ricetta': 'ricette', fattura: 'fatture' };
+  const SEZIONE = { 'controllo-fatture': 'fatture', controllo: 'prodotti', prodotto: 'prodotti', 'modifica-prodotto': 'prodotti', ricetta: 'ricette', 'modifica-ricetta': 'ricette', fattura: 'fatture' };
   function disegna() {
     if (!S) return;
     const [, nome, arg] = (location.hash || '#/pannello').split('/');
@@ -1080,12 +1160,31 @@
   AZ['segna-servizi'] = (el) => {
     const forn = M.fornitore(el.dataset.id);
     if (!confirm(`${forn.nome} non vende merce? Le sue fatture restano per le scadenze, ma tolgo i prodotti creati da lì e le prossime non ne creeranno.`)) return;
-    const n = M.segnaServizi(forn.id, true); salva(); ridisegnaMantenendo(); avviso(n ? `Tolti ${n} prodotti creati per sbaglio.` : 'Fatto.');
+    const n = M.segnaServizi(forn.id, true); forn.controllato = true; salva(); ridisegnaMantenendo(); avviso(n ? `Tolti ${n} prodotti creati per sbaglio. Vale per tutte le fatture di ${forn.nome}.` : `Fatto: vale per tutte le fatture di ${forn.nome}.`);
   };
   AZ['toggle-servizi'] = (el) => {
     if (el.checked) { const n = M.segnaServizi(el.dataset.id, true); salva(); avviso(n ? `Tolti ${n} prodotti creati per sbaglio.` : 'Salvato.'); }
     else { M.fornitore(el.dataset.id).servizi = false; salva(); avviso('Salvato. Le prossime fatture creeranno i prodotti.'); }
     setTimeout(ridisegnaMantenendo, 150);
+  };
+  const ctrlFAvanti = () => { salva(); ridisegnaMantenendo(); };
+  AZ['ctrlf-ok'] = (el) => { M.fornitore(el.dataset.id).controllato = true; ctrlFAvanti(); };
+  AZ['ctrlf-servizi'] = (el) => { const f = M.fornitore(el.dataset.id); const n = M.segnaServizi(f.id, true); f.controllato = true; ctrlFAvanti(); avviso(`${f.nome}: solo fatture, ${n} prodotti tolti.`); };
+  AZ['ctrlf-merce'] = (el) => { const f = M.fornitore(el.dataset.id); const n = M.togliServizi(f.id); f.controllato = true; ctrlFAvanti(); avviso(`${f.nome}: creati ${n} prodotti.`); };
+  AZ['ctrlf-salta'] = () => { ui.ctrlFIdx = (ui.ctrlFIdx || 0) + 1; ridisegnaMantenendo(); };
+  AZ['ctrlf-indietro'] = () => { ui.ctrlFIdx = Math.max(0, (ui.ctrlFIdx || 0) - 1); ridisegnaMantenendo(); };
+  const ctrlAvanti = (rimosso) => { if (!rimosso) ui.ctrlIdx = (ui.ctrlIdx || 0) + 1; salva(); ridisegnaMantenendo(); };
+  AZ['ctrl-giusto'] = (el) => { M.prodotto(el.dataset.id).daCompletare = false; ctrlAvanti(true); };
+  AZ['ctrl-materiale'] = (el) => { const p = M.prodotto(el.dataset.id); p.categoria = 'Non alimentare'; p.daCompletare = false; ctrlAvanti(true); avviso('Segnato come materiale.'); };
+  AZ['ctrl-togli'] = (el) => { const p = M.prodotto(el.dataset.id); M.togliProdotto(p.id); ctrlAvanti(true); avviso(`Tolto «${p.nomeBreve}»: le prossime fatture lo salteranno.`); };
+  AZ['ctrl-servizi'] = (el) => { const forn = M.fornitore(el.dataset.id); if (!confirm(`${forn.nome} non vende merce? Tolgo tutti i prodotti creati dalle sue fatture.`)) return; const n = M.segnaServizi(forn.id, true); ctrlAvanti(true); avviso(`Tolti ${n} prodotti di ${forn.nome}.`); };
+  AZ['ctrl-salta'] = () => ctrlAvanti(false);
+  AZ['ctrl-indietro'] = () => { ui.ctrlIdx = Math.max(0, (ui.ctrlIdx || 0) - 1); ridisegnaMantenendo(); };
+  AZ['unisci-fornitore'] = (el) => {
+    const sel = $('#unisci-forn'); if (!sel || !sel.value) { alert('Scegli il fornitore in cui unirlo.'); return; }
+    const da = M.fornitore(el.dataset.id), a = M.fornitore(sel.value);
+    if (!confirm(`Unisco «${da.nome}» dentro «${a.nome}»? Fatture e prodotti passano a ${a.nome}.`)) return;
+    M.unisciFornitori(da.id, a.id); salva(); vai('#/fornitore/' + a.id); avviso('Fornitori uniti.');
   };
   AZ['imp-bool'] = (el) => { S.impostazioni[el.dataset.k] = el.checked; salva(); avviso('Salvato.'); };
   AZ.completato = (el) => { const p = M.prodotto(el.dataset.id); p.daCompletare = false; salva(); ridisegnaMantenendo(); avviso('Fatto.'); };
@@ -1175,6 +1274,13 @@
   AZ.esci = () => { if (confirm('Vuoi uscire?')) firebase.auth().signOut(); };
   AZ['porta-locali'] = () => { if (confirm('Porto online le fatture salvate su questo dispositivo? Quelle già presenti vengono saltate.')) portaFattureLocali(); };
 
+  document.addEventListener('keydown', (e) => {
+    if (!(location.hash || '').startsWith('#/controllo') || /INPUT|SELECT|TEXTAREA/.test((e.target.tagName || ''))) return;
+    const f = (location.hash || '').startsWith('#/controllo-fatture') ? 'ctrlf' : 'ctrl';
+    if (e.key === 'Enter') { const b = $(f === 'ctrlf' ? '[data-az="ctrlf-ok"]' : '[data-az="ctrl-giusto"]'); if (b) { e.preventDefault(); b.click(); } }
+    if (e.key === 'ArrowRight') { e.preventDefault(); AZ[f + '-salta'](); }
+    if (e.key === 'ArrowLeft') { e.preventDefault(); AZ[f + '-indietro'](); }
+  });
   document.addEventListener('click', (e) => {
     const el = e.target.closest('[data-az]');
     if (!el || el.tagName === 'SELECT') return;
@@ -1224,6 +1330,17 @@
         if (rg.prodottoId) { const p = M.prodotto(rg.prodottoId); const a = (p.articoli || []).find(x => x.fornitoreId === f.fornitoreId); rg.confezioniPerUnita = a ? a.confezioniPerUnita : 1; }
       } else rg.confezioniPerUnita = numDa(el.value) || 1;
       salva(); ridisegnaMantenendo(); return;
+    }
+    if (d.ctrl) {
+      const p = M.prodotto(d.ctrl); if (!p) return;
+      p[d.k] = d.k === 'contenuto' ? (numDa(el.value) || 1) : el.value.trim();
+      salva(); if (d.k !== 'nomeBreve') ridisegnaMantenendo(); return;
+    }
+    if (d.azChange === 'ctrl-unisci' && el.value) {
+      const da = M.prodotto(d.id), a = M.prodotto(el.value);
+      if (!confirm(`Unisco «${da.nomeBreve}» dentro «${a.nomeBreve}»? Prezzi, fatture e ricette passano a ${a.nomeBreve}.`)) { el.value = ''; return; }
+      const err = M.unisciProdotti(da.id, a.id); if (err) { alert(err); el.value = ''; return; }
+      salva(); ridisegnaMantenendo(); avviso('Uniti.'); return;
     }
     if (d.forn) { const f = M.fornitore(d.forn); f[d.k] = el.value.trim(); salva(); return; }
     if (d.vend) { const r = M.ricetta(d.vend); r.vendite = r.vendite || {}; const x = numDa(el.value); if (x) r.vendite[d.p] = x; else delete r.vendite[d.p]; salva(); return; }
