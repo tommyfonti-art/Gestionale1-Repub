@@ -213,11 +213,64 @@
   function tutti(el, nome) { return Array.from(el.getElementsByTagNameNS('*', nome)); }
   const num = (s) => { const n = parseFloat(String(s || '').replace(',', '.')); return isNaN(n) ? 0 : n; };
 
+  // Il .p7m è una «busta» firmata: dentro, il testo della fattura può essere spezzato in tanti pezzi
+  // (di 1000 o 4096 byte) separati da intestazioni. Li leggo uno per uno e li rimetto insieme.
+  function contenutoP7m(b) {
+    const OID_DATI = [0x06, 0x09, 0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x07, 0x01];
+    function testa(i) {
+      const tag = b[i]; let j = i + 1;
+      if (j >= b.length) return null;
+      let l = b[j++];
+      if (l === 0x80) return { tag, inizio: j, fine: -1, costruito: (tag & 0x20) !== 0 };
+      if (l & 0x80) { const n = l & 0x7f; if (n > 4) return null; l = 0; for (let k = 0; k < n; k++) l = l * 256 + b[j++]; }
+      return { tag, inizio: j, fine: j + l, costruito: (tag & 0x20) !== 0 };
+    }
+    // raccoglie i byte di tutte le stringhe di ottetti dentro un elemento (anche spezzate)
+    function raccogli(i, pezzi) {
+      const h = testa(i); if (!h) return b.length;
+      if (!h.costruito) { if (h.tag === 0x04) pezzi.push(b.subarray(h.inizio, h.fine)); return h.fine; }
+      let j = h.inizio;
+      while (j < b.length) {
+        if (h.fine === -1 && b[j] === 0 && b[j + 1] === 0) return j + 2;
+        if (h.fine !== -1 && j >= h.fine) return h.fine;
+        j = raccogli(j, pezzi);
+      }
+      return j;
+    }
+    for (let i = 0; i < b.length - 16; i++) {
+      if (b[i] !== 0x06 || b[i + 1] !== 0x09) continue;
+      let ok = true; for (let k = 0; k < OID_DATI.length; k++) if (b[i + k] !== OID_DATI[k]) { ok = false; break; }
+      if (!ok) continue;
+      const j = i + OID_DATI.length;
+      if (b[j] !== 0xA0) continue; // [0] con il contenuto
+      const h = testa(j); if (!h) continue;
+      const pezzi = []; raccogli(h.inizio, pezzi);
+      const tot = pezzi.reduce((s, p) => s + p.length, 0);
+      if (!tot) continue;
+      const out = new Uint8Array(tot); let o = 0; pezzi.forEach(p => { out.set(p, o); o += p.length; });
+      return out;
+    }
+    return null;
+  }
   M.estraiXML = function (buffer) {
     // Funziona per i file .xml e per i .xml.p7m (firmati): cerca il testo XML dentro il file.
-    const bytes = new Uint8Array(buffer);
+    let bytes = new Uint8Array(buffer);
     let s = new TextDecoder('utf-8').decode(bytes);
-    if (s.indexOf('FatturaElettronica') !== -1 && s.trim().startsWith('<')) return s;
+    if (s.indexOf('FatturaElettronica') !== -1 && s.trim().startsWith('<')) return s.indexOf('\uFFFD') === -1 ? s : new TextDecoder('latin1').decode(bytes);
+    if (bytes[0] === 0x30) {
+      try {
+        const dentro = contenutoP7m(bytes);
+        if (dentro) {
+          const t = new TextDecoder('utf-8').decode(dentro);
+          if (t.indexOf('FatturaElettronica') !== -1) {
+            // se non è UTF-8 valido (fatture in latin1) lo rileggo
+            const xml = t.indexOf('�') === -1 ? t : new TextDecoder('latin1').decode(dentro);
+            return xml.slice(Math.max(0, xml.indexOf('<')));
+          }
+          bytes = dentro;
+        }
+      } catch (e) { /* provo nel modo semplice */ }
+    }
     s = new TextDecoder('latin1').decode(bytes);
     let i = s.indexOf('<?xml');
     if (i === -1) i = s.search(/<[a-zA-Z0-9]*:?FatturaElettronica[\s>]/);
@@ -253,12 +306,14 @@
         const sc = tutti(l, 'ScontoMaggiorazione').map(x => ({ tipo: testo(x, 'Tipo'), perc: num(testo(x, 'Percentuale')), importo: num(testo(x, 'Importo')) }));
         let sconto = 0;
         sc.forEach(x => { if (x.perc) sconto += (x.tipo === 'MG' ? -x.perc : x.perc); });
+        // lo sconto in euro vale per ogni unità (maggiorazione = segno meno)
+        const scImp = sc.reduce((s, x) => s + (x.perc ? 0 : (x.tipo === 'MG' ? -x.importo : x.importo)), 0);
         const cod = tutti(l, 'CodiceArticolo').map(c => testo(c, 'CodiceValore')).filter(Boolean);
         const q = testo(l, 'Quantita');
         return {
-          n: num(testo(l, 'NumeroLinea')), descrizione: testo(l, 'Descrizione'), codice: cod[0] || '',
+          n: num(testo(l, 'NumeroLinea')), descrizione: testo(l, 'Descrizione'), codice: cod[0] || '', tipoRiga: testo(l, 'TipoCessionePrestazione'),
           quantita: q === '' ? 1 : num(q), um: testo(l, 'UnitaMisura'), prezzoUnitario: num(testo(l, 'PrezzoUnitario')),
-          sconto, scontoImporto: sc.reduce((s, x) => s + (x.perc ? 0 : x.importo), 0),
+          sconto, scontoImporto: scImp,
           totale: num(testo(l, 'PrezzoTotale')), aliquota: num(testo(l, 'AliquotaIVA')),
           prodottoId: null, confezioniPerUnita: 1, ignora: false
         };
@@ -282,29 +337,40 @@
     const n = norm(f.fornitoreNome);
     const senzaForma = (x) => norm(x).replace(/\b(s ?r ?l|s ?p ?a|s ?n ?c|s ?a ?s|srls|unipersonale|societa|soc|coop)\b/g, ' ').replace(/\s+/g, ' ').trim();
     const ns = senzaForma(f.fornitoreNome);
-    return S.fornitori.find(z => norm(z.nome) === n) || S.fornitori.find(z => senzaForma(z.nome) === ns)
-      || S.fornitori.find(z => n && (n.startsWith(norm(z.nome) + ' ') || norm(z.nome).startsWith(n + ' ')))
-      || S.fornitori.find(z => { const c = senzaForma(z.nome); return c.length >= 4 && (' ' + ns + ' ').includes(' ' + c + ' '); }) || null;
+    // con due partite IVA diverse sono due fornitori diversi, anche se il nome somiglia
+    const lista = S.fornitori.filter(z => !(f.piva && z.piva && z.piva !== f.piva));
+    return lista.find(z => norm(z.nome) === n) || lista.find(z => senzaForma(z.nome) === ns)
+      || lista.find(z => n && (n.startsWith(norm(z.nome) + ' ') || norm(z.nome).startsWith(n + ' ')))
+      || lista.find(z => { const c = senzaForma(z.nome); return c.length >= 4 && (' ' + ns + ' ').includes(' ' + c + ' '); }) || null;
   };
   M.abbinaAutomatico = function (f) {
     const forn = M.trovaFornitore(f);
     f.fornitoreId = forn ? forn.id : null;
+    if (forn && forn.servizi) { f.righe.forEach(rg => { if (!rg.prodottoId) { rg.ignora = true; rg.automatico = true; } }); f.servizi = true; return f; }
     f.righe.forEach(rg => {
       if (rg.prodottoId || rg.ignora) return;
+      if (M.nonMerce(rg) && !rigaOmaggio(rg)) { rg.ignora = true; rg.automatico = true; return; }
+      if (M.trovaArticolo(rg, f.fornitoreId)) return;
       const ign = (S.ignorati || []).find(x => x.fornitoreId === f.fornitoreId && ((rg.codice && x.codice === rg.codice) || norm(x.descrizione) === norm(rg.descrizione)));
-      if (ign) { rg.ignora = true; return; }
+      if (ign) { rg.ignora = true; rg.automatico = true; }
+    });
+    return f;
+  };
+  // cerca il prodotto che il fornitore ha già venduto con quel codice o quella descrizione, e collega la riga
+  M.trovaArticolo = function (rg, fornitoreId) {
+    {
       for (const p of S.prodotti) {
-        const a = (p.articoli || []).find(a => (!a.fornitoreId || a.fornitoreId === f.fornitoreId) && ((rg.codice && a.codice && a.codice === rg.codice) || norm(a.descrizione) === norm(rg.descrizione)));
+        const a = (p.articoli || []).find(a => (!a.fornitoreId || a.fornitoreId === fornitoreId) && ((rg.codice && a.codice && a.codice === rg.codice) || norm(a.descrizione) === norm(rg.descrizione)));
         if (a) {
           rg.prodottoId = p.id; rg.automatico = true;
           // un omaggio scritto a bottiglie (BT) accanto a righe a cartoni: niente moltiplicatore
           const umPezzo = /^(BT|PZ|NR|N|BOT|BOTT)$/i.test(rg.um || '');
           rg.confezioniPerUnita = umPezzo && a.confezioniPerUnita > 1 && rg.totale === 0 ? 1 : (a.confezioniPerUnita || 1);
-          break;
+          return p;
         }
       }
-    });
-    return f;
+    }
+    return null;
   };
   M.daAbbinare = (f) => f.righe.filter(r => !r.prodottoId && !r.ignora).length;
 
@@ -313,7 +379,7 @@
     const per = {};
     const avvisi = [];
     f.righe.forEach(rg => {
-      const atteso = rg.quantita * rg.prezzoUnitario * (1 - (rg.sconto || 0) / 100) - (rg.scontoImporto || 0);
+      const atteso = rg.quantita * (rg.prezzoUnitario * (1 - (rg.sconto || 0) / 100) - (rg.scontoImporto || 0));
       if (rg.totale && Math.abs(atteso - rg.totale) > 0.05) avvisi.push({ tipo: 'attenzione', testo: `Riga ${rg.n} «${rg.descrizione}»: il totale scritto (${rg.totale.toFixed(2)} €) non torna con quantità, prezzo e sconto (${atteso.toFixed(2)} €).` });
       if (!rg.prodottoId || rg.ignora) return;
       const p = M.prodotto(rg.prodottoId); if (!p) return;
@@ -347,6 +413,7 @@
 
   // Registra la fattura: prezzi, magazzino, articoli collegati, resoconto delle ricette cambiate
   M.assicuraFornitore = function (f) {
+    if (f.fornitoreId && !M.fornitore(f.fornitoreId)) { const c = M.trovaFornitore(f); f.fornitoreId = c ? c.id : null; }
     if (!f.fornitoreId) {
       const nuovo = { id: M.uid('f'), nome: f.fornitoreNome.replace(/\s*\(ESEMPIO\)\s*/i, '').trim() || 'Fornitore', piva: f.piva || '', telefono: '', email: '', referente: '', giorniConsegna: '', note: '' };
       S.fornitori.push(nuovo); f.fornitoreId = nuovo.id;
@@ -356,16 +423,21 @@
 
   // ---------- Prodotti creati in automatico dalle fatture ----------
   const NON_MERCE = /trasport|spedizion|\bspese\b|cauzion|contribut|\bbollo\b|imball|facchinagg|arrotond|rimborso|noleggio|canone|\bsconto\b|commission|diritt[io]|accisa/i;
-  M.nonMerce = (rg) => NON_MERCE.test(rg.descrizione) || (!rg.totale && rg.prezzoUnitario < 0.01);
+  // righe che non sono merce: trasporti, cauzioni, sconti e abbuoni (anche scritti come importi negativi)
+  M.nonMerce = (rg) => NON_MERCE.test(rg.descrizione) || /^(SC|PR|AB|AC)$/.test(rg.tipoRiga || '') || rg.totale < 0 || (!rg.totale && rg.prezzoUnitario < 0.01);
+  // riga a zero euro con un prezzo (omaggio, sconto merce): va col prodotto pagato, se c'è
+  const rigaOmaggio = (rg) => !rg.totale && !NON_MERCE.test(rg.descrizione) && !/^(SC|PR|AB|AC)$/.test(rg.tipoRiga || '');
   const CATEGORIE = [
+    [/\baceto\b|\bolio\b|\bsale\b|zucchero|farina|\bspezi|origano|\bpepe\b|paprika|curry|\blievito/i, 'Dispensa'],
     [/\bbirr|\bfus(to|ti)?\b|lager|weiss|blanche|ipa\b|stout|guinness/i, 'Birra e fusti'], [/\bgin\b/i, 'Gin'], [/vodka/i, 'Vodka'], [/\brum\b|cacha/i, 'Rum e cachaça'],
-    [/tequila|mezcal|espadin|whisk|bourbon|grappa|cognac/i, 'Distillati'], [/vermouth|bitter|aperol|campari|chinato/i, 'Bitter e vermouth'], [/amaro|liquor|limoncello|sambuca|moscato giallo/i, 'Amari e liquori'],
-    [/\bvin[oi]\b|rosato|prosecco|spumant|sangiovese|chianti|lambrusco|bianco|rosso/i, 'Vino'], [/coca|cola|tonic|soda|succo|ginger|acqua|lemon|aranciat|premix|sciropp/i, 'Sode e succhi'],
+    [/tequila|mezcal|espadin|whisk|bourbon|grappa|cognac/i, 'Distillati'], [/vermouth|martini|bitter|aperol|campari|chinato/i, 'Bitter e vermouth'], [/amaro|liquor|limoncello|sambuca|moscato giallo/i, 'Amari e liquori'],
+    [/\bvin[oi]\b|rosato|prosecco|spumant|sangiovese|chianti|lambrusco|trebbiano|pinot|chardonnay|vermentino|montepulciano|primitivo|merlot|cabernet|albana|pignoletto|sauvignon|franciacorta|champagne/i, 'Vino'], [/coca|cola|tonic|soda|succo|ginger|acqua|lemon|aranciat|premix|sciropp/i, 'Sode e succhi'],
     [/\bpane\b|panin|\broll\b|\bbun\b|focacc|piadin/i, 'Pane'], [/hamburger|bovin|manzo|suin|pollo|salsicc|bacon|pancett|guancial|wurst|carne/i, 'Carne'],
     [/formagg|cheddar|mozzarel|scamorz|halloumi|grana|parmig/i, 'Formaggi'], [/patat|surgel|frozen/i, 'Surgelati'], [/insalat|pomodor|cipoll|lime|limon|frutta|verdur|kiwi|lampon/i, 'Frutta e verdura'],
     [/salsa|maionese|ketchup|senape|mayo/i, 'Salse'], [/sacch|bicchier|tovagl|busta|vaschett|carta|cannucc|guant|detersiv|sottobicch|sottocopp/i, 'Non alimentare'], [/ghiaccio/i, 'Ghiaccio']
   ];
   // reparti: ogni categoria sta sotto Bar, Cucina o Non food
+  M.categoriaDa = (descrizione) => (CATEGORIE.find(([re]) => re.test(descrizione || '')) || [null, 'Da classificare'])[1];
   M.REPARTI = ['Bar', 'Cucina', 'Non food'];
   const REP_BAR = /^(gin|vodka|rum|tequila|distillat|whisk|bitter|amari|liquor|birr|fust|vin|sode|succhi|sciropp|ghiaccio|bibite|acqua|caff)/i;
   const REP_NONFOOD = /^(non alimentare|non food|materiale|pulizia|detersiv|monouso|imballagg)/i;
@@ -437,12 +509,20 @@
     if (forn.servizi === undefined && M.pareServizi(forn.nome)) forn.servizi = true;
     if (forn.servizi) { f.righe.forEach(rg => { if (!rg.prodottoId) { rg.ignora = true; rg.automatico = true; } }); f.servizi = true; return []; }
     const creati = [];
-    f.righe.forEach(rg => {
+    const senzaOmaggio = (d) => norm(d).replace(/\b(omaggio|omaggi|sconto merce|in omaggio|gratis)\b/g, ' ').replace(/\s+/g, ' ').trim();
+    const gemellaDi = (rg) => f.righe.find(x => x !== rg && x.prodottoId && !x.ignora && x.totale > 0 && ((rg.codice && x.codice === rg.codice) || senzaOmaggio(x.descrizione) === senzaOmaggio(rg.descrizione)));
+    const ordinate = f.righe.filter(rg => !rigaOmaggio(rg)).concat(f.righe.filter(rigaOmaggio));
+    ordinate.forEach(rg => {
       if (rg.prodottoId || rg.ignora) return;
+      if (M.trovaArticolo(rg, f.fornitoreId)) return;
+      // riga a zero euro (omaggio, sconto merce) con lo stesso codice o nome di una riga pagata: stesso prodotto
+      if (rigaOmaggio(rg)) {
+        const gem = gemellaDi(rg);
+        if (gem) { rg.prodottoId = gem.prodottoId; rg.confezioniPerUnita = gem.confezioniPerUnita; rg.automatico = true; }
+        else { rg.ignora = true; rg.automatico = true; }
+        return;
+      }
       if (M.nonMerce(rg)) { rg.ignora = true; rg.automatico = true; return; }
-      // stessa descrizione già creata in questa fattura (es. riga omaggio): stesso prodotto
-      const gemella = f.righe.find(x => x !== rg && x.prodottoId && norm(x.descrizione).replace(/ omaggio$/, '') === norm(rg.descrizione).replace(/ omaggio$/, ''));
-      if (gemella) { rg.prodottoId = gemella.prodottoId; rg.confezioniPerUnita = gemella.confezioniPerUnita; rg.automatico = true; return; }
       const g = M.indovinaProdotto(rg);
       const p = { id: M.uid('p'), nomeBreve: g.nomeBreve, nomeCompleto: rg.descrizione, categoria: g.categoria, unita: g.unita, contenuto: g.contenuto, confezione: g.confezione,
         iva: rg.aliquota || 22, giacenza: 0, scortaMinima: 0, resa: 100, allergeni: [], venditaDiretta: null, fornitoreId: f.fornitoreId, articoli: [], prezzi: [], note: '',
@@ -569,7 +649,11 @@
     S.ricette.forEach(r => { (r.righe || []).forEach(rg => { if (rg.rif === 'p:' + foglioId) rg.rif = 'p:' + veroId; }); (r.asporto || []).forEach(x => { if (x.rif === 'p:' + foglioId) x.rif = 'p:' + veroId; }); });
     S.fatture.forEach(f => f.righe.forEach(rg => { if (rg.prodottoId === foglioId) rg.prodottoId = veroId; }));
     (S.eventi || []).forEach(ev => (ev.righe || ev.ricette || []).forEach(x => { if (x && x.prodottoId === foglioId) x.prodottoId = veroId; }));
-    ve.daCompletare = false; ve.formatoOk = true; delete ve.dubbio; delete ve.forseDoppioneDi;
+    ve.daCompletare = false; delete ve.forseDoppioneDi;
+    // se il costo al litro (o al chilo) della fattura è molto diverso da quello del foglio, quasi sempre è un cartone contato come un pezzo
+    const cf = M.costoUnita(fo), cv = M.costoUnita(ve);
+    if (cf && cv && (cv / cf > 2.5 || cf / cv > 2.5)) { ve.dubbio = 'cartone'; ve.formatoOk = false; }
+    else if (!ve.dubbio) ve.formatoOk = true;
     S.prodotti = S.prodotti.filter(p => p.id !== foglioId);
     S.prodotti.forEach(p => { if (p.forseDoppioneDi === foglioId) p.forseDoppioneDi = veroId; });
     M.svuota();
@@ -614,6 +698,7 @@
     // ricorda i collegamenti per le prossime fatture
     f.righe.forEach(rg => {
       if (rg.ignora) {
+        if (!rg.totale || rg.totale < 0) return;
         if (!(S.ignorati || (S.ignorati = [])).some(x => x.fornitoreId === f.fornitoreId && x.descrizione === rg.descrizione)) S.ignorati.push({ fornitoreId: f.fornitoreId, codice: rg.codice, descrizione: rg.descrizione });
         return;
       }

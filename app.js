@@ -101,6 +101,32 @@
     }
     // fornitori di servizi: le loro fatture non devono avere prodotti e restano registrate
     S.fornitori.forEach(f => { if (f.servizi && S.fatture.some(x => x.fornitoreId === f.id && (x.stato !== 'registrata' || x.righe.some(rg => !rg.ignora)))) M.segnaServizi(f.id, true); });
+    // una volta: righe pagate saltate per sbaglio (succedeva quando lo stesso prodotto era arrivato anche in omaggio)
+    if (!S.correzioneOmaggi) {
+      const prova = (x) => M.trovaArticolo({ codice: x.codice, descrizione: x.descrizione, um: '', totale: 1 }, x.fornitoreId);
+      S.fatture.forEach(f => {
+        const forn = M.fornitore(f.fornitoreId); if (!forn || forn.servizi || f.servizi) return;
+        let cambiata = false;
+        f.righe.forEach(rg => {
+          if (!rg.ignora || rg.prodottoId || rg.totale < 0 || /^(SC|PR|AB|AC)$/.test(rg.tipoRiga || '')) return;
+          if (rg.totale > 0 && M.nonMerce(rg)) return;
+          if (M.trovaArticolo(rg, f.fornitoreId)) { rg.ignora = false; cambiata = true; }
+        });
+        if (cambiata && f.stato === 'registrata') { M.annullaFattura(f); M.registraFattura(f); M.svuota(); }
+      });
+      S.ignorati = (S.ignorati || []).filter(x => !prova(x));
+      // prodotti nati da righe di sconto o abbuono (importi negativi) e mai usati: via
+      S.prodotti.filter(p => p.creatoDa && !M.usatoIn('p:' + p.id).dirette.length).forEach(p => {
+        const sue = []; S.fatture.forEach(f => f.righe.forEach(rg => { if (rg.prodottoId === p.id) sue.push(rg); }));
+        if (sue.length && sue.every(rg => rg.totale < 0)) { sue.forEach(rg => { rg.prodottoId = null; rg.ignora = true; rg.automatico = true; }); S.prodotti = S.prodotti.filter(x => x !== p); }
+      });
+      S.correzioneOmaggi = true; M.svuota();
+    }
+    // una volta: «bianco» e «rosso» da soli facevano finire nel vino anche aceto e altro
+    if (!S.correzioneVino) {
+      S.prodotti.forEach(p => { if (p.creatoDa && p.categoria === 'Vino' && !p.reparto) { const c = M.categoriaDa(p.nomeCompleto); if (c !== 'Vino') p.categoria = c; } });
+      S.correzioneVino = true;
+    }
     // fatture già complete rimaste in sospeso: le registro
     if ((S.impostazioni || {}).autoRegistra !== false) S.fatture.forEach(f => { if (f.stato !== 'registrata' && !f.daVerificare && f.righe.length && !M.daAbbinare(f)) { M.registraFattura(f); M.svuota(); } });
     // una volta: il magazzino lo fa solo l'inventario, si riparte da zero
@@ -110,11 +136,14 @@
     // fatture doppie (es. lette insieme da due dispositivi): ne tengo una
     const viste = new Set();
     S.fatture = S.fatture.filter(f => { const k = [f.piva || f.fornitoreNome, f.numero, f.data].join('|'); if (viste.has(k)) return false; viste.add(k); return true; });
+    // prezzi rimasti attaccati a fatture che non ci sono più
+    const idFatt = new Set(S.fatture.map(f => f.id));
+    S.prodotti.forEach(p => { if ((p.prezzi || []).some(e => e.fatturaId && !idFatt.has(e.fatturaId))) p.prezzi = p.prezzi.filter(e => !e.fatturaId || idFatt.has(e.fatturaId)); });
     M.usa(S);
   }
 
   // ---------- Salvataggio online (Firebase) ----------
-  let db = null, utente = null, ultimoSalvato = new Map(), timerCloud = null;
+  let db = null, utente = null, ultimoSalvato = new Map(), timerCloud = null, inVolo = 0, ultimoTimbro = null;
   const COLL = ['prodotti', 'ricette', 'fatture', 'fornitori'];
   function documenti(stato) {
     const m = new Map(); const resto = {};
@@ -130,17 +159,28 @@
     nuovi.forEach((v, k) => { if (ultimoSalvato.get(k) !== v) ops.push([k, v]); });
     ultimoSalvato.forEach((v, k) => { if (!nuovi.has(k)) ops.push([k, null]); });
     if (!ops.length) return;
+    // il documento generale porta sempre un «timbro» nuovo: gli altri dispositivi leggono solo quello per sapere se è cambiato qualcosa
+    if (!ops.some(([k]) => k === 'dati/generale')) ops.unshift(['dati/generale', nuovi.get('dati/generale')]);
+    const timbro = Date.now() + '-' + Math.random().toString(36).slice(2, 7); ultimoTimbro = timbro;
     ultimoSalvato = nuovi;
     for (let i = 0; i < ops.length; i += 400) {
       const b = db.batch();
-      ops.slice(i, i + 400).forEach(([k, v]) => { const ref = db.doc(k); if (v == null) b.delete(ref); else b.set(ref, { json: v, da: utente.email || '', quando: Date.now() }); });
-      b.commit().catch(e => avviso('Non riesco a salvare online: ' + e.message));
+      const parte = ops.slice(i, i + 400);
+      parte.forEach(([k, v]) => { const ref = db.doc(k); if (v == null) b.delete(ref); else b.set(ref, Object.assign({ json: v, da: utente.email || '', quando: Date.now() }, k === 'dati/generale' ? { timbro } : {})); });
+      inVolo++;
+      b.commit().then(() => { inVolo--; }, e => {
+        inVolo--;
+        // al prossimo salvataggio questi documenti vengono rimandati
+        parte.forEach(([k, v]) => { if (v == null) ultimoSalvato.set(k, '(da cancellare)'); else ultimoSalvato.delete(k); });
+        avviso('Non riesco a salvare online: ' + e.message + '. Riprovo alla prossima modifica.');
+      });
     }
   }
   async function caricaCloud() {
     const gen = await db.doc('dati/generale').get();
     if (!gen.exists) return null;
     const stato = JSON.parse(gen.data().json);
+    ultimoTimbro = gen.data().timbro || null;
     for (const c of COLL) {
       const snap = await db.collection(c).get();
       stato[c] = snap.docs.map(d => JSON.parse(d.data().json));
@@ -216,8 +256,11 @@
     });
     // quando torni sull'app, ricarico i dati cambiati dagli altri dispositivi
     document.addEventListener('visibilitychange', async () => {
-      if (document.visibilityState !== 'visible' || !utente || !S || timerCloud || ui.bozza || ui.conta) return;
+      if (document.visibilityState !== 'visible' || !utente || !S || timerCloud || inVolo || ui.bozza || ui.conta) return;
       try {
+        // prima leggo solo il timbro (una lettura): se nessuno ha cambiato niente non ricarico tutto
+        const g = await db.doc('dati/generale').get();
+        if (g.exists && g.data().timbro && g.data().timbro === ultimoTimbro) return;
         const stato = await caricaCloud(); if (!stato) return;
         const nuovi = documenti(stato);
         if (JSON.stringify([...nuovi]) === JSON.stringify([...ultimoSalvato])) return;
@@ -776,7 +819,7 @@
     const sotto = ric.filter(x => x.sotto).length;
     return `<div class="card evidenza"><h3>Cosa è cambiato</h3>
       <table class="tab"><tr><th>Prodotto</th><th class="n">Prima</th><th class="n">Ora</th><th class="n">Diff.</th></tr>
-      ${rs.prodotti.map(x => { const p = M.prodotto(x.prodottoId); const v = x.prima && x.dopo ? (x.dopo / x.prima - 1) * 100 : null; return `<tr><td><a href="#/prodotto/${x.prodottoId}">${esc(p ? p.nomeBreve : '?')}</a><small>+${qta(x.confezioni)} × ${esc(p ? p.confezione : '')} in magazzino</small></td><td class="n">${euro(x.prima)}</td><td class="n">${euro(x.dopo)}</td><td class="n ${v > 0 ? 'rosso-t' : 'verde-t'}">${v == null ? '' : (v > 0 ? '+' : '') + n2(v, 1) + '%'}</td></tr>`; }).join('')}</table>
+      ${rs.prodotti.map(x => { const p = M.prodotto(x.prodottoId); const v = x.prima && x.dopo ? (x.dopo / x.prima - 1) * 100 : null; return `<tr><td><a href="#/prodotto/${x.prodottoId}">${esc(p ? p.nomeBreve : '?')}</a><small>${qta(x.confezioni)} × ${esc(p ? p.confezione : '')} comprati</small></td><td class="n">${euro(x.prima)}</td><td class="n">${euro(x.dopo)}</td><td class="n ${v > 0 ? 'rosso-t' : 'verde-t'}">${v == null ? '' : (v > 0 ? '+' : '') + n2(v, 1) + '%'}</td></tr>`; }).join('')}</table>
       <h3>${ric.length ? (ric.length === 1 ? '1 ricetta ricalcolata' : ric.length + ' ricette ricalcolate') : 'Nessuna ricetta cambia costo'}</h3>
       ${ric.length ? `<table class="tab"><tr><th>Ricetta</th><th class="n">Costo prima</th><th class="n">Ora</th><th class="n">Molt.</th></tr>
       ${ric.map(x => { const r = M.ricetta(x.ricettaId); return `<tr><td><a href="#/ricetta/${x.ricettaId}">${esc(r ? r.nome : '?')}</a></td><td class="n">${euro(x.prima, 3)}</td><td class="n">${euro(x.dopo, 3)}</td><td class="n">${r && r.tipo !== 'semilavorato' ? `<span class="badge ${x.sotto ? 'rosso' : 'verde'}">× ${n2(x.molt)}</span>` : ''}</td></tr>`; }).join('')}</table>
@@ -1236,7 +1279,8 @@
     if (controlloInCorso) return; controlloInCorso = true;
     if (manuale) modale('<h3>Controllo la casella…</h3><div class="rotella"></div>');
     try {
-      const dal = new Date(Date.now() - 60 * 864e5).toISOString();
+      const da60 = Date.now() - 60 * 864e5;
+      const dal = new Date(c.ultimoControllo ? Math.max(da60, new Date(c.ultimoControllo).getTime() - 5 * 864e5) : da60).toISOString();
       const r = await fetch(c.url + (c.url.includes('?') ? '&' : '?') + 'chiave=' + encodeURIComponent(c.chiave) + '&dal=' + encodeURIComponent(dal));
       const j = await r.json();
       if (j.errore) throw new Error(j.errore);
@@ -1343,6 +1387,7 @@
     const b = ui.bozza; const uso = M.usatoIn('p:' + b.id).dirette;
     if (uso.length && !confirm(`${b.nomeBreve} è usato in ${uso.map(r => r.nome).join(', ')}. Eliminarlo lo stesso?`)) return;
     if (!uso.length && !confirm('Eliminare ' + b.nomeBreve + '?')) return;
+    S.fatture.forEach(f => f.righe.forEach(rg => { if (rg.prodottoId === b.id) { rg.prodottoId = null; rg.ignora = true; rg.automatico = true; } }));
     S.prodotti = S.prodotti.filter(p => p.id !== b.id); ui.bozza = null; salva(); vai('#/prodotti');
   };
   AZ['segna-servizi'] = (el) => {
@@ -1390,7 +1435,9 @@
     AZ['scarica-copia']();
     // fatture di esempio
     S.fatture.filter(f => /ESEMPIO/i.test(f.numero || '') || /ESEMPIO/i.test(f.fornitoreNome || '')).forEach(f => { M.annullaFattura(f); });
-    S.fatture = S.fatture.filter(f => !(/ESEMPIO/i.test(f.numero || '') || /ESEMPIO/i.test(f.fornitoreNome || '')));
+    const esempi = new Set(S.fatture.filter(f => /ESEMPIO/i.test(f.numero || '') || /ESEMPIO/i.test(f.fornitoreNome || '')).map(f => f.id));
+    S.fatture = S.fatture.filter(f => !esempi.has(f.id));
+    S.prodotti = S.prodotti.filter(p => !(esempi.has(p.creatoDa) && !(p.prezzi || []).length && !M.usatoIn('p:' + p.id).dirette.length));
     // fornitori scritti a mano: se c'è quello vero delle fatture, unisco; se non serve a nessuno, lo tolgo
     const conFatture = new Set(S.fatture.map(f => f.fornitoreId));
     S.fornitori.filter(f => !conFatture.has(f.id)).forEach(f => {
@@ -1453,7 +1500,7 @@
   };
   AZ['duplica-ricetta'] = (el) => { const r = JSON.parse(JSON.stringify(M.ricetta(el.dataset.id))); r.id = M.uid('r'); r.nome += ' (copia)'; r.vendite = {}; S.ricette.push(r); salva(); vai('#/modifica-ricetta/' + r.id); };
   AZ['registra-fattura'] = (el) => { const f = S.fatture.find(x => x.id === el.dataset.id); M.registraFattura(f); salva(); window.scrollTo(0, 0); disegna(); avviso('Fattura registrata: costi aggiornati.'); };
-  AZ['annulla-fattura'] = (el) => { if (!confirm('Annullare la registrazione? Tolgo i prezzi e la merce di questa fattura.')) return; const f = S.fatture.find(x => x.id === el.dataset.id); M.annullaFattura(f); salva(); ridisegnaMantenendo(); };
+  AZ['annulla-fattura'] = (el) => { if (!confirm('Annullare la registrazione? Tolgo i prezzi di questa fattura.')) return; const f = S.fatture.find(x => x.id === el.dataset.id); M.annullaFattura(f); salva(); ridisegnaMantenendo(); };
   AZ['elimina-fattura'] = (el) => { if (!confirm('Eliminare la fattura?')) return; const f = S.fatture.find(x => x.id === el.dataset.id); M.annullaFattura(f); S.fatture = S.fatture.filter(x => x !== f); salva(); vai('#/fatture'); };
   AZ.pagata = (el) => { const f = S.fatture.find(x => x.id === el.dataset.id); f.scadenze[+el.dataset.k].pagata = el.checked; salva(); setTimeout(ridisegnaMantenendo, 150); };
   AZ['nuovo-fornitore'] = () => { const n = prompt('Nome del fornitore'); if (!n) return; const f = { id: M.uid('f'), nome: n.trim(), piva: '', telefono: '', email: '', referente: '', giorniConsegna: '', note: '' }; S.fornitori.push(f); salva(); vai('#/fornitore/' + f.id); };
@@ -1607,7 +1654,11 @@
         if (el.value === '__nuovo') { nuovoProdottoDaRiga(f, +d.fr); return; }
         rg.ignora = el.value === '__ignora';
         rg.prodottoId = rg.ignora || !el.value ? null : el.value; rg.automatico = false;
-        if (rg.prodottoId) { const p = M.prodotto(rg.prodottoId); const a = (p.articoli || []).find(x => x.fornitoreId === f.fornitoreId); rg.confezioniPerUnita = a ? a.confezioniPerUnita : 1; }
+        if (rg.prodottoId) {
+          const p = M.prodotto(rg.prodottoId); const nn = (t) => String(t || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+          const a = (p.articoli || []).find(x => x.fornitoreId === f.fornitoreId && ((rg.codice && x.codice === rg.codice) || nn(x.descrizione) === nn(rg.descrizione)));
+          rg.confezioniPerUnita = a ? a.confezioniPerUnita : 1;
+        }
       } else rg.confezioniPerUnita = numDa(el.value) || 1;
       salva(); ridisegnaMantenendo(); return;
     }

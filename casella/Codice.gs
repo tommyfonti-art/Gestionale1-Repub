@@ -22,7 +22,13 @@ function doGet(e) {
 function cercaAllegati(dal) {
   const giorno = Utilities.formatDate(new Date(dal.getTime() - 864e5), 'Europe/Rome', 'yyyy/MM/dd');
   // niente «has:attachment»: le mail dall'iPhone spesso non lo hanno
-  const discussioni = GmailApp.search('after:' + giorno, 0, 100);
+  // Gmail ne dà al massimo 100 per volta: chiedo a pagine finché ce ne sono
+  let discussioni = [];
+  for (let da = 0; da < 1000; da += 100) {
+    const pagina = GmailApp.search('after:' + giorno, da, 100);
+    discussioni = discussioni.concat(pagina);
+    if (pagina.length < 100) break;
+  }
   const allegati = [];
   discussioni.forEach(function (t) {
     t.getMessages().forEach(function (m) {
