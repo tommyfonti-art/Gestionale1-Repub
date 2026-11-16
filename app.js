@@ -33,6 +33,7 @@
   S = carica();
   ['fatture', 'conte', 'eventi', 'ignorati'].forEach(k => { S[k] = S[k] || []; });
   S.periodiScaricati = S.periodiScaricati || [];
+  S.casella = S.casella || { url: '', chiave: '', ultimoControllo: null, visti: [] };
   M.usa(S);
 
   // ---------- Pezzi grafici ----------
@@ -360,6 +361,7 @@
           <label class="btn">Foto o PDF di una fattura<input type="file" accept="image/*,application/pdf" hidden data-carica="foto"></label>
         </div>
         <p class="tenue piccolo">Puoi scegliere più fatture elettroniche insieme. Le foto le legge Claude: serve la chiave in Impostazioni.</p>
+        <div class="casella">${S.casella.url ? `<div><b>Casella delle fatture</b><small>${S.casella.ultimoControllo ? 'ultimo controllo ' + new Date(S.casella.ultimoControllo).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'mai controllata'}${S.casella.fotoInAttesa ? ' · ' + S.casella.fotoInAttesa + ' foto in attesa' : ''}</small></div><button class="btn piccolo" data-az="controlla-casella">Controlla adesso</button>` : `<div><b>Casella delle fatture</b><small>non ancora collegata</small></div><a class="btn piccolo" href="#/impostazioni">Collega</a>`}</div>
         <details><summary>Fatture di esempio per la prova</summary><div class="bottoni">${window.FATTURE_ESEMPIO.map((x, i) => `<button class="btn piccolo" data-az="esempio" data-i="${i}">${esc(x.nome)}</button>`).join('')}</div></details>
       </div>
       <div class="card lista">${l.length ? l.map(f => `<a class="riga" href="#/fattura/${f.id}"><span>${esc((M.fornitore(f.fornitoreId) || {}).nome || f.fornitoreNome)}<small>n. ${esc(f.numero)} del ${dataIt(f.data)}${f.tipoDoc === 'TD04' ? ' · nota di credito' : ''}${f.origine === 'foto' ? ' · da foto' : ''}</small></span><span class="destra">${euro(f.totale)}${f.stato === 'registrata' ? '<span class="badge verde">registrata</span>' : `<span class="badge giallo">${M.daAbbinare(f) ? M.daAbbinare(f) + ' da collegare' : 'da registrare'}</span>`}</span></a>`).join('') : '<p class="tenue centro">Nessuna fattura caricata.</p>'}</div>`
@@ -689,6 +691,11 @@
         <label>IVA sul prezzo di vendita (%)<input type="number" step="any" data-imp="ivaVendita" value="${esc(im.ivaVendita)}"></label>
         <label>Quando un prodotto arriva da più fornitori, usa<select data-imp="metodoPrezzo">${[['ultimo', 'l\'ultimo prezzo pagato'], ['minimo', 'il prezzo più basso'], ['media', 'la media tra i fornitori']].map(([k, v]) => `<option value="${k}" ${im.metodoPrezzo === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
         <label>Segnala gli aumenti a partire da (%)<input type="number" step="any" data-imp="sogliaAumento" value="${esc(im.sogliaAumento)}"></label></div>
+      <div class="card form"><h3>Casella delle fatture</h3>
+        <p class="tenue piccolo">L'indirizzo dell'app web creata nella casella Gmail delle fatture e la parola segreta scritta nel suo programma. Il gestionale la controlla da solo ogni volta che lo apri.</p>
+        <label>Indirizzo dell'app web<input data-cas="url" value="${esc(S.casella.url)}" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off"></label>
+        <label>Parola segreta<input type="password" data-cas="chiave" value="${esc(S.casella.chiave)}" autocomplete="off"></label>
+        <button class="btn piccolo" data-az="controlla-casella">Prova adesso</button></div>
       <div class="card form"><h3>Lettura delle foto</h3>
         <p class="tenue piccolo">Serve una chiave della piattaforma per sviluppatori di Anthropic (console.anthropic.com), a consumo: pochi centesimi a foto. Resta salvata solo su questo dispositivo.</p>
         <label>Chiave<input type="password" autocomplete="off" data-imp="chiaveClaude" value="${esc(im.chiaveClaude)}" placeholder="sk-ant-…"></label>
@@ -724,15 +731,16 @@
   window.addEventListener('hashchange', () => { disegna(); window.scrollTo(0, 0); });
 
   // ---------- Fatture: caricamento ----------
-  function aggiungiFatture(lista) {
-    let ultimo = null, doppie = 0;
+  function aggiungiFatture(lista, silenzioso) {
+    let ultimo = null, doppie = 0, nuove = 0;
     lista.forEach(f => {
       M.abbinaAutomatico(f);
       const dop = S.fatture.find(x => x.numero === f.numero && x.data === f.data && (x.piva === f.piva || x.fornitoreNome === f.fornitoreNome));
       if (dop) { doppie++; ultimo = dop; return; }
-      S.fatture.push(f); ultimo = f;
+      S.fatture.push(f); ultimo = f; nuove++;
     });
     salva();
+    if (silenzioso) return nuove;
     if (doppie) avviso(doppie === 1 ? 'Questa fattura era già caricata.' : doppie + ' fatture erano già caricate.');
     if (lista.length === 1 && ultimo) vai('#/fattura/' + ultimo.id); else { vai('#/fatture'); disegna(); }
   }
@@ -773,6 +781,48 @@
       img.src = URL.createObjectURL(file);
     });
   }
+  // ---------- Casella delle fatture (Gmail) ----------
+  function daBase64(b64) { const b = atob(b64); const a = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) a[i] = b.charCodeAt(i); return a.buffer; }
+  let controlloInCorso = false;
+  async function controllaCasella(manuale) {
+    const c = S.casella;
+    if (!c.url || !c.chiave) { if (manuale) alert('Prima inserisci indirizzo e parola segreta della casella in Altro › Impostazioni.'); return; }
+    if (controlloInCorso) return; controlloInCorso = true;
+    if (manuale) modale('<h3>Controllo la casella…</h3><div class="rotella"></div>');
+    try {
+      const dal = new Date(Date.now() - 60 * 864e5).toISOString();
+      const r = await fetch(c.url + (c.url.includes('?') ? '&' : '?') + 'chiave=' + encodeURIComponent(c.chiave) + '&dal=' + encodeURIComponent(dal));
+      const j = await r.json();
+      if (j.errore) throw new Error(j.errore);
+      const visti = new Set(c.visti || []);
+      const nuoveFatture = []; let fotoInAttesa = 0, fotoLette = 0; const errori = [];
+      for (const a of (j.allegati || [])) {
+        if (visti.has(a.id)) continue;
+        try {
+          if (a.tipo === 'xml') {
+            const xml = M.estraiXML(daBase64(a.base64));
+            if (!xml) throw new Error('non trovo la fattura nel file');
+            nuoveFatture.push(...M.leggiFatturaXML(xml, a.nome)); visti.add(a.id);
+          } else if (S.impostazioni.chiaveClaude) {
+            const b64 = a.tipo === 'application/pdf' ? a.base64 : await rimpicciolisci(new Blob([daBase64(a.base64)], { type: a.tipo }));
+            const f = await M.leggiFotoConClaude(b64, a.tipo === 'application/pdf' ? 'application/pdf' : 'image/jpeg');
+            f.nomeFile = a.nome; nuoveFatture.push(f); visti.add(a.id); fotoLette++;
+          } else fotoInAttesa++;
+        } catch (e) { errori.push(a.nome + ': ' + e.message); visti.add(a.id); }
+      }
+      const nuove = nuoveFatture.length ? aggiungiFatture(nuoveFatture, true) : 0;
+      c.visti = Array.from(visti).slice(-3000); c.ultimoControllo = new Date().toISOString(); c.fotoInAttesa = fotoInAttesa;
+      salva();
+      if (manuale) chiudiModale();
+      if (nuove || manuale) avviso(nuove ? (nuove === 1 ? 'È arrivata 1 fattura nuova.' : 'Sono arrivate ' + nuove + ' fatture nuove.') : 'Nessuna fattura nuova.');
+      if (fotoInAttesa && manuale) alert(fotoInAttesa + ' foto o PDF in attesa: per leggerli serve la chiave di Claude in Impostazioni.');
+      if (errori.length && manuale) alert('Non sono riuscito a leggere:\n' + errori.join('\n'));
+      ridisegnaMantenendo();
+    } catch (e) {
+      if (manuale) { chiudiModale(); alert('Non riesco a leggere la casella: ' + e.message); }
+    } finally { controlloInCorso = false; }
+  }
+
   function nuovoProdottoDaRiga(f, k) {
     const rg = f.righe[k];
     const parole = rg.descrizione.toLowerCase().split(/\s+/).filter(w => w.length > 2 && !/^\d/.test(w)).slice(0, 2).join(' ');
@@ -921,6 +971,7 @@
   AZ['olio-da-tabella'] = () => { const o = S.impostazioni.olio; o.grammiFritti = o.dettaglio.reduce((s, d) => s + d[1] * d[2], 0); salva(); ridisegnaMantenendo(); };
   AZ['olio-riga'] = () => { S.impostazioni.olio.dettaglio.push(['Nuovo piatto', 0, 0]); salva(); ridisegnaMantenendo(); };
   AZ['esporta-excel'] = esportaExcel;
+  AZ['controlla-casella'] = () => controllaCasella(true);
   AZ['scarica-copia'] = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(S, null, 1)], { type: 'application/json' })); a.download = 'gestionale-repub-' + M.oggi() + '.json'; a.click(); };
   AZ.ripristina = () => { if (!confirm('Cancello tutto quello che hai fatto e riparto dai dati della prova. Sicuro?')) return; localStorage.removeItem(CHIAVE); location.hash = '#/pannello'; location.reload(); };
 
@@ -978,6 +1029,7 @@
     if (d.vend) { const r = M.ricetta(d.vend); r.vendite = r.vendite || {}; const x = numDa(el.value); if (x) r.vendite[d.p] = x; else delete r.vendite[d.p]; salva(); return; }
     if (d.soglia) { S.impostazioni.soglie[d.soglia] = numDa(el.value); salva(); return; }
     if (d.imp) { const numerici = ['ivaVendita', 'sogliaAumento']; S.impostazioni[d.imp] = numerici.includes(d.imp) ? numDa(el.value) : el.value.trim(); salva(); avviso('Salvato.'); return; }
+    if (d.cas) { S.casella[d.cas] = el.value.trim(); salva(); avviso('Salvato.'); return; }
     if (d.olio) { S.impostazioni.olio[d.olio] = numDa(el.value) || 0; salva(); ridisegnaMantenendo(); return; }
     if (d.od != null) { const riga = S.impostazioni.olio.dettaglio[+d.od]; riga[+d.c] = d.c === '0' ? el.value : (numDa(el.value) || 0); salva(); ridisegnaMantenendo(); return; }
     if (d.ev) { const ev = S.eventi.find(x => x.id === d.ev); ev.righe[+d.k][d.c] = numDa(el.value) || 0; salva(); ridisegnaMantenendo(); return; }
@@ -988,5 +1040,6 @@
   });
 
   disegna();
+  if (S.casella.url && (!S.casella.ultimoControllo || Date.now() - new Date(S.casella.ultimoControllo) > 15 * 60e3)) setTimeout(() => controllaCasella(false), 800);
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 })();

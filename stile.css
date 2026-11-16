@@ -118,3 +118,6 @@ input.mini.largo { width: 140px; text-align: left; }
 @media (min-width: 700px) { .kpi-griglia { grid-template-columns: repeat(4, 1fr); } .griglia-voci { grid-template-columns: repeat(3, 1fr); } }
 .g-num { font-size: 10px; font-weight: 700; fill: #fff; }
 .num { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; color: #fff; font-size: 11px; font-weight: 700; margin-right: 8px; vertical-align: 1px; }
+.casella { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin: 12px 0 4px; padding: 10px 12px; background: var(--accento-chiaro); border-radius: 10px; }
+.casella small { display: block; color: var(--tenue); font-size: 13px; }
+.casella .btn { margin: 0; }
