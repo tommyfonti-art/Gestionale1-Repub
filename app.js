@@ -26,21 +26,143 @@
     try { const t = localStorage.getItem(CHIAVE); if (t) return JSON.parse(t); } catch (e) { /* niente */ }
     return JSON.parse(JSON.stringify(window.DATI_INIZIALI));
   }
+  const CLOUD = !!(window.FIREBASE_CONFIG && window.FIREBASE_CONFIG.apiKey);
   function salva() {
-    try { localStorage.setItem(CHIAVE, JSON.stringify(S)); } catch (e) { avviso('Attenzione: non riesco a salvare sul dispositivo.'); }
     M.svuota();
+    if (CLOUD) { if (utente) salvaCloud(); return; }
+    try { localStorage.setItem(CHIAVE, JSON.stringify(S)); } catch (e) { avviso('Attenzione: non riesco a salvare sul dispositivo.'); }
   }
-  S = carica();
-  ['fatture', 'conte', 'eventi', 'ignorati'].forEach(k => { S[k] = S[k] || []; });
-  S.periodiScaricati = S.periodiScaricati || [];
-  S.casella = S.casella || { url: '', chiave: '', ultimoControllo: null, visti: [] };
-  // una volta: i fornitori di bollette e servizi già caricati non devono avere prodotti
-  if (!S.migrazioneServizi) {
-    S.fornitori.forEach(f => { if (f.servizi === undefined && M.pareServizi(f.nome) && S.fatture.some(x => x.fornitoreId === f.id)) M.segnaServizi(f.id, true); });
-    S.migrazioneServizi = true;
-    try { localStorage.setItem(CHIAVE, JSON.stringify(S)); } catch (e) { /* niente */ }
+  // sistema uno stato appena caricato (campi mancanti, aggiornamenti una tantum)
+  function prepara(stato) {
+    S = stato;
+    ['fatture', 'conte', 'eventi', 'ignorati', 'fornitori', 'prodotti', 'ricette'].forEach(k => { S[k] = S[k] || []; });
+    S.periodiScaricati = S.periodiScaricati || [];
+    S.periodiVendita = S.periodiVendita || [];
+    S.casella = S.casella || { url: '', chiave: '', ultimoControllo: null, visti: [] };
+    M.usa(S);
+    // una volta: i fornitori di bollette e servizi già caricati non devono avere prodotti
+    if (!S.migrazioneServizi) {
+      S.fornitori.forEach(f => { if (f.servizi === undefined && M.pareServizi(f.nome) && S.fatture.some(x => x.fornitoreId === f.id)) M.segnaServizi(f.id, true); });
+      S.migrazioneServizi = true;
+    }
+    // fatture doppie (es. lette insieme da due dispositivi): ne tengo una
+    const viste = new Set();
+    S.fatture = S.fatture.filter(f => { const k = [f.piva || f.fornitoreNome, f.numero, f.data].join('|'); if (viste.has(k)) return false; viste.add(k); return true; });
+    M.usa(S);
   }
-  M.usa(S);
+
+  // ---------- Salvataggio online (Firebase) ----------
+  let db = null, utente = null, ultimoSalvato = new Map(), timerCloud = null;
+  const COLL = ['prodotti', 'ricette', 'fatture', 'fornitori'];
+  function documenti(stato) {
+    const m = new Map(); const resto = {};
+    Object.keys(stato).forEach(k => { if (!COLL.includes(k)) resto[k] = stato[k]; });
+    m.set('dati/generale', JSON.stringify(resto));
+    COLL.forEach(c => (stato[c] || []).forEach(x => m.set(c + '/' + x.id, JSON.stringify(x))));
+    return m;
+  }
+  function salvaCloud() { clearTimeout(timerCloud); timerCloud = setTimeout(scriviCloud, 400); }
+  async function scriviCloud() {
+    timerCloud = null;
+    const nuovi = documenti(S); const ops = [];
+    nuovi.forEach((v, k) => { if (ultimoSalvato.get(k) !== v) ops.push([k, v]); });
+    ultimoSalvato.forEach((v, k) => { if (!nuovi.has(k)) ops.push([k, null]); });
+    if (!ops.length) return;
+    ultimoSalvato = nuovi;
+    for (let i = 0; i < ops.length; i += 400) {
+      const b = db.batch();
+      ops.slice(i, i + 400).forEach(([k, v]) => { const ref = db.doc(k); if (v == null) b.delete(ref); else b.set(ref, { json: v, da: utente.email || '', quando: Date.now() }); });
+      b.commit().catch(e => avviso('Non riesco a salvare online: ' + e.message));
+    }
+  }
+  async function caricaCloud() {
+    const gen = await db.doc('dati/generale').get();
+    if (!gen.exists) return null;
+    const stato = JSON.parse(gen.data().json);
+    for (const c of COLL) {
+      const snap = await db.collection(c).get();
+      stato[c] = snap.docs.map(d => JSON.parse(d.data().json));
+    }
+    return stato;
+  }
+  function caricaScriptOrdinati(lista) { return lista.reduce((p, src) => p.then(() => caricaScript(src)), Promise.resolve()); }
+  function datiDelDispositivo() { try { const t = localStorage.getItem(CHIAVE); return t ? JSON.parse(t) : null; } catch (e) { return null; } }
+  function schermataAccesso(msg) {
+    $('#testa').innerHTML = '<span></span><h1>Repub · Costi</h1><span></span>';
+    $('#tabbar').innerHTML = ''; $('#contenuto').className = '';
+    $('#contenuto').innerHTML = `<div class="card form accesso"><h3>Entra nel gestionale</h3>${msg ? `<p class="msg rosso">${esc(msg)}</p>` : ''}
+      <label>Email<input id="acc-email" type="email" autocomplete="username" autocapitalize="none"></label>
+      <label>Password<input id="acc-pw" type="password" autocomplete="current-password"></label>
+      <div class="bottoni colonna"><button class="btn primario" id="acc-ok">Entra</button><button class="btn piccolo" id="acc-dim">Ho dimenticato la password</button></div></div>`;
+    const entra = () => firebase.auth().signInWithEmailAndPassword($('#acc-email').value.trim(), $('#acc-pw').value)
+      .catch(e => schermataAccesso(/password|credential|user-not-found|invalid/i.test(e.code || '') ? 'Email o password sbagliate.' : 'Accesso non riuscito: ' + e.message));
+    $('#acc-ok').onclick = entra;
+    $('#acc-pw').onkeydown = (e) => { if (e.key === 'Enter') entra(); };
+    $('#acc-dim').onclick = () => { const em = $('#acc-email').value.trim(); if (!em) { alert('Scrivi prima la tua email.'); return; } firebase.auth().sendPasswordResetEmail(em).then(() => alert('Ti ho mandato una mail per cambiare la password.'), e => alert(e.message)); };
+  }
+  function sceltaPrimoAvvio() {
+    return new Promise(ok => {
+      const locale = datiDelDispositivo();
+      const nf = locale ? (locale.fatture || []).length : 0;
+      $('#contenuto').innerHTML = `<div class="card form accesso"><h3>Primo avvio online</h3><p>Il database online è vuoto. Da dove parto?</p>
+        <div class="bottoni colonna">${locale ? `<button class="btn primario" id="pa-loc">Porta online i dati di questo dispositivo (${nf} fatture, ${(locale.prodotti || []).length} prodotti)</button>` : ''}
+        <button class="btn" id="pa-prova">Parti dai dati della prova</button></div></div>`;
+      if (locale) $('#pa-loc').onclick = () => ok(locale);
+      $('#pa-prova').onclick = () => ok(JSON.parse(JSON.stringify(window.DATI_INIZIALI)));
+    });
+  }
+  // porta le fatture salvate su questo dispositivo dentro i dati online (le doppie vengono scartate)
+  function portaFattureLocali() {
+    const locale = datiDelDispositivo();
+    if (!locale || !(locale.fatture || []).length) { alert('Su questo dispositivo non ci sono fatture salvate.'); return; }
+    const lista = locale.fatture.map(f => {
+      const x = JSON.parse(JSON.stringify(f));
+      x.stato = 'da_abbinare'; x.resoconto = null; x.avvisi = null; x.fornitoreId = null; x.servizi = false;
+      x.righe.forEach(r => { r.prodottoId = null; r.ignora = false; r.automatico = false; r.creato = false; r.confezioniPerUnita = 1; });
+      return x;
+    });
+    if (!S.casella.url && locale.casella && locale.casella.url) S.casella = locale.casella;
+    const prima = S.fatture.length;
+    aggiungiFatture(lista, true);
+    avviso(`Portate online ${S.fatture.length - prima} fatture.`);
+    disegna();
+  }
+  async function avvia() {
+    if (!CLOUD) { prepara(carica()); partenza(); return; }
+    $('#contenuto').innerHTML = '<p class="tenue centro">Avvio…</p><div class="rotella"></div>';
+    try {
+      const v = '10.12.2';
+      await caricaScriptOrdinati([`https://www.gstatic.com/firebasejs/${v}/firebase-app-compat.js`, `https://www.gstatic.com/firebasejs/${v}/firebase-auth-compat.js`, `https://www.gstatic.com/firebasejs/${v}/firebase-firestore-compat.js`]);
+    } catch (e) { $('#contenuto').innerHTML = '<p class="msg rosso">Non riesco a collegarmi: controlla la connessione e ricarica.</p>'; return; }
+    firebase.initializeApp(window.FIREBASE_CONFIG);
+    db = firebase.firestore();
+    try { await db.enablePersistence({ synchronizeTabs: true }); } catch (e) { /* già attivo o non disponibile */ }
+    let partito = false;
+    firebase.auth().onAuthStateChanged(async u => {
+      utente = u;
+      if (!u) { schermataAccesso(); return; }
+      $('#contenuto').innerHTML = '<p class="tenue centro">Carico i dati…</p><div class="rotella"></div>';
+      try {
+        let stato = await caricaCloud();
+        if (stato) ultimoSalvato = documenti(stato);
+        else { stato = await sceltaPrimoAvvio(); ultimoSalvato = new Map(); }
+        prepara(stato); salva();
+        if (!partito) { partito = true; partenza(); } else disegna();
+      } catch (e) {
+        $('#contenuto').innerHTML = `<p class="msg rosso">${/permission/i.test(e.message) ? 'Questo account non ha il permesso di vedere i dati del gestionale.' : 'Errore nel caricare i dati: ' + esc(e.message)}</p><button class="btn" onclick="firebase.auth().signOut()">Esci</button>`;
+      }
+    });
+    // quando torni sull'app, ricarico i dati cambiati dagli altri dispositivi
+    document.addEventListener('visibilitychange', async () => {
+      if (document.visibilityState !== 'visible' || !utente || !S || timerCloud || ui.bozza || ui.conta) return;
+      try {
+        const stato = await caricaCloud(); if (!stato) return;
+        const nuovi = documenti(stato);
+        if (JSON.stringify([...nuovi]) === JSON.stringify([...ultimoSalvato])) return;
+        ultimoSalvato = nuovi; prepara(stato); ridisegnaMantenendo();
+      } catch (e) { /* riprovo la prossima volta */ }
+    });
+  }
 
   // ---------- Pezzi grafici ----------
   function badgeMolt(ind) {
@@ -717,8 +839,10 @@
         <p class="tenue piccolo">Serve una chiave della piattaforma per sviluppatori di Anthropic (console.anthropic.com), a consumo: pochi centesimi a foto. Resta salvata solo su questo dispositivo.</p>
         <label>Chiave<input type="password" autocomplete="off" data-imp="chiaveClaude" value="${esc(im.chiaveClaude)}" placeholder="sk-ant-…"></label>
         <label>Modello<input data-imp="modelloClaude" value="${esc(im.modelloClaude)}"></label></div>
+      ${CLOUD && utente ? `<div class="card"><h3>Account</h3><p>Sei entrato come <b>${esc(utente.email)}</b>. I dati sono online e uguali su tutti i dispositivi.</p>
+        <div class="bottoni colonna">${(datiDelDispositivo() || {}).fatture && datiDelDispositivo().fatture.length ? `<button class="btn" data-az="porta-locali">Porta online le fatture salvate su questo dispositivo (${datiDelDispositivo().fatture.length})</button>` : ''}<button class="btn" data-az="esci">Esci</button></div></div>` : ''}
       <div class="card"><h3>Dati</h3>
-        <p class="tenue piccolo">In questa prova i dati sono salvati su questo dispositivo. Con il collegamento a Firebase saranno uguali su tutti i telefoni.</p>
+        <p class="tenue piccolo">${CLOUD ? 'Salvati online su Firebase.' : 'In questa prova i dati sono salvati su questo dispositivo.'}</p>
         <div class="bottoni colonna">
           <button class="btn" data-az="esporta-excel">Esporta in Excel</button>
           <button class="btn" data-az="scarica-copia">Scarica una copia dei dati</button>
@@ -733,6 +857,7 @@
   const TAB = [['pannello', 'Pannello', 'M3 12l9-8 9 8v8a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z'], ['prodotti', 'Prodotti', 'M4 7l8-4 8 4v10l-8 4-8-4zM4 7l8 4 8-4M12 11v10'], ['ricette', 'Ricette', 'M6 3h12M8 3v6l-4 12h16L16 9V3'], ['fatture', 'Fatture', 'M6 2h9l5 5v15H6zM14 2v6h6M9 13h8M9 17h8'], ['altro', 'Altro', 'M5 12h.01M12 12h.01M19 12h.01']];
   const SEZIONE = { prodotto: 'prodotti', 'modifica-prodotto': 'prodotti', ricetta: 'ricette', 'modifica-ricetta': 'ricette', fattura: 'fatture' };
   function disegna() {
+    if (!S) return;
     const [, nome, arg] = (location.hash || '#/pannello').split('/');
     const fn = PAGINE[nome] || PAGINE.pannello;
     if (!(nome === 'modifica-prodotto' || nome === 'modifica-ricetta')) ui.bozza = null;
@@ -1033,7 +1158,13 @@
   AZ['esporta-excel'] = esportaExcel;
   AZ['controlla-casella'] = () => controllaCasella(true);
   AZ['scarica-copia'] = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(S, null, 1)], { type: 'application/json' })); a.download = 'gestionale-repub-' + M.oggi() + '.json'; a.click(); };
-  AZ.ripristina = () => { if (!confirm('Cancello tutto quello che hai fatto e riparto dai dati della prova. Sicuro?')) return; localStorage.removeItem(CHIAVE); location.hash = '#/pannello'; location.reload(); };
+  AZ.ripristina = () => {
+    if (!confirm('Cancello tutto quello che hai fatto e riparto dai dati della prova. Sicuro?')) return;
+    if (CLOUD) { const cas = S.casella, ch = S.impostazioni.chiaveClaude; prepara(JSON.parse(JSON.stringify(window.DATI_INIZIALI))); S.casella = Object.assign(cas, { visti: [] }); S.impostazioni.chiaveClaude = ch; salva(); vai('#/pannello'); disegna(); return; }
+    localStorage.removeItem(CHIAVE); location.hash = '#/pannello'; location.reload();
+  };
+  AZ.esci = () => { if (confirm('Vuoi uscire?')) firebase.auth().signOut(); };
+  AZ['porta-locali'] = () => { if (confirm('Porto online le fatture salvate su questo dispositivo? Quelle già presenti vengono saltate.')) portaFattureLocali(); };
 
   document.addEventListener('click', (e) => {
     const el = e.target.closest('[data-az]');
@@ -1070,7 +1201,7 @@
     if (d.carica === 'xml') { caricaXML(Array.from(el.files)); el.value = ''; return; }
     if (d.carica === 'foto') { if (el.files[0]) caricaFoto(el.files[0]); el.value = ''; return; }
     if (d.carica === 'copia') {
-      const fr = new FileReader(); fr.onload = () => { try { const x = JSON.parse(fr.result); if (!x.prodotti || !x.ricette) throw 0; if (!confirm('Sostituisco tutti i dati con questa copia?')) return; S = x; M.usa(S); salva(); disegna(); avviso('Copia caricata.'); } catch (er) { alert('Il file non è una copia valida.'); } }; fr.readAsText(el.files[0]); el.value = ''; return;
+      const fr = new FileReader(); fr.onload = () => { try { const x = JSON.parse(fr.result); if (!x.prodotti || !x.ricette) throw 0; if (!confirm('Sostituisco tutti i dati con questa copia?')) return; prepara(x); salva(); disegna(); avviso('Copia caricata.'); } catch (er) { alert('Il file non è una copia valida.'); } }; fr.readAsText(el.files[0]); el.value = ''; return;
     }
     if (d.r != null && d.k === 'rif' && ui.bozza) { ui.bozza.righe[+d.r].rif = el.value; ridisegnaMantenendo(); return; }
     if (d.a != null && d.k === 'rif' && ui.bozza) { ui.bozza.asporto[+d.a].rif = el.value; return; }
@@ -1099,7 +1230,10 @@
     if (d.sim) { ui.sim[d.sim] = el.value; if (el.tagName === 'SELECT') ridisegnaMantenendo(); return; }
   });
 
-  disegna();
-  if (S.casella.url && (!S.casella.ultimoControllo || Date.now() - new Date(S.casella.ultimoControllo) > 15 * 60e3)) setTimeout(() => controllaCasella(false), 800);
+  function partenza() {
+    disegna();
+    if (S.casella.url && (!S.casella.ultimoControllo || Date.now() - new Date(S.casella.ultimoControllo) > 15 * 60e3)) setTimeout(() => controllaCasella(false), 800);
+  }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+  avvia();
 })();
