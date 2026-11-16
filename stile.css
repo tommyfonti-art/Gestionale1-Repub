@@ -138,11 +138,12 @@ input.mini.largo { width: 140px; text-align: left; }
   .modale { border-radius: 18px; padding: 22px; }
   .cerca { max-width: 520px; }
   /* schede di dettaglio su due colonne */
-  #contenuto.colonne { column-count: 2; column-gap: 16px; }
-  #contenuto.colonne > * { break-inside: avoid; -webkit-column-break-inside: avoid; }
-  #contenuto.colonne > .card { display: inline-block; width: 100%; }
+  /* griglia a due colonne: niente schede spezzate a metà (Safari spezzava le colonne) */
+  #contenuto.colonne { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 16px; align-items: start; }
+  #contenuto.colonne > * { grid-column: auto; min-width: 0; }
   #contenuto.colonne > .kpi-griglia, #contenuto.colonne > .msg, #contenuto.colonne > .bottoni, #contenuto.colonne > .chips,
-  #contenuto.colonne > .btn.largo, #contenuto.colonne > p.tenue, #contenuto.colonne > .card.evidenza, #contenuto.colonne > .card.larga { column-span: all; display: block; }
+  #contenuto.colonne > .btn.largo, #contenuto.colonne > p.tenue, #contenuto.colonne > .card.evidenza, #contenuto.colonne > .card.larga,
+  #contenuto.colonne > details { grid-column: 1 / -1; }
   .grafico { max-height: 240px; }
   .griglia-voci { grid-template-columns: repeat(3, 1fr); }
   .mappa { max-width: 680px; margin: 0 auto 8px; }
@@ -171,3 +172,4 @@ input.mini.largo { width: 140px; text-align: left; }
 @media (min-width: 1300px) {
   .card.lista { grid-template-columns: 1fr 1fr 1fr; }
 }
+.fr-testa > span { white-space: nowrap; }
