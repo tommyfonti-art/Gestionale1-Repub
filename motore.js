@@ -387,9 +387,14 @@
     const cat = (CATEGORIE.find(([re]) => re.test(d)) || [null, 'Da classificare'])[1];
     return { nomeBreve, unita, contenuto, confezione, perUnita, categoria: cat };
   };
+  // fornitori che non vendono merce: bollette, banche, pagamenti, assicurazioni, SIAE...
+  const SERVIZI = /\benel\b|\beni\b|enimoov|plenitude|hera\b|a2a\b|edison|nova aeg|iren\b|acea\b|sorgenia|\btim\b|telecom|vodafone|fastweb|wind ?tre|iliad|nexi|sumup|satispay|paypal|s\.?i\.?a\.?e|assicura|generali|unipol|allianz|reale mutua|leasing|banca|banco|poste italiane|amazon web|google|microsoft|apple|aruba|register|sistemi s\.?p\.?a|studio|commercialist|consulen|noleggio|autostrad|telepass/i;
+  M.pareServizi = (nome) => SERVIZI.test(nome || '');
   M.creaProdottiDaFattura = function (f) {
     if (f.stato === 'registrata') return [];
-    M.assicuraFornitore(f);
+    const forn = M.assicuraFornitore(f);
+    if (forn.servizi === undefined && M.pareServizi(forn.nome)) forn.servizi = true;
+    if (forn.servizi) { f.righe.forEach(rg => { if (!rg.prodottoId) { rg.ignora = true; rg.automatico = true; } }); f.servizi = true; return []; }
     const creati = [];
     f.righe.forEach(rg => {
       if (rg.prodottoId || rg.ignora) return;
@@ -401,11 +406,38 @@
       const p = { id: M.uid('p'), nomeBreve: g.nomeBreve, nomeCompleto: rg.descrizione, categoria: g.categoria, unita: g.unita, contenuto: g.contenuto, confezione: g.confezione,
         iva: rg.aliquota || 22, giacenza: 0, scortaMinima: 0, resa: 100, allergeni: [], venditaDiretta: null, fornitoreId: f.fornitoreId, articoli: [], prezzi: [], note: '',
         daCompletare: true, creatoDa: f.id };
+      // ricordo subito come compare in fattura, così le fatture successive lo riconoscono
+      p.articoli.push({ fornitoreId: f.fornitoreId, codice: rg.codice, descrizione: rg.descrizione, confezioniPerUnita: g.perUnita });
       S.prodotti.push(p); creati.push(p.id);
       rg.prodottoId = p.id; rg.confezioniPerUnita = g.perUnita; rg.creato = true;
     });
     M.svuota();
     return creati;
+  };
+
+  // Segna un fornitore come «servizi»: le sue fatture restano (per le scadenze) ma senza prodotti
+  M.segnaServizi = function (fornitoreId, valore) {
+    const forn = M.fornitore(fornitoreId); if (!forn) return 0;
+    forn.servizi = valore !== false;
+    if (!forn.servizi) return 0;
+    const sue = S.fatture.filter(x => x.fornitoreId === fornitoreId);
+    const ids = new Set(sue.map(x => x.id));
+    let tolti = 0;
+    sue.forEach(f => {
+      const eraReg = f.stato === 'registrata';
+      if (eraReg) M.annullaFattura(f);
+      f.righe.forEach(rg => { rg.prodottoId = null; rg.ignora = true; rg.automatico = true; });
+      f.servizi = true;
+      M.registraFattura(f);
+    });
+    // via i prodotti creati in automatico da queste fatture e mai usati
+    S.prodotti = S.prodotti.filter(p => {
+      const via = p.daCompletare && p.creatoDa && ids.has(p.creatoDa) && !M.usatoIn('p:' + p.id).dirette.length;
+      if (via) tolti++;
+      return !via;
+    });
+    M.svuota();
+    return tolti;
   };
 
   M.registraFattura = function (f) {

@@ -34,6 +34,12 @@
   ['fatture', 'conte', 'eventi', 'ignorati'].forEach(k => { S[k] = S[k] || []; });
   S.periodiScaricati = S.periodiScaricati || [];
   S.casella = S.casella || { url: '', chiave: '', ultimoControllo: null, visti: [] };
+  // una volta: i fornitori di bollette e servizi già caricati non devono avere prodotti
+  if (!S.migrazioneServizi) {
+    S.fornitori.forEach(f => { if (f.servizi === undefined && M.pareServizi(f.nome) && S.fatture.some(x => x.fornitoreId === f.id)) M.segnaServizi(f.id, true); });
+    S.migrazioneServizi = true;
+    try { localStorage.setItem(CHIAVE, JSON.stringify(S)); } catch (e) { /* niente */ }
+  }
   M.usa(S);
 
   // ---------- Pezzi grafici ----------
@@ -418,7 +424,7 @@
       <div class="card"><div class="dati">
         <div><span>Fornitore</span><b>${forn ? `<a href="#/fornitore/${forn.id}">${esc(forn.nome)}</a>` : esc(f.fornitoreNome) + ' <span class="badge giallo">nuovo</span>'}</b></div>
         <div><span>Numero e data</span><b>${esc(f.numero)} del ${dataIt(f.data)}</b></div>
-        <div><span>Tipo</span><b>${f.tipoDoc === 'TD04' ? 'Nota di credito' : 'Fattura'}${f.origine === 'foto' ? ' (letta da foto)' : ''}</b></div>
+        <div><span>Tipo</span><b>${f.tipoDoc === 'TD04' ? 'Nota di credito' : 'Fattura'}${f.origine === 'foto' ? ' (letta da foto)' : ''}${f.servizi ? ' · servizio, senza prodotti' : ''}</b></div>
         <div><span>Imponibile</span><b>${euro(f.imponibile)}</b></div>
         <div><span>Totale</span><b>${euro(f.totale)}</b></div>
       </div>${f.daVerificare && !reg ? '<p class="msg giallo">Letta da una foto: controlla numeri e prezzi prima di registrarla.</p>' : ''}</div>
@@ -427,6 +433,7 @@
       ${(f.scadenze || []).length ? `<div class="card"><h3>Pagamento</h3>${f.scadenze.map((s, k) => `<label class="riga interruttore"><span>Entro il ${dataIt(s.data)} · ${euro(s.importo)}</span><input type="checkbox" data-az="pagata" data-id="${f.id}" data-k="${k}" ${s.pagata ? 'checked' : ''}> pagata</label>`).join('')}</div>` : ''}
       <div class="bottoni">
         ${!reg && daColl ? `<button class="btn" data-az="crea-mancanti" data-id="${f.id}">Crea i prodotti che mancano</button>` : ''}
+        ${forn && !forn.servizi ? `<button class="btn" data-az="segna-servizi" data-id="${forn.id}">È una bolletta o un servizio</button>` : ''}
         ${reg ? `<button class="btn" data-az="annulla-fattura" data-id="${f.id}">Annulla la registrazione</button>` : `<button class="btn primario" data-az="registra-fattura" data-id="${f.id}" ${daColl ? 'disabled' : ''}>${daColl ? 'Collega ancora ' + daColl + (daColl === 1 ? ' riga' : ' righe') : 'Registra e aggiorna i costi'}</button>`}
         <button class="btn pericolo" data-az="elimina-fattura" data-id="${f.id}">Elimina</button>
       </div>`
@@ -450,7 +457,7 @@
     return {
       titolo: 'Fornitori', indietro: '#/altro', azione: '<button class="btn-top" data-az="nuovo-fornitore">＋ Nuovo</button>', html: `<div class="card lista">${S.fornitori.slice().sort((a, b) => a.nome.localeCompare(b.nome)).map(f => {
         const np = S.prodotti.filter(p => p.fornitoreId === f.id).length;
-        return `<a class="riga" href="#/fornitore/${f.id}"><span>${esc(f.nome)}<small>${np} prodotti${f.giorniConsegna ? ' · consegna ' + esc(f.giorniConsegna) : ''}</small></span><span>${spesa[f.id] ? euro(spesa[f.id], 0) : ''}</span></a>`;
+        return `<a class="riga" href="#/fornitore/${f.id}"><span>${esc(f.nome)}<small>${f.servizi ? 'servizi · ' : ''}${np} prodotti${f.giorniConsegna ? ' · consegna ' + esc(f.giorniConsegna) : ''}</small></span><span>${spesa[f.id] ? euro(spesa[f.id], 0) : ''}</span></a>`;
       }).join('')}</div>`
     };
   };
@@ -467,6 +474,7 @@
     return {
       titolo: f.nome, indietro: '#/fornitori', html: `
       <div class="kpi-griglia">${kpi('Da pagare', euro(dovuto), '', dovuto ? 'giallo' : '')}${kpi('Fatture registrate', fatt.filter(x => x.stato === 'registrata').length)}</div>
+      <div class="card form"><label class="interruttore"><input type="checkbox" data-az="toggle-servizi" data-id="${id}" ${f.servizi ? 'checked' : ''}> Non vende merce (bollette, banca, pagamenti, servizi): le sue fatture servono solo per le scadenze e non creano prodotti</label></div>
       <div class="card form"><h3>Contatti</h3>${campo('Nome', 'nome')}${campo('Partita IVA', 'piva')}${campo('Referente', 'referente')}${campo('Telefono', 'telefono', 'tel')}${campo('Email', 'email', 'email')}${campo('Giorni di consegna', 'giorniConsegna')}
         <label>Note<textarea data-forn="${id}" data-k="note" rows="2">${esc(f.note)}</textarea></label>
         ${f.telefono ? `<div class="bottoni"><a class="btn piccolo" href="tel:${esc(f.telefono)}">Chiama</a><a class="btn piccolo" href="https://wa.me/${esc(f.telefono.replace(/\D/g, '').replace(/^(?!39)/, '39'))}">WhatsApp</a></div>` : ''}</div>
@@ -934,6 +942,16 @@
     if (uso.length && !confirm(`${b.nomeBreve} è usato in ${uso.map(r => r.nome).join(', ')}. Eliminarlo lo stesso?`)) return;
     if (!uso.length && !confirm('Eliminare ' + b.nomeBreve + '?')) return;
     S.prodotti = S.prodotti.filter(p => p.id !== b.id); ui.bozza = null; salva(); vai('#/prodotti');
+  };
+  AZ['segna-servizi'] = (el) => {
+    const forn = M.fornitore(el.dataset.id);
+    if (!confirm(`${forn.nome} non vende merce? Le sue fatture restano per le scadenze, ma tolgo i prodotti creati da lì e le prossime non ne creeranno.`)) return;
+    const n = M.segnaServizi(forn.id, true); salva(); ridisegnaMantenendo(); avviso(n ? `Tolti ${n} prodotti creati per sbaglio.` : 'Fatto.');
+  };
+  AZ['toggle-servizi'] = (el) => {
+    if (el.checked) { const n = M.segnaServizi(el.dataset.id, true); salva(); avviso(n ? `Tolti ${n} prodotti creati per sbaglio.` : 'Salvato.'); }
+    else { M.fornitore(el.dataset.id).servizi = false; salva(); avviso('Salvato. Le prossime fatture creeranno i prodotti.'); }
+    setTimeout(ridisegnaMantenendo, 150);
   };
   AZ['imp-bool'] = (el) => { S.impostazioni[el.dataset.k] = el.checked; salva(); avviso('Salvato.'); };
   AZ.completato = (el) => { const p = M.prodotto(el.dataset.id); p.daCompletare = false; salva(); ridisegnaMantenendo(); avviso('Fatto.'); };
