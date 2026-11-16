@@ -715,7 +715,7 @@
     let pag;
     try { pag = fn(arg); } catch (e) { console.error(e); pag = { titolo: 'Errore', html: `<p class="msg rosso">Qualcosa non ha funzionato: ${esc(e.message)}</p>` }; }
     const sez = SEZIONE[nome] || (PAGINE[nome] && TAB.some(t => t[0] === nome) ? nome : (PAGINE[nome] ? 'altro' : 'pannello'));
-    $('#testa').innerHTML = `${pag.indietro ? `<a class="indietro" href="${pag.indietro}" aria-label="Indietro">‹</a>` : '<span></span>'}<h1>${esc(pag.titolo)}</h1>${pag.azione || '<span></span>'}`;
+    $('#testa').innerHTML = `${pag.indietro ? `<a class="indietro" href="${pag.indietro}" data-az="indietro" aria-label="Indietro">‹</a>` : '<span></span>'}<h1>${esc(pag.titolo)}</h1>${pag.azione || '<span></span>'}`;
     $('#contenuto').innerHTML = pag.html;
     $('#tabbar').innerHTML = TAB.map(t => `<a href="#/${t[0]}" class="${sez === t[0] ? 'on' : ''}"><svg viewBox="0 0 24 24"><path d="${t[2]}"/></svg><span>${t[1]}</span></a>`).join('');
     document.title = pag.titolo + ' · Gestionale Repub';
@@ -817,6 +817,12 @@
 
   // ---------- Azioni ----------
   const AZ = {};
+  AZ.indietro = (el) => {
+    const dest = el.getAttribute('href');
+    // dalla conta del magazzino l'indirizzo non cambia: chiude la conta
+    if (dest === location.hash || (location.hash === '' && dest === '#/pannello')) { ui.conta = null; ridisegnaMantenendo(); window.scrollTo(0, 0); return; }
+    vai(dest);
+  };
   AZ.esempio = (el) => { const x = window.FATTURE_ESEMPIO[+el.dataset.i]; aggiungiFatture(M.leggiFatturaXML(x.xml, x.nome + '.xml')); };
   AZ.categoria = (el) => { ui.categoria = el.dataset.v; ridisegnaMantenendo(); };
   AZ['tipo-ricette'] = (el) => { ui.tipoRicette = el.dataset.v; ridisegnaMantenendo(); };
