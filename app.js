@@ -109,6 +109,7 @@
       </div>
       ${!S.fatture.length ? `<div class="card evidenza"><h3>Prova con una fattura</h3><p>Carica una fattura di esempio e guarda come l'app aggiorna da sola i costi di panini e drink.</p>
         <div class="bottoni">${window.FATTURE_ESEMPIO.map((x, i) => `<button class="btn" data-az="esempio" data-i="${i}">${esc(x.nome)}</button>`).join('')}</div></div>` : ''}
+      ${nuoviDaCompletare() ? `<div class="card"><h3>Prodotti nuovi da completare</h3><p class="tenue">Creati in automatico dalle fatture: controlla nome breve e formato.</p>${S.prodotti.filter(p => p.daCompletare).slice(0, 6).map(p => `<a class="riga" href="#/prodotto/${p.id}"><span>${esc(p.nomeBreve)}<small>${esc(p.nomeCompleto)}</small></span><span class="badge giallo">da completare</span></a>`).join('')}<a class="link" href="#/prodotti" data-az="vai-nuovi">Vedi tutti (${nuoviDaCompletare()}) ›</a></div>` : ''}
       ${daFare.length ? `<div class="card"><h3>Fatture da completare</h3>${daFare.map(f => `<a class="riga" href="#/fattura/${f.id}"><span>${esc(f.fornitoreNome)} · n. ${esc(f.numero)}</span><span class="badge giallo">${M.daAbbinare(f)} righe da collegare</span></a>`).join('')}</div>` : ''}
       <div class="card"><h3>Prezzi cambiati</h3>${aumenti.length ? aumenti.slice(0, 8).map(x => `<a class="riga" href="#/prodotto/${x.p.id}"><span>${esc(x.p.nomeBreve)}<small>${dataIt(x.data)}</small></span><span class="badge ${x.v > 0 ? 'rosso' : 'verde'}">${x.v > 0 ? '+' : ''}${n2(x.v, 1)}%</span></a>`).join('') : '<p class="tenue">Nessun cambio di prezzo. Compariranno qui quando registri le fatture.</p>'}</div>
       <div class="card"><h3>Sotto la soglia del moltiplicatore</h3>${sotto.length ? sotto.map(r => { const i = M.indicatori(r); return `<a class="riga" href="#/ricetta/${r.id}"><span>${esc(r.nome)}<small>${M.TIPI_SINGOLARE[r.tipo]} · soglia × ${n2(i.soglia)}</small></span>${badgeMolt(i)}</a>`; }).join('') : '<p class="tenue">Tutte le ricette sono sopra la soglia.</p>'}</div>
@@ -118,24 +119,25 @@
   };
 
   // ----- Prodotti -----
+  const nuoviDaCompletare = () => S.prodotti.filter(p => p.daCompletare).length;
   function categorie() { return Array.from(new Set(S.prodotti.map(p => p.categoria))).sort(); }
   function listaProdotti() {
     const f = ui.filtroProdotti.toLowerCase();
-    const l = S.prodotti.filter(p => (ui.categoria === 'Tutte' || p.categoria === ui.categoria) && (!f || (p.nomeBreve + ' ' + p.nomeCompleto).toLowerCase().includes(f)))
+    const l = S.prodotti.filter(p => (ui.categoria === 'Tutte' || (ui.categoria === '__nuovi' ? p.daCompletare : p.categoria === ui.categoria)) && (!f || (p.nomeBreve + ' ' + p.nomeCompleto).toLowerCase().includes(f)))
       .sort((a, b) => a.nomeBreve.localeCompare(b.nomeBreve));
     if (!l.length) return '<p class="tenue centro">Nessun prodotto.</p>';
     return l.map(p => {
       const pr = M.prezzo(p), rif = M.prezzoRiferimento(p);
       const sc = p.scortaMinima > 0 && (p.giacenza || 0) < p.scortaMinima;
       return `<a class="riga" href="#/prodotto/${p.id}"><span>${esc(p.nomeBreve)}<small>${esc(p.nomeCompleto)}</small></span>
-        <span class="destra">${p.speciale ? euro(rif && rif.valore, 2) + '<small>' + esc(rif ? rif.etichetta : '') + '</small>' : euro(pr) + `<small>${rif ? n2(rif.valore) + ' ' + rif.etichetta : 'senza prezzo'}</small>`}${sc ? '<span class="badge rosso">scorta</span>' : ''}</span></a>`;
+        <span class="destra">${p.speciale ? euro(rif && rif.valore, 2) + '<small>' + esc(rif ? rif.etichetta : '') + '</small>' : euro(pr) + `<small>${rif ? n2(rif.valore) + ' ' + rif.etichetta : 'senza prezzo'}</small>`}${sc ? '<span class="badge rosso">scorta</span>' : ''}${p.daCompletare ? '<span class="badge giallo">da completare</span>' : ''}</span></a>`;
     }).join('');
   }
   PAGINE.prodotti = function () {
     return {
       titolo: 'Prodotti', azione: '<a class="btn-top" href="#/modifica-prodotto/nuovo">＋ Nuovo</a>', html: `
       <input class="cerca" type="search" placeholder="Cerca un prodotto" value="${esc(ui.filtroProdotti)}" data-filtro="prodotti">
-      <div class="chips">${['Tutte'].concat(categorie()).map(c => `<button class="chip ${ui.categoria === c ? 'on' : ''}" data-az="categoria" data-v="${esc(c)}">${esc(c)}</button>`).join('')}</div>
+      <div class="chips">${(nuoviDaCompletare() ? [['__nuovi', 'Da completare (' + nuoviDaCompletare() + ')']] : []).concat([['Tutte', 'Tutte']], categorie().map(c => [c, c])).map(([v, t]) => `<button class="chip ${ui.categoria === v ? 'on' : ''} ${v === '__nuovi' ? 'giallo' : ''}" data-az="categoria" data-v="${esc(v)}">${esc(t)}</button>`).join('')}</div>
       <div class="card lista" id="lista">${listaProdotti()}</div>`
     };
   };
@@ -167,6 +169,8 @@
     const conIva = pr != null ? pr * (1 + (p.iva || 0) / 100) : null;
     return {
       titolo: p.nomeBreve, indietro: '#/prodotti', azione: `<a class="btn-top" href="#/modifica-prodotto/${p.id}">Modifica</a>`, html: `
+      ${p.daCompletare ? `<div class="card evidenza giallo"><h3>Creato in automatico da una fattura</h3><p>Controlla il <b>nome breve</b> (quello delle ricette), il <b>formato</b> (${esc(p.confezione)} da ${qta(p.contenuto)} ${esc(p.unita)}), la categoria e gli allergeni.</p>
+        <div class="bottoni"><a class="btn primario" href="#/modifica-prodotto/${p.id}">Controlla e modifica</a><button class="btn" data-az="completato" data-id="${p.id}">È già giusto</button>${p.creatoDa ? `<a class="btn" href="#/fattura/${p.creatoDa}">Vedi la fattura</a>` : ''}</div></div>` : ''}
       <div class="card"><div class="sottotitolo">${esc(p.nomeCompleto)}</div>
         <div class="dati">
           <div><span>Categoria</span><b>${esc(p.categoria)}</b></div>
@@ -396,7 +400,7 @@
       const att = p ? M.prezzo(p) : null;
       const v = p && att && prConf && rg.totale > 0 && !reg ? (prConf / att - 1) * 100 : null;
       let coll;
-      if (reg) coll = rg.ignora ? '<span class="tenue">non è merce: ignorata</span>' : p ? `→ <a href="#/prodotto/${p.id}">${esc(p.nomeBreve)}</a> · ${qta(conf)} × ${esc(p.confezione)}` : '';
+      if (reg) coll = rg.ignora ? '<span class="tenue">non è merce: ignorata</span>' : p ? `→ <a href="#/prodotto/${p.id}">${esc(p.nomeBreve)}</a> · ${qta(conf)} × ${esc(p.confezione)}${p.daCompletare ? ' <span class="badge giallo">nuovo, da completare</span>' : ''}` : '';
       else coll = `<select data-fr="${k}" data-k="scelta">
           <option value="">Collega a un prodotto…</option>
           <option value="__nuovo">＋ Crea un prodotto nuovo</option>
@@ -422,6 +426,7 @@
       <div class="card larga"><h3>Righe</h3>${righe}</div>
       ${(f.scadenze || []).length ? `<div class="card"><h3>Pagamento</h3>${f.scadenze.map((s, k) => `<label class="riga interruttore"><span>Entro il ${dataIt(s.data)} · ${euro(s.importo)}</span><input type="checkbox" data-az="pagata" data-id="${f.id}" data-k="${k}" ${s.pagata ? 'checked' : ''}> pagata</label>`).join('')}</div>` : ''}
       <div class="bottoni">
+        ${!reg && daColl ? `<button class="btn" data-az="crea-mancanti" data-id="${f.id}">Crea i prodotti che mancano</button>` : ''}
         ${reg ? `<button class="btn" data-az="annulla-fattura" data-id="${f.id}">Annulla la registrazione</button>` : `<button class="btn primario" data-az="registra-fattura" data-id="${f.id}" ${daColl ? 'disabled' : ''}>${daColl ? 'Collega ancora ' + daColl + (daColl === 1 ? ' riga' : ' righe') : 'Registra e aggiorna i costi'}</button>`}
         <button class="btn pericolo" data-az="elimina-fattura" data-id="${f.id}">Elimina</button>
       </div>`
@@ -691,6 +696,10 @@
         <label>IVA sul prezzo di vendita (%)<input type="number" step="any" data-imp="ivaVendita" value="${esc(im.ivaVendita)}"></label>
         <label>Quando un prodotto arriva da più fornitori, usa<select data-imp="metodoPrezzo">${[['ultimo', 'l\'ultimo prezzo pagato'], ['minimo', 'il prezzo più basso'], ['media', 'la media tra i fornitori']].map(([k, v]) => `<option value="${k}" ${im.metodoPrezzo === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
         <label>Segnala gli aumenti a partire da (%)<input type="number" step="any" data-imp="sogliaAumento" value="${esc(im.sogliaAumento)}"></label></div>
+      <div class="card form"><h3>Fatture</h3>
+        <label class="interruttore"><input type="checkbox" data-az="imp-bool" data-k="autoCrea" ${im.autoCrea !== false ? 'checked' : ''}> Crea in automatico i prodotti nuovi che arrivano dalle fatture</label>
+        <label class="interruttore"><input type="checkbox" data-az="imp-bool" data-k="autoRegistra" ${im.autoRegistra !== false ? 'checked' : ''}> Registra subito le fatture complete (prezzi e magazzino si aggiornano da soli)</label>
+        <p class="tenue piccolo">Le spese di trasporto, le cauzioni e simili vengono saltate da sole. Le fatture lette da foto restano sempre da controllare prima di registrarle.</p></div>
       <div class="card form"><h3>Casella delle fatture</h3>
         <p class="tenue piccolo">L'indirizzo dell'app web creata nella casella Gmail delle fatture e la parola segreta scritta nel suo programma. Il gestionale la controlla da solo ogni volta che lo apri.</p>
         <label>Indirizzo dell'app web<input data-cas="url" value="${esc(S.casella.url)}" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off"></label>
@@ -740,14 +749,19 @@
 
   // ---------- Fatture: caricamento ----------
   function aggiungiFatture(lista, silenzioso) {
-    let ultimo = null, doppie = 0, nuove = 0;
-    lista.forEach(f => {
-      M.abbinaAutomatico(f);
+    let ultimo = null, doppie = 0, nuove = 0, creati = 0;
+    const im = S.impostazioni;
+    // dalla più vecchia alla più nuova, così lo storico dei prezzi resta in ordine
+    lista.slice().sort((a, b) => (a.data || '') < (b.data || '') ? -1 : 1).forEach(f => {
       const dop = S.fatture.find(x => x.numero === f.numero && x.data === f.data && (x.piva === f.piva || x.fornitoreNome === f.fornitoreNome));
       if (dop) { doppie++; ultimo = dop; return; }
+      M.abbinaAutomatico(f);
+      if (im.autoCrea !== false) creati += M.creaProdottiDaFattura(f).length;
       S.fatture.push(f); ultimo = f; nuove++;
+      if (im.autoRegistra !== false && !f.daVerificare && !M.daAbbinare(f)) { M.registraFattura(f); M.svuota(); }
     });
     salva();
+    if (creati) avviso(creati === 1 ? '1 prodotto nuovo creato dalle fatture: da completare.' : creati + ' prodotti nuovi creati dalle fatture: da completare.');
     if (silenzioso) return nuove;
     if (doppie) avviso(doppie === 1 ? 'Questa fattura era già caricata.' : doppie + ' fatture erano già caricate.');
     if (lista.length === 1 && ultimo) vai('#/fattura/' + ultimo.id); else { vai('#/fatture'); disegna(); }
@@ -897,6 +911,7 @@
     vai(dest);
   };
   AZ.esempio = (el) => { const x = window.FATTURE_ESEMPIO[+el.dataset.i]; aggiungiFatture(M.leggiFatturaXML(x.xml, x.nome + '.xml')); };
+  AZ['vai-nuovi'] = () => { ui.categoria = '__nuovi'; vai('#/prodotti'); };
   AZ.categoria = (el) => { ui.categoria = el.dataset.v; ridisegnaMantenendo(); };
   AZ['tipo-ricette'] = (el) => { ui.tipoRicette = el.dataset.v; ridisegnaMantenendo(); };
   AZ.allergene = (el) => { const a = el.dataset.v, b = ui.bozza; b.allergeni = b.allergeni || []; b.allergeni = b.allergeni.includes(a) ? b.allergeni.filter(x => x !== a) : b.allergeni.concat(a); ridisegnaMantenendo(); };
@@ -909,6 +924,7 @@
     const pr = numDa(b._prezzo);
     const nuovo = b._per === 'p:nuovo';
     delete b._per; delete b._prezzo;
+    b.daCompletare = false;
     if (nuovo) { if (pr != null) b.prezzi.push({ data: M.oggi(), fornitoreId: b.fornitoreId, prezzo: pr, origine: 'a mano' }); b.interno = !b.fornitoreId; S.prodotti.push(b); }
     else { const i = S.prodotti.findIndex(p => p.id === b.id); S.prodotti[i] = b; }
     ui.bozza = null; salva(); vai('#/prodotto/' + b.id);
@@ -919,6 +935,9 @@
     if (!uso.length && !confirm('Eliminare ' + b.nomeBreve + '?')) return;
     S.prodotti = S.prodotti.filter(p => p.id !== b.id); ui.bozza = null; salva(); vai('#/prodotti');
   };
+  AZ['imp-bool'] = (el) => { S.impostazioni[el.dataset.k] = el.checked; salva(); avviso('Salvato.'); };
+  AZ.completato = (el) => { const p = M.prodotto(el.dataset.id); p.daCompletare = false; salva(); ridisegnaMantenendo(); avviso('Fatto.'); };
+  AZ['crea-mancanti'] = (el) => { const f = S.fatture.find(x => x.id === el.dataset.id); const n = M.creaProdottiDaFattura(f).length; salva(); ridisegnaMantenendo(); avviso(n ? (n === 1 ? '1 prodotto creato.' : n + ' prodotti creati.') : 'Righe sistemate.'); };
   AZ['prezzo-mano'] = (el) => {
     const p = M.prodotto(el.dataset.id);
     modale(`<h3>Prezzo a mano · ${esc(p.nomeBreve)}</h3><div class="form">

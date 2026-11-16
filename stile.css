@@ -173,3 +173,5 @@ input.mini.largo { width: 140px; text-align: left; }
   .card.lista { grid-template-columns: 1fr 1fr 1fr; }
 }
 .fr-testa > span { white-space: nowrap; }
+.card.evidenza.giallo { border-color: var(--giallo); background: #fffaf0; }
+.chip.giallo:not(.on) { border-color: var(--giallo); color: #8a5d00; }

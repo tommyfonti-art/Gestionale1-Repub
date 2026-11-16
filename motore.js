@@ -341,11 +341,75 @@
   };
 
   // Registra la fattura: prezzi, magazzino, articoli collegati, resoconto delle ricette cambiate
-  M.registraFattura = function (f) {
+  M.assicuraFornitore = function (f) {
     if (!f.fornitoreId) {
       const nuovo = { id: M.uid('f'), nome: f.fornitoreNome.replace(/\s*\(ESEMPIO\)\s*/i, '').trim() || 'Fornitore', piva: f.piva || '', telefono: '', email: '', referente: '', giorniConsegna: '', note: '' };
       S.fornitori.push(nuovo); f.fornitoreId = nuovo.id;
     }
+    return M.fornitore(f.fornitoreId);
+  };
+
+  // ---------- Prodotti creati in automatico dalle fatture ----------
+  const NON_MERCE = /trasport|spedizion|\bspese\b|cauzion|contribut|\bbollo\b|imball|facchinagg|arrotond|rimborso|noleggio|canone|\bsconto\b|commission|diritt[io]|accisa/i;
+  M.nonMerce = (rg) => NON_MERCE.test(rg.descrizione) || (!rg.totale && rg.prezzoUnitario < 0.01);
+  const CATEGORIE = [
+    [/\bbirr|\bfus(to|ti)?\b|lager|weiss|blanche|ipa\b|stout|guinness/i, 'Birra e fusti'], [/\bgin\b/i, 'Gin'], [/vodka/i, 'Vodka'], [/\brum\b|cacha/i, 'Rum e cachaça'],
+    [/tequila|mezcal|espadin|whisk|bourbon|grappa|cognac/i, 'Distillati'], [/vermouth|bitter|aperol|campari|chinato/i, 'Bitter e vermouth'], [/amaro|liquor|limoncello|sambuca|moscato giallo/i, 'Amari e liquori'],
+    [/\bvin[oi]\b|rosato|prosecco|spumant|sangiovese|chianti|lambrusco|bianco|rosso/i, 'Vino'], [/coca|cola|tonic|soda|succo|ginger|acqua|lemon|aranciat|premix|sciropp/i, 'Sode e succhi'],
+    [/\bpane\b|panin|\broll\b|\bbun\b|focacc|piadin/i, 'Pane'], [/hamburger|bovin|manzo|suin|pollo|salsicc|bacon|pancett|guancial|wurst|carne/i, 'Carne'],
+    [/formagg|cheddar|mozzarel|scamorz|halloumi|grana|parmig/i, 'Formaggi'], [/patat|surgel|frozen/i, 'Surgelati'], [/insalat|pomodor|cipoll|lime|limon|frutta|verdur|kiwi|lampon/i, 'Frutta e verdura'],
+    [/salsa|maionese|ketchup|senape|mayo/i, 'Salse'], [/sacch|bicchier|tovagl|busta|vaschett|carta|cannucc|guant|detersiv|sottobicch|sottocopp/i, 'Non alimentare'], [/ghiaccio/i, 'Ghiaccio']
+  ];
+  const titolo = (s) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+  M.indovinaProdotto = function (rg) {
+    const d = rg.descrizione || '', um = String(rg.um || '').toUpperCase().replace(/\./g, '');
+    let unita = 'pz', contenuto = 1, confezione = 'pezzo', perUnita = 1;
+    let misura = d.match(/(\d+(?:[.,]\d+)?)\s*(CL|ML|LT|LITRI|L|KG|GR|G)\b/i);
+    let qtaMis = misura ? parseFloat(misura[1].replace(',', '.')) : null;
+    let tipoMis = misura ? misura[2].toUpperCase() : '';
+    const inverso = d.match(/\b(CL|ML|LT|KG|GR)\.?\s*(\d+(?:[.,]\d+)?)\b/i); // es. «CL 70»
+    if (inverso && (!misura || inverso.index < misura.index)) { misura = inverso; qtaMis = parseFloat(inverso[2].replace(',', '.')); tipoMis = inverso[1].toUpperCase(); }
+    const pezziCt = d.match(/\b(?:CT|CF|CONF|X)\s*(\d{1,3})\b/i) || d.match(/\b(\d{1,3})\s*X\b/i);
+    if (/^(KG|KGM|KGS)$/.test(um)) { unita = 'g'; contenuto = 1000; confezione = 'kg'; }
+    else if (/^(LT|L|LTR|LITRI)$/.test(um)) { unita = 'ml'; contenuto = 1000; confezione = 'litro'; }
+    else if (misura && /^(CL|ML|LT|LITRI|L)$/.test(tipoMis)) {
+      unita = 'ml'; contenuto = tipoMis === 'CL' ? qtaMis * 10 : tipoMis === 'ML' ? qtaMis : qtaMis * 1000;
+      confezione = /FUS/i.test(um + ' ' + d) ? 'fusto' : contenuto >= 5000 ? 'tanica' : 'bottiglia';
+      if (/^(CT|CF|CONF|CRT)$/.test(um) && pezziCt) perUnita = +pezziCt[1];
+    }
+    else if (misura && /^(KG|GR|G)$/.test(tipoMis) && !/^(PZ|PEZ|NR|N|PZZ|BT)$/.test(um)) {
+      unita = 'g'; contenuto = tipoMis === 'KG' ? qtaMis * 1000 : qtaMis; confezione = 'confezione';
+    }
+    else if (/^(CT|CF|CONF|CRT)$/.test(um) && pezziCt) { perUnita = +pezziCt[1]; }
+    else if (/^(BT|BOT|BOTT)$/.test(um) && /\bvin[oi]\b|rosato|prosecco|spumant|sangiovese|chianti/i.test(d)) { unita = 'ml'; contenuto = 750; confezione = 'bottiglia'; }
+    const parole = d.replace(/\/\/.*$/, '').replace(/\([^)]*\d[^)]*\)?/g, ' ').split(/\s+/).filter(w => w.length > 1 && !/\d/.test(w) && !/^(CL|ML|LT|KG|GR|CT|CF|FUS|PZ|X|CONF)$/i.test(w) && !/[%°]/.test(w));
+    const nomeBreve = titolo(parole.slice(0, 3).join(' ') || d.slice(0, 30));
+    const cat = (CATEGORIE.find(([re]) => re.test(d)) || [null, 'Da classificare'])[1];
+    return { nomeBreve, unita, contenuto, confezione, perUnita, categoria: cat };
+  };
+  M.creaProdottiDaFattura = function (f) {
+    if (f.stato === 'registrata') return [];
+    M.assicuraFornitore(f);
+    const creati = [];
+    f.righe.forEach(rg => {
+      if (rg.prodottoId || rg.ignora) return;
+      if (M.nonMerce(rg)) { rg.ignora = true; rg.automatico = true; return; }
+      // stessa descrizione già creata in questa fattura (es. riga omaggio): stesso prodotto
+      const gemella = f.righe.find(x => x !== rg && x.prodottoId && norm(x.descrizione).replace(/ omaggio$/, '') === norm(rg.descrizione).replace(/ omaggio$/, ''));
+      if (gemella) { rg.prodottoId = gemella.prodottoId; rg.confezioniPerUnita = gemella.confezioniPerUnita; rg.automatico = true; return; }
+      const g = M.indovinaProdotto(rg);
+      const p = { id: M.uid('p'), nomeBreve: g.nomeBreve, nomeCompleto: rg.descrizione, categoria: g.categoria, unita: g.unita, contenuto: g.contenuto, confezione: g.confezione,
+        iva: rg.aliquota || 22, giacenza: 0, scortaMinima: 0, resa: 100, allergeni: [], venditaDiretta: null, fornitoreId: f.fornitoreId, articoli: [], prezzi: [], note: '',
+        daCompletare: true, creatoDa: f.id };
+      S.prodotti.push(p); creati.push(p.id);
+      rg.prodottoId = p.id; rg.confezioniPerUnita = g.perUnita; rg.creato = true;
+    });
+    M.svuota();
+    return creati;
+  };
+
+  M.registraFattura = function (f) {
+    M.assicuraFornitore(f);
     const forn = M.fornitore(f.fornitoreId);
     if (forn && f.piva && !forn.piva) forn.piva = f.piva;
     const an = M.analizzaFattura(f);
