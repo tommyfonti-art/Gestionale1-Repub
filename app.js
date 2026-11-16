@@ -313,6 +313,7 @@
     return n;
   }
   const nuoviDaCompletare = () => S.prodotti.filter(p => p.daCompletare).length;
+  function repartiUsati() { const s = new Set(S.prodotti.map(p => M.reparto(p))); return M.REPARTI.concat(['Da classificare']).filter(r => s.has(r)); }
   function categorie() { return Array.from(new Set(S.prodotti.map(p => p.categoria))).sort(); }
   const diFornitore = (p, id) => p.fornitoreId === id || (p.prezzi || []).some(e => e.fornitoreId === id) || (p.articoli || []).some(e => e.fornitoreId === id);
   function fornitoriConProdotti() {
@@ -321,7 +322,7 @@
   function listaProdotti() {
     const f = ui.filtroProdotti.toLowerCase();
     const perForn = ui.prodVista === 'fornitori';
-    const l = S.prodotti.filter(p => (perForn ? (!ui.fornProd || diFornitore(p, ui.fornProd)) : (ui.categoria === 'Tutte' || (ui.categoria === '__nuovi' ? p.daCompletare : p.categoria === ui.categoria))) && (!f || (p.nomeBreve + ' ' + p.nomeCompleto).toLowerCase().includes(f)))
+    const l = S.prodotti.filter(p => (perForn ? (!ui.fornProd || diFornitore(p, ui.fornProd)) : (ui.categoria === '__nuovi' ? p.daCompletare : ((!ui.reparto || M.reparto(p) === ui.reparto) && (ui.categoria === 'Tutte' || p.categoria === ui.categoria)))) && (!f || (p.nomeBreve + ' ' + p.nomeCompleto).toLowerCase().includes(f)))
       .sort((a, b) => a.nomeBreve.localeCompare(b.nomeBreve));
     if (!l.length) return '<p class="tenue centro">Nessun prodotto.</p>';
     return l.map(p => {
@@ -337,10 +338,11 @@
       ${nuoviDaCompletare() ? `<a class="btn primario largo" href="#/controllo">Controllo rapido dei prodotti nuovi (${nuoviDaCompletare()})</a>` : ''}
       ${ui.prodVista === 'fornitori'
         ? (ui.fornProd && M.fornitore(ui.fornProd) ? `<a class="btn primario largo" href="#/formati" data-az="fmt-fornitore" data-id="${ui.fornProd}">Metti a posto tutti i prodotti di ${esc(M.fornitore(ui.fornProd).nome)}, uno dopo l'altro</a>` : '<p class="tenue">Scegli un fornitore: vedi tutta la sua roba e la sistemi in un colpo con la fattura sotto mano.</p>')
-        : `<a class="btn largo" href="#/formati" data-az="fmt-categoria">${ui.categoria && ui.categoria !== 'Tutte' && ui.categoria !== '__nuovi' ? `Ricontrolla i formati: solo ${esc(ui.categoria)}` : 'Ricontrolla i formati, uno dopo l\'altro'}</a>`}
+        : `<a class="btn largo" href="#/formati" data-az="fmt-categoria">${ui.categoria && ui.categoria !== 'Tutte' && ui.categoria !== '__nuovi' ? `Ricontrolla i formati: solo ${esc(ui.categoria)}` : ui.reparto ? `Ricontrolla i formati: tutto ${esc(ui.reparto)}` : 'Ricontrolla i formati, uno dopo l\'altro'}</a>`}
       <input class="cerca" type="search" placeholder="Cerca un prodotto" value="${esc(ui.filtroProdotti)}" data-filtro="prodotti">
       <div class="chips"><button class="chip ${ui.prodVista !== 'fornitori' ? 'on' : ''}" data-az="prod-vista" data-v="categorie">Per categoria</button><button class="chip ${ui.prodVista === 'fornitori' ? 'on' : ''}" data-az="prod-vista" data-v="fornitori">Per fornitore</button></div>
-      ${ui.prodVista === 'fornitori' ? `<div class="chips">${fornitoriConProdotti().map(x => `<button class="chip ${ui.fornProd === x.f.id ? 'on' : ''}" data-az="forn-prod" data-v="${x.f.id}">${esc(x.f.nome)} (${x.n})</button>`).join('')}</div>` : `<div class="chips">${(nuoviDaCompletare() ? [['__nuovi', 'Da completare (' + nuoviDaCompletare() + ')']] : []).concat([['Tutte', 'Tutte']], categorie().map(c => [c, c])).map(([v, t]) => `<button class="chip ${ui.categoria === v ? 'on' : ''} ${v === '__nuovi' ? 'giallo' : ''}" data-az="categoria" data-v="${esc(v)}">${esc(t)}</button>`).join('')}</div>`}
+      ${ui.prodVista === 'fornitori' ? `<div class="chips">${fornitoriConProdotti().map(x => `<button class="chip ${ui.fornProd === x.f.id ? 'on' : ''}" data-az="forn-prod" data-v="${x.f.id}">${esc(x.f.nome)} (${x.n})</button>`).join('')}</div>` : `<div class="chips">${(nuoviDaCompletare() ? [['__nuovi', 'Da completare (' + nuoviDaCompletare() + ')']] : []).map(([v, t]) => `<button class="chip ${ui.categoria === v ? 'on' : ''} giallo" data-az="categoria" data-v="${esc(v)}">${esc(t)}</button>`).join('')}${[['', 'Tutto']].concat(repartiUsati().map(r => [r, r])).map(([v, t]) => `<button class="chip ${(ui.reparto || '') === v && ui.categoria !== '__nuovi' ? 'on' : ''}" data-az="reparto" data-v="${esc(v)}">${esc(t)}</button>`).join('')}</div>
+      ${ui.reparto && ui.categoria !== '__nuovi' ? `<div class="chips sotto">${[['Tutte', 'Tutto ' + ui.reparto]].concat(categorie().filter(c => S.prodotti.some(p => p.categoria === c && M.reparto(p) === ui.reparto)).map(c => [c, c])).map(([v, t]) => `<button class="chip ${ui.categoria === v ? 'on' : ''}" data-az="categoria" data-v="${esc(v)}">${esc(t)}</button>`).join('')}</div>` : ''}</div>`}
       <div class="card lista" id="lista">${listaProdotti()}</div>`
     };
   };
@@ -535,7 +537,7 @@
     const filtro = ui.fmtFiltro || 'ricette';
     const daForn = (p) => p.fornitoreId === ui.fmtForn || (p.prezzi || []).some(e => e.fornitoreId === ui.fmtForn) || (p.articoli || []).some(e => e.fornitoreId === ui.fmtForn);
     return S.prodotti.filter(p => !p.speciale && (filtro === 'tutti' || (filtro === 'ricette' ? usati.has(p.id) : filtro === 'cartoni' ? cartoneSospetto(p) : !p.formatoOk))
-      && (!ui.fmtCat || p.categoria === ui.fmtCat) && (!ui.fmtForn || daForn(p)))
+      && (!ui.fmtRep || M.reparto(p) === ui.fmtRep) && (!ui.fmtCat || p.categoria === ui.fmtCat) && (!ui.fmtForn || daForn(p)))
       .sort((x, y) => ui.fmtForn ? x.nomeBreve.localeCompare(y.nomeBreve) : (x.categoria || '').localeCompare(y.categoria || '') || x.nomeBreve.localeCompare(y.nomeBreve));
   }
   // prodotto comprato a cartoni (in fattura CT, CF…) ma contato come se il cartone fosse un pezzo solo
@@ -556,7 +558,8 @@
     const forniConProdotti = S.fornitori.filter(f => !f.servizi && S.prodotti.some(p => p.fornitoreId === f.id || (p.prezzi || []).some(e => e.fornitoreId === f.id))).sort((x, y) => x.nome.localeCompare(y.nome));
     const nCartoni = S.prodotti.filter(p => !p.speciale && cartoneSospetto(p)).length;
     const chips = `<div class="chips">${[['ricette', 'Usati nelle ricette'], ['cartoni', 'Cartoni senza pezzi (' + nCartoni + ')'], ['dacontrollare', 'Non ancora ricontrollati'], ['tutti', 'Tutti']].map(([k, v]) => `<button class="chip ${filtro === k ? 'on' : ''}" data-az="fmt-filtro" data-v="${k}">${v}</button>`).join('')}</div>
-      <div class="card form filtri-fmt"><div class="due">
+      <div class="card form filtri-fmt"><div class="filtri3">
+        <label>Solo il reparto<select data-fmt-sel="fmtRep"><option value="">Tutti i reparti</option>${M.REPARTI.map(r => `<option ${ui.fmtRep === r ? 'selected' : ''}>${r}</option>`).join('')}</select></label>
         <label>Solo la categoria<select data-fmt-sel="fmtCat"><option value="">Tutte le categorie</option>${categorie().map(c => `<option ${ui.fmtCat === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>
         <label>Solo il fornitore<select data-fmt-sel="fmtForn"><option value="">Tutti i fornitori</option>${forniConProdotti.map(f => `<option value="${f.id}" ${ui.fmtForn === f.id ? 'selected' : ''}>${esc(f.nome)}</option>`).join('')}</select></label>
       </div></div>`;
@@ -582,6 +585,10 @@
         <h3 class="grande-t">${esc(p.nomeBreve)}${p.formatoOk ? ' <span class="badge verde">ricontrollato</span>' : ''}</h3>
         <div class="sottotitolo">${esc(p.nomeCompleto)}<br>${esc(forn ? forn.nome : 'senza fornitore')} · ${esc(p.categoria || '')}${usoRic ? ` · usato in ${usoRic} ${usoRic === 1 ? 'ricetta' : 'ricette'}` : ''}</div>
         <label>Nome breve<input data-ctrl="${p.id}" data-k="nomeBreve" value="${esc(p.nomeBreve)}"></label>
+        <div class="due">
+          <label>Reparto<select data-ctrl="${p.id}" data-k="reparto">${M.REPARTI.map(r => `<option ${M.reparto(p) === r ? 'selected' : ''}>${r}</option>`).join('')}</select></label>
+          <label>Categoria<input list="cat-fmt" data-ctrl="${p.id}" data-k="categoria" value="${esc(p.categoria)}"><datalist id="cat-fmt">${categorie().map(c => `<option value="${esc(c)}">`).join('')}</datalist></label>
+        </div>
         <label>Si compra a<input data-ctrl="${p.id}" data-k="confezione" value="${esc(p.confezione)}" placeholder="bottiglia, kg, cartone…"></label>
         <div class="due">
           <label>Che contiene<input type="number" step="any" inputmode="decimal" data-ctrl="${p.id}" data-k="contenuto" value="${esc(p.contenuto)}"></label>
@@ -1268,6 +1275,7 @@
   AZ.esempio = (el) => { const x = window.FATTURE_ESEMPIO[+el.dataset.i]; aggiungiFatture(M.leggiFatturaXML(x.xml, x.nome + '.xml')); };
   AZ['vai-nuovi'] = () => { ui.categoria = '__nuovi'; vai('#/prodotti'); };
   AZ.categoria = (el) => { ui.categoria = el.dataset.v; ridisegnaMantenendo(); };
+  AZ.reparto = (el) => { ui.reparto = el.dataset.v; ui.categoria = 'Tutte'; ridisegnaMantenendo(); };
   AZ['prod-vista'] = (el) => { ui.prodVista = el.dataset.v; ridisegnaMantenendo(); };
   AZ['forn-prod'] = (el) => { ui.fornProd = ui.fornProd === el.dataset.v ? '' : el.dataset.v; ridisegnaMantenendo(); };
   AZ['tipo-ricette'] = (el) => { ui.tipoRicette = el.dataset.v; ridisegnaMantenendo(); };
@@ -1308,8 +1316,8 @@
   AZ['ctrlf-merce'] = (el) => { const f = M.fornitore(el.dataset.id); const n = M.togliServizi(f.id); f.controllato = true; ctrlFAvanti(); avviso(`${f.nome}: creati ${n} prodotti.`); };
   AZ['ctrlf-salta'] = () => { ui.ctrlFIdx = (ui.ctrlFIdx || 0) + 1; ridisegnaMantenendo(); };
   AZ['ctrlf-indietro'] = () => { ui.ctrlFIdx = Math.max(0, (ui.ctrlFIdx || 0) - 1); ridisegnaMantenendo(); };
-  AZ['fmt-categoria'] = () => { ui.fmtCat = ui.categoria && ui.categoria !== 'Tutte' && ui.categoria !== '__nuovi' ? ui.categoria : ''; ui.fmtForn = ''; ui.fmtFiltro = ui.fmtCat ? 'tutti' : 'ricette'; ui.fmtIdx = 0; vai('#/formati'); };
-  AZ['fmt-fornitore'] = (el) => { ui.fmtForn = el.dataset.id; ui.fmtCat = ''; ui.fmtFiltro = 'tutti'; ui.fmtIdx = 0; vai('#/formati'); };
+  AZ['fmt-categoria'] = () => { ui.fmtCat = ui.categoria && ui.categoria !== 'Tutte' && ui.categoria !== '__nuovi' ? ui.categoria : ''; ui.fmtRep = ui.categoria !== '__nuovi' ? (ui.reparto || '') : ''; ui.fmtForn = ''; ui.fmtFiltro = ui.fmtCat || ui.fmtRep ? 'tutti' : 'ricette'; ui.fmtIdx = 0; vai('#/formati'); };
+  AZ['fmt-fornitore'] = (el) => { ui.fmtForn = el.dataset.id; ui.fmtCat = ''; ui.fmtRep = ''; ui.fmtFiltro = 'tutti'; ui.fmtIdx = 0; vai('#/formati'); };
   AZ['fmt-filtro'] = (el) => { ui.fmtFiltro = el.dataset.v; ui.fmtIdx = 0; ridisegnaMantenendo(); };
   AZ['fmt-giusto'] = (el) => { const p = M.prodotto(el.dataset.id); p.formatoOk = true; p.daCompletare = false; delete p.dubbio; if (!['dacontrollare', 'cartoni'].includes(ui.fmtFiltro || 'ricette')) ui.fmtIdx = (ui.fmtIdx || 0) + 1; salva(); ridisegnaMantenendo(); window.scrollTo(0, 0); };
   AZ['fmt-salta'] = () => { ui.fmtIdx = (ui.fmtIdx || 0) + 1; ridisegnaMantenendo(); window.scrollTo(0, 0); };

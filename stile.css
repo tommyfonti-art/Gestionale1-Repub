@@ -198,3 +198,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .griglia-vend { display: grid; grid-template-columns: 1fr; gap: 0 14px; }
 @media (min-width: 1000px) { .griglia-vend { grid-template-columns: 1fr 1fr; align-items: start; } }
 .filtri-fmt { padding-bottom: 4px; }
+.filtri3 { display: grid; grid-template-columns: 1fr; gap: 0 10px; }
+@media (min-width: 700px) { .filtri3 { grid-template-columns: 1fr 1fr 1fr; } }
+.chips.sotto { margin-top: -4px; }
+.chips.sotto .chip { font-size: 14px; padding: 5px 11px; }

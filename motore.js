@@ -365,6 +365,19 @@
     [/formagg|cheddar|mozzarel|scamorz|halloumi|grana|parmig/i, 'Formaggi'], [/patat|surgel|frozen/i, 'Surgelati'], [/insalat|pomodor|cipoll|lime|limon|frutta|verdur|kiwi|lampon/i, 'Frutta e verdura'],
     [/salsa|maionese|ketchup|senape|mayo/i, 'Salse'], [/sacch|bicchier|tovagl|busta|vaschett|carta|cannucc|guant|detersiv|sottobicch|sottocopp/i, 'Non alimentare'], [/ghiaccio/i, 'Ghiaccio']
   ];
+  // reparti: ogni categoria sta sotto Bar, Cucina o Non food
+  M.REPARTI = ['Bar', 'Cucina', 'Non food'];
+  const REP_BAR = /^(gin|vodka|rum|tequila|distillat|whisk|bitter|amari|liquor|birr|fust|vin|sode|succhi|sciropp|ghiaccio|bibite|acqua|caff)/i;
+  const REP_NONFOOD = /^(non alimentare|non food|materiale|pulizia|detersiv|monouso|imballagg)/i;
+  M.reparto = function (p) {
+    if (p.reparto) return p.reparto;
+    const c = p.categoria || '';
+    if (REP_NONFOOD.test(c)) return 'Non food';
+    if (REP_BAR.test(c)) return 'Bar';
+    if (/fatt[io] in casa/i.test(c)) return p.unita === 'ml' ? 'Bar' : 'Cucina';
+    if (!c || /da classificare/i.test(c)) return 'Da classificare';
+    return 'Cucina';
+  };
   const titolo = (s) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
   M.umScatola = (um) => /^(CT|CF|CRT|CONF|SC|SCAT|SCATOLA|PK|PAC|PACCO|CARTONE|CARTONI|CASSA|FARDELLO|FD|BAN|CS|COLLO|COLLI)$/.test(String(um || '').toUpperCase().replace(/[.\s]/g, ''));
   M.indovinaProdotto = function (rg) {
