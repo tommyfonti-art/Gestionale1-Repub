@@ -333,7 +333,8 @@
       const ultimo = prec.length ? prec[prec.length - 1] : null;
       const variazione = nuovo != null && ultimo && ultimo.prezzo ? (nuovo / ultimo.prezzo - 1) * 100 : null;
       if (!nota && variazione != null && Math.abs(variazione) >= soglia) avvisi.push({ tipo: variazione > 0 ? 'aumento' : 'calo', testo: `${p.nomeBreve}: ${variazione > 0 ? 'aumentato' : 'sceso'} del ${Math.abs(variazione).toFixed(1).replace('.', ',')}%` + (x.omaggio ? ' (contando l\'omaggio)' : '') });
-      if (x.omaggio) avvisi.push({ tipo: 'info', testo: `${p.nomeBreve}: ${x.omaggio} in omaggio. Il costo vero scende da ${listino.toFixed(2).replace('.', ',')} € a ${nuovo.toFixed(2).replace('.', ',')} € a confezione.` });
+      if (x.omaggio && listino != null && nuovo != null) avvisi.push({ tipo: 'info', testo: `${p.nomeBreve}: ${x.omaggio} in omaggio. Il costo vero scende da ${listino.toFixed(2).replace('.', ',')} € a ${nuovo.toFixed(2).replace('.', ',')} € a confezione.` });
+      else if (x.omaggio) avvisi.push({ tipo: 'info', testo: `${p.nomeBreve}: righe a zero euro (omaggio o voce senza prezzo), il prezzo non cambia.` });
       const precFatt = prec.filter(e => e.fatturaId);
       const ultimoFatt = precFatt[precFatt.length - 1];
       if (!nota && ultimoFatt && ultimoFatt.sconto > 0 && !x.sconto && ultimoFatt.fornitoreId === f.fornitoreId) avvisi.push({ tipo: 'attenzione', testo: `${p.nomeBreve}: l'ultima volta c'era uno sconto del ${ultimoFatt.sconto}%, in questa fattura no.` });
@@ -365,6 +366,7 @@
     [/salsa|maionese|ketchup|senape|mayo/i, 'Salse'], [/sacch|bicchier|tovagl|busta|vaschett|carta|cannucc|guant|detersiv|sottobicch|sottocopp/i, 'Non alimentare'], [/ghiaccio/i, 'Ghiaccio']
   ];
   const titolo = (s) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+  M.umScatola = (um) => /^(CT|CF|CRT|CONF|SC|SCAT|SCATOLA|PK|PAC|PACCO|CARTONE|CARTONI|CASSA|FARDELLO|FD|BAN|CS|COLLO|COLLI)$/.test(String(um || '').toUpperCase().replace(/[.\s]/g, ''));
   M.indovinaProdotto = function (rg) {
     const d = rg.descrizione || '', um = String(rg.um || '').toUpperCase().replace(/\./g, '');
     let unita = 'pz', contenuto = 1, confezione = 'pezzo', perUnita = 1;
@@ -373,23 +375,29 @@
     let tipoMis = misura ? misura[2].toUpperCase() : '';
     const inverso = d.match(/\b(CL|ML|LT|KG|GR)\.?\s*(\d+(?:[.,]\d+)?)\b/i); // es. «CL 70»
     if (inverso && (!misura || inverso.index < misura.index)) { misura = inverso; qtaMis = parseFloat(inverso[2].replace(',', '.')); tipoMis = inverso[1].toUpperCase(); }
-    const pezziCt = d.match(/\b(?:CT|CF|CONF|X)\s*(\d{1,3})\b/i) || d.match(/\b(\d{1,3})\s*X\b/i);
+    const pezziCt = d.match(/\b(?:CT|CF|CRT|CONF|CARTONE|SCATOLA|PACCO|PK|FARDELLO|FD|X)\.?\s*(?:DA\s*)?(\d{1,3})\b/i)
+      || d.match(/\b(\d{1,3})\s*(?:X|PZ|PEZZI|BT|BOTT|BOTTIGLIE|LATTINE|LATT|BUSTE|VASCHETTE)\b/i)
+      || d.match(/\b(\d{1,3})\s*X\s*\d+(?:[.,]\d+)?\s*(?:CL|ML|LT|L|GR|G|KG)\b/i);
+    const scatola = M.umScatola(um);
     if (/^(KG|KGM|KGS)$/.test(um)) { unita = 'g'; contenuto = 1000; confezione = 'kg'; }
     else if (/^(LT|L|LTR|LITRI)$/.test(um)) { unita = 'ml'; contenuto = 1000; confezione = 'litro'; }
     else if (misura && /^(CL|ML|LT|LITRI|L)$/.test(tipoMis)) {
       unita = 'ml'; contenuto = tipoMis === 'CL' ? qtaMis * 10 : tipoMis === 'ML' ? qtaMis : qtaMis * 1000;
       confezione = /FUS/i.test(um + ' ' + d) ? 'fusto' : contenuto >= 5000 ? 'tanica' : 'bottiglia';
-      if (/^(CT|CF|CONF|CRT)$/.test(um) && pezziCt) perUnita = +pezziCt[1];
+      if (scatola && pezziCt) perUnita = +pezziCt[1];
     }
     else if (misura && /^(KG|GR|G)$/.test(tipoMis) && !/^(PZ|PEZ|NR|N|PZZ|BT)$/.test(um)) {
       unita = 'g'; contenuto = tipoMis === 'KG' ? qtaMis * 1000 : qtaMis; confezione = 'confezione';
+      if (scatola && pezziCt && +pezziCt[1] !== qtaMis) perUnita = +pezziCt[1];
     }
-    else if (/^(CT|CF|CONF|CRT)$/.test(um) && pezziCt) { perUnita = +pezziCt[1]; }
+    else if (scatola && pezziCt) { perUnita = +pezziCt[1]; }
     else if (/^(BT|BOT|BOTT)$/.test(um) && /\bvin[oi]\b|rosato|prosecco|spumant|sangiovese|chianti/i.test(d)) { unita = 'ml'; contenuto = 750; confezione = 'bottiglia'; }
     const parole = d.replace(/\/\/.*$/, '').replace(/\([^)]*\d[^)]*\)?/g, ' ').split(/\s+/).filter(w => w.length > 1 && !/\d/.test(w) && !/^(CL|ML|LT|KG|GR|CT|CF|FUS|PZ|X|CONF)$/i.test(w) && !/[%°]/.test(w));
     const nomeBreve = titolo(parole.slice(0, 3).join(' ') || d.slice(0, 30));
     const cat = (CATEGORIE.find(([re]) => re.test(d)) || [null, 'Da classificare'])[1];
-    return { nomeBreve, unita, contenuto, confezione, perUnita, categoria: cat };
+    // in fattura è un cartone (o simile) ma non so quanti pezzi ci sono dentro: va chiesto
+    const dubbio = scatola && perUnita === 1 && !(unita !== 'pz' && contenuto > 1 && confezione !== 'bottiglia');
+    return { nomeBreve, unita, contenuto, confezione, perUnita, categoria: cat, dubbio };
   };
   // fornitori che non vendono merce: bollette, banche, pagamenti, assicurazioni, SIAE...
   const SERVIZI = /\benel\b|\beni\b|enimoov|plenitude|hera\b|a2a\b|edison|nova aeg|iren\b|acea\b|sorgenia|\btim\b|telecom|vodafone|fastweb|wind ?tre|iliad|nexi|sumup|satispay|paypal|s\.?i\.?a\.?e|assicura|generali|unipol|allianz|reale mutua|leasing|banca|banco|poste italiane|amazon web|google|microsoft|apple|aruba|register|sistemi s\.?p\.?a|studio|commercialist|consulen|noleggio|autostrad|telepass/i;
@@ -425,7 +433,8 @@
       const g = M.indovinaProdotto(rg);
       const p = { id: M.uid('p'), nomeBreve: g.nomeBreve, nomeCompleto: rg.descrizione, categoria: g.categoria, unita: g.unita, contenuto: g.contenuto, confezione: g.confezione,
         iva: rg.aliquota || 22, giacenza: 0, scortaMinima: 0, resa: 100, allergeni: [], venditaDiretta: null, fornitoreId: f.fornitoreId, articoli: [], prezzi: [], note: '',
-        daCompletare: !(M.fornitore(f.fornitoreId) || {}).controllato, creatoDa: f.id };
+        daCompletare: g.dubbio || !(M.fornitore(f.fornitoreId) || {}).controllato, creatoDa: f.id };
+      if (g.dubbio) p.dubbio = 'cartone';
       // ricordo subito come compare in fattura, così le fatture successive lo riconoscono
       p.articoli.push({ fornitoreId: f.fornitoreId, codice: rg.codice, descrizione: rg.descrizione, confezioniPerUnita: g.perUnita });
       S.prodotti.push(p); creati.push(p.id);
@@ -452,7 +461,7 @@
     });
     // via i prodotti creati in automatico da queste fatture e mai usati
     S.prodotti = S.prodotti.filter(p => {
-      const via = p.daCompletare && p.creatoDa && ids.has(p.creatoDa) && !M.usatoIn('p:' + p.id).dirette.length;
+      const via = p.creatoDa && ids.has(p.creatoDa) && !M.usatoIn('p:' + p.id).dirette.length;
       if (via) tolti++;
       return !via;
     });
