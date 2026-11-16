@@ -190,3 +190,11 @@ input.mini.largo { width: 140px; text-align: left; }
 .grande-t { font-size: 22px; margin-bottom: 4px; }
 .righe-esempio { margin: 0; padding-left: 18px; color: var(--testo); font-size: 14px; }
 .righe-esempio li { padding: 4px 0; }
+/* niente freccine nei campi numerici */
+input[type=number]::-webkit-outer-spin-button, input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+.vend-riga { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.vend-riga input.mini { width: 80px; text-align: right; }
+.griglia-vend { display: grid; grid-template-columns: 1fr; gap: 0 14px; }
+@media (min-width: 1000px) { .griglia-vend { grid-template-columns: 1fr 1fr; align-items: start; } }
+.filtri-fmt { padding-bottom: 4px; }
