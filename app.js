@@ -54,6 +54,53 @@
       S.fornitori.forEach(f => { if (f.servizi === undefined && M.pareServizi(f.nome) && S.fatture.some(x => x.fornitoreId === f.id)) M.segnaServizi(f.id, true); });
       S.migrazioneServizi = true;
     }
+    // una volta: le ricette in più (drink, panini, fritti, dolci) entrano anche nei dati già salvati
+    S.impostazioni = S.impostazioni || {}; S.impostazioni.soglie = S.impostazioni.soglie || {};
+    if (S.impostazioni.soglie.dolce == null) S.impostazioni.soglie.dolce = 3.5;
+    const AG = window.AGGIUNTE_RICETTE;
+    if (AG && (S.versioneRicette || 1) < AG.versione) {
+      const nn = (x) => String(x || '').toLowerCase().normalize('NFD').replace(/[^a-z0-9]+/g, ' ').trim();
+      const fid = {};
+      const fornitoreDi = (id) => {
+        if (!id || fid[id] !== undefined) return fid[id] || '';
+        if (S.fornitori.some(f => f.id === id)) return (fid[id] = id);
+        const base = AG.fornitori.find(f => f.id === id) || (window.DATI_INIZIALI.fornitori || []).find(f => f.id === id);
+        if (!base) return (fid[id] = '');
+        const c = M.trovaFornitore({ fornitoreNome: base.nome });
+        if (c) return (fid[id] = c.id);
+        S.fornitori.push(JSON.parse(JSON.stringify(base))); return (fid[id] = id);
+      };
+      const pid = {};
+      AG.prodotti.forEach(p0 => {
+        if (S.prodotti.some(p => p.id === p0.id)) return;
+        const doppio = S.prodotti.find(p => nn(p.nomeBreve) === nn(p0.nomeBreve) && p.unita === p0.unita);
+        if (doppio) { pid[p0.id] = doppio.id; return; }
+        const p = JSON.parse(JSON.stringify(p0));
+        p.fornitoreId = fornitoreDi(p.fornitoreId);
+        p.prezzi.forEach(x => { x.fornitoreId = p.fornitoreId; });
+        p.articoli.forEach(x => { x.fornitoreId = p.fornitoreId; });
+        S.prodotti.push(p);
+      });
+      // servono anche gli ingredienti di partenza usati dalle ricette nuove, se nel frattempo sono stati tolti
+      const usati = new Set(); AG.ricette.forEach(r => r.righe.concat(r.asporto || []).forEach(rg => usati.add(rg.rif)));
+      (window.DATI_INIZIALI.prodotti || []).forEach(p0 => {
+        if (!usati.has('p:' + p0.id) || S.prodotti.some(p => p.id === p0.id) || pid[p0.id]) return;
+        const p = JSON.parse(JSON.stringify(p0)); p.fornitoreId = fornitoreDi(p.fornitoreId); p.prezzi.forEach(x => { x.fornitoreId = p.fornitoreId; }); p.articoli.forEach(x => { x.fornitoreId = p.fornitoreId; }); S.prodotti.push(p);
+      });
+      (window.DATI_INIZIALI.ricette || []).forEach(r0 => {
+        if (!usati.has('r:' + r0.id) || S.ricette.some(r => r.id === r0.id)) return;
+        S.ricette.push(JSON.parse(JSON.stringify(r0)));
+      });
+      const rif = (x) => { const m = /^p:(.+)$/.exec(x); return m && pid[m[1]] ? 'p:' + pid[m[1]] : x; };
+      AG.ricette.forEach(r0 => {
+        if (S.ricette.some(r => r.id === r0.id)) return;
+        const r = JSON.parse(JSON.stringify(r0));
+        r.righe.forEach(rg => { rg.rif = rif(rg.rif); }); (r.asporto || []).forEach(rg => { rg.rif = rif(rg.rif); });
+        S.ricette.push(r);
+      });
+      ['Nov-dic 2024', '2025', 'Gen-feb 2026', 'Mar-ago 2026'].forEach(k => { if (!S.periodiVendita.includes(k)) S.periodiVendita.push(k); });
+      S.versioneRicette = AG.versione;
+    }
     // fatture doppie (es. lette insieme da due dispositivi): ne tengo una
     const viste = new Set();
     S.fatture = S.fatture.filter(f => { const k = [f.piva || f.fornitoreNome, f.numero, f.data].join('|'); if (viste.has(k)) return false; viste.add(k); return true; });
@@ -137,7 +184,7 @@
     disegna();
   }
   async function avvia() {
-    if (!CLOUD) { prepara(carica()); partenza(); return; }
+    if (!CLOUD) { prepara(carica()); salva(); partenza(); return; }
     $('#contenuto').innerHTML = '<p class="tenue centro">Avvio…</p><div class="rotella"></div>';
     try {
       const v = '10.12.2';
