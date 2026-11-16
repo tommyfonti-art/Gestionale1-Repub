@@ -836,6 +836,7 @@
       ['fornitori', 'Fornitori', 'contatti, spesa, prodotti'], ['magazzino', 'Magazzino', 'inventario ogni sei mesi'], ['ordini', 'Ordini', 'cosa ordinare a chi'],
 ['vendite', 'Vendite', 'pezzi venduti per periodo'], ['mappa', 'Mappa del menu', 'cosa vende e cosa rende'],
       ['simulatore', 'Simulatore', 'e se cambia un prezzo?'], ['eventi', 'Eventi', 'listini per le serate'], ['olio', 'Costo olio', 'quanto costa friggere'],
+      ['pulizia', 'Pulizia dei prodotti', 'collega il foglio alle fatture'],
       ['impostazioni', 'Impostazioni', 'soglie, IVA, esportazione']
     ];
     return { titolo: 'Altro', html: `<div class="griglia-voci">${voci.map(v => `<a class="voce" href="#/${v[0]}"><b>${v[1]}</b><span>${v[2]}</span></a>`).join('')}</div>` };
@@ -1127,7 +1128,7 @@
   };
 
   // ---------- Disegno ----------
-  const ALTRE = [['fornitori', 'Fornitori'], ['magazzino', 'Magazzino'], ['ordini', 'Ordini'], ['vendite', 'Vendite'], ['mappa', 'Mappa del menu'], ['simulatore', 'Simulatore'], ['eventi', 'Eventi'], ['olio', 'Costo olio'], ['impostazioni', 'Impostazioni']];
+  const ALTRE = [['fornitori', 'Fornitori'], ['magazzino', 'Magazzino'], ['ordini', 'Ordini'], ['vendite', 'Vendite'], ['mappa', 'Mappa del menu'], ['simulatore', 'Simulatore'], ['eventi', 'Eventi'], ['olio', 'Costo olio'], ['pulizia', 'Pulizia'], ['impostazioni', 'Impostazioni']];
   const TAB = [['pannello', 'Pannello', 'M3 12l9-8 9 8v8a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z'], ['prodotti', 'Prodotti', 'M4 7l8-4 8 4v10l-8 4-8-4zM4 7l8 4 8-4M12 11v10'], ['ricette', 'Ricette', 'M6 3h12M8 3v6l-4 12h16L16 9V3'], ['fatture', 'Fatture', 'M6 2h9l5 5v15H6zM14 2v6h6M9 13h8M9 17h8'], ['altro', 'Altro', 'M5 12h.01M12 12h.01M19 12h.01']];
   const SEZIONE = { 'controllo-fatture': 'fatture', controllo: 'prodotti', pulizia: 'altro', formati: 'prodotti', prodotto: 'prodotti', 'modifica-prodotto': 'prodotti', ricetta: 'ricette', 'modifica-ricetta': 'ricette', fattura: 'fatture' };
   function disegna() {
