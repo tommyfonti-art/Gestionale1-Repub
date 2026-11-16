@@ -357,10 +357,10 @@
       titolo: 'Fatture', html: `
       <div class="card"><h3>Carica</h3>
         <div class="bottoni colonna">
-          <label class="btn primario">Fattura elettronica (.xml o .p7m)<input type="file" accept=".xml,.p7m,application/xml,text/xml" multiple hidden data-carica="xml"></label>
+          <label class="btn primario">Fatture elettroniche (.xml, .p7m o .zip)<input type="file" accept=".xml,.p7m,.zip,application/xml,text/xml,application/zip" multiple hidden data-carica="xml"></label>
           <label class="btn">Foto o PDF di una fattura<input type="file" accept="image/*,application/pdf" hidden data-carica="foto"></label>
         </div>
-        <p class="tenue piccolo">Puoi scegliere più fatture elettroniche insieme. Le foto le legge Claude: serve la chiave in Impostazioni.</p>
+        <p class="tenue piccolo">Puoi scegliere più fatture insieme, anche il file .zip scaricato dal portale. Le foto le legge Claude: serve la chiave in Impostazioni.</p>
         <div class="casella">${S.casella.url ? `<div><b>Casella delle fatture</b><small>${S.casella.ultimoControllo ? 'ultimo controllo ' + new Date(S.casella.ultimoControllo).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'mai controllata'}${S.casella.fotoInAttesa ? ' · ' + S.casella.fotoInAttesa + ' foto in attesa' : ''}</small></div><button class="btn piccolo" data-az="controlla-casella">Controlla adesso</button>` : `<div><b>Casella delle fatture</b><small>non ancora collegata</small></div><a class="btn piccolo" href="#/impostazioni">Collega</a>`}</div>
         <details><summary>Fatture di esempio per la prova</summary><div class="bottoni">${window.FATTURE_ESEMPIO.map((x, i) => `<button class="btn piccolo" data-az="esempio" data-i="${i}">${esc(x.nome)}</button>`).join('')}</div></details>
       </div>
@@ -754,6 +754,21 @@
   }
   async function caricaXML(files) {
     const tutte = []; const errori = [];
+    // gli .zip scaricati dal portale: si aprono e si leggono le fatture dentro
+    const espansi = [];
+    for (const file of files) {
+      if (/\.zip$/i.test(file.name) || file.type === 'application/zip') {
+        try {
+          if (!window.JSZip) await caricaScript('jszip.min.js');
+          const zip = await window.JSZip.loadAsync(file);
+          for (const nome of Object.keys(zip.files)) {
+            const voce = zip.files[nome];
+            if (!voce.dir && /\.(xml|p7m)$/i.test(nome) && !/(^|\/)\._/.test(nome)) espansi.push({ name: nome.split('/').pop(), arrayBuffer: () => voce.async('arraybuffer') });
+          }
+        } catch (e) { alert('Non riesco ad aprire ' + file.name + ': ' + e.message); }
+      } else espansi.push(file);
+    }
+    files = espansi;
     for (const file of files) {
       try {
         const buf = await file.arrayBuffer();
