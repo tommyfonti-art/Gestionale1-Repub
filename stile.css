@@ -202,3 +202,5 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 @media (min-width: 700px) { .filtri3 { grid-template-columns: 1fr 1fr 1fr; } }
 .chips.sotto { margin-top: -4px; }
 .chips.sotto .chip { font-size: 14px; padding: 5px 11px; }
+.scelta-lunga { display: flex; flex-direction: column; align-items: flex-start; text-align: left; gap: 2px; height: auto; padding-top: 10px; padding-bottom: 10px; white-space: normal; }
+.scelta-lunga small { font-weight: 400; opacity: .85; }

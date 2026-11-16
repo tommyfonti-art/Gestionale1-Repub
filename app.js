@@ -293,6 +293,7 @@
       </div>
       ${!S.fatture.length ? `<div class="card evidenza"><h3>Prova con una fattura</h3><p>Carica una fattura di esempio e guarda come l'app aggiorna da sola i costi di panini e drink.</p>
         <div class="bottoni">${window.FATTURE_ESEMPIO.map((x, i) => `<button class="btn" data-az="esempio" data-i="${i}">${esc(x.nome)}</button>`).join('')}</div></div>` : ''}
+      ${!S.puliziaFatta && S.fatture.length && S.prodotti.some(p => M.daFoglio(p)) ? `<div class="card evidenza"><h3>Collega il foglio alle fatture</h3><p class="tenue">Ci sono prodotti del foglio che hanno un doppione arrivato dalle fatture: collegali, così le ricette prendono i prezzi veri.</p><a class="btn primario" href="#/pulizia">Inizia la pulizia</a></div>` : ''}
       ${fornitoriDaControllare().length ? `<div class="card"><h3>Fornitori nuovi da controllare</h3><p class="tenue">Dimmi chi vende merce e chi manda solo bollette o servizi: vale per tutte le loro fatture.</p><a class="btn primario" href="#/controllo-fatture">Controllo rapido (${fornitoriDaControllare().length})</a></div>` : ''}
       ${nuoviDaCompletare() ? `<div class="card"><h3>Prodotti nuovi da completare</h3><p class="tenue">Creati in automatico dalle fatture: controlla nome breve e formato.</p>${S.prodotti.filter(p => p.daCompletare).slice(0, 6).map(p => `<a class="riga" href="#/prodotto/${p.id}"><span>${esc(p.nomeBreve)}<small>${esc(p.nomeCompleto)}</small></span><span class="badge giallo">da completare</span></a>`).join('')}<div class="bottoni"><a class="btn primario" href="#/controllo">Controllo rapido (${nuoviDaCompletare()})</a><a class="btn" href="#/prodotti" data-az="vai-nuovi">Vedi l'elenco</a></div></div>` : ''}
       ${daFare.length ? `<div class="card"><h3>Fatture da completare</h3>${daFare.map(f => `<a class="riga" href="#/fattura/${f.id}"><span>${esc(f.fornitoreNome)} · n. ${esc(f.numero)}</span><span class="badge giallo">${M.daAbbinare(f)} righe da collegare</span></a>`).join('')}</div>` : ''}
@@ -309,11 +310,12 @@
     if (!f || f.servizi) return 0;
     const sue = new Set(S.fatture.filter(x => x.fornitoreId === f.id).map(x => x.id));
     let n = 0;
-    S.prodotti.forEach(p => { if (p.daCompletare && !p.dubbio && (sue.has(p.creatoDa) || p.fornitoreId === f.id)) { p.daCompletare = false; n++; } });
+    S.prodotti.forEach(p => { if (p.daCompletare && !p.dubbio && !p.forseDoppioneDi && (sue.has(p.creatoDa) || p.fornitoreId === f.id)) { p.daCompletare = false; n++; } });
     return n;
   }
   const nuoviDaCompletare = () => S.prodotti.filter(p => p.daCompletare).length;
   function repartiUsati() { const s = new Set(S.prodotti.map(p => M.reparto(p))); return M.REPARTI.concat(['Da classificare']).filter(r => s.has(r)); }
+  const norm2 = (s) => String(s || '').toLowerCase().replace(/\b(s ?r ?l|s ?p ?a|s ?n ?c|s ?a ?s|srls)\b/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim();
   function categorie() { return Array.from(new Set(S.prodotti.map(p => p.categoria))).sort(); }
   const diFornitore = (p, id) => p.fornitoreId === id || (p.prezzi || []).some(e => e.fornitoreId === id) || (p.articoli || []).some(e => e.fornitoreId === id);
   function fornitoriConProdotti() {
@@ -518,7 +520,8 @@
         <p class="tenue piccolo">Esempi: bottiglia da 700 ml · kg da 1000 g · pezzo da 1 pz · fusto da 30000 ml.</p>
       </div>
       <div class="bottoni colonna ctrl-scelte">
-        <button class="btn primario grande" data-az="ctrl-giusto" data-id="${p.id}">✓ È giusto</button>
+        ${p.forseDoppioneDi && M.prodotto(p.forseDoppioneDi) ? `<button class="btn primario grande scelta-lunga" data-az="pul-si" data-da="${p.forseDoppioneDi}" data-a="${p.id}"><b>✓ È «${esc(M.prodotto(p.forseDoppioneDi).nomeBreve)}» che c'è già nelle ricette</b><small>uniscili: le ricette prendono il prezzo di questa fattura</small></button>` : ''}
+        <button class="btn ${p.forseDoppioneDi ? '' : 'primario grande'}" data-az="ctrl-giusto" data-id="${p.id}">✓ È giusto${p.forseDoppioneDi ? ', è un prodotto nuovo' : ''}</button>
         <button class="btn" data-az="ctrl-materiale" data-id="${p.id}">È materiale (sacchi, bicchieri, detersivi…)</button>
         <button class="btn" data-az="ctrl-togli" data-id="${p.id}">Non è merce: toglilo (ricambi, lavori, spese)</button>
         ${forn ? `<button class="btn" data-az="ctrl-servizi" data-id="${forn.id}">${esc(forn.nome)} non vende merce: togli tutti i suoi</button>` : ''}
@@ -603,6 +606,41 @@
         <div class="bottoni"><button class="btn piccolo" data-az="fmt-indietro">‹ Precedente</button><button class="btn piccolo" data-az="fmt-salta">Salta ›</button><a class="btn piccolo" href="#/prodotto/${p.id}">Scheda completa</a></div>
       </div></div>
       <p class="tenue piccolo">Sul Mac: Invio = «Giusto, avanti», frecce = precedente e successivo. Le modifiche si salvano da sole e il costo delle ricette si aggiorna subito.</p>`
+    };
+  };
+
+
+  // ----- Pulizia: i prodotti del foglio diventano quelli veri delle fatture -----
+  function coppieFoglio() {
+    const fatt = S.prodotti.filter(p => M.daFattura(p));
+    const saltati = new Set(S.puliziaSaltati || []);
+    return S.prodotti.filter(p => M.daFoglio(p) && !saltati.has(p.id)).map(p => ({ p, sim: M.somiglianti(p, fatt).slice(0, 3) })).filter(x => x.sim.length)
+      .sort((a, b) => b.sim[0].punti - a.sim[0].punti || a.p.nomeBreve.localeCompare(b.p.nomeBreve));
+  }
+  const descrPrezzo = (p) => { const pr = M.prezzo(p), rif = M.prezzoRiferimento(p); return pr == null ? 'senza prezzo' : `${euro(pr)} a ${esc(p.confezione)} da ${qta(p.contenuto)} ${esc(p.unita)}${rif ? ' · ' + n2(rif.valore) + ' ' + rif.etichetta : ''}`; };
+  PAGINE.pulizia = function () {
+    const l = coppieFoglio();
+    const nFoglio = S.prodotti.filter(p => M.daFoglio(p)).length;
+    const fine = `<div class="card"><h3>Ultimo passo</h3><p>Tolgo le due fatture di esempio, azzero il magazzino (poi fai una conta e da lì le fatture nuove lo aggiornano da sole) e tolgo i fornitori scritti a mano che non hanno fatture (se esiste quello vero delle fatture, i prodotti passano a lui). I prodotti del foglio che non compaiono in nessuna fattura restano col prezzo del foglio, finché non arriva la prima fattura.</p>
+      <div class="bottoni"><button class="btn primario" data-az="pulizia-fine">Finisci la pulizia</button></div><p class="tenue piccolo">Prima scarico da solo una copia di tutti i dati, per sicurezza.</p></div>`;
+    if (!l.length) return { titolo: 'Pulizia dati del foglio', indietro: '#/impostazioni', html: `<div class="card evidenza"><h3>Collegamenti finiti</h3><p>Non restano prodotti del foglio da collegare alle fatture (ne restano ${nFoglio} che nelle fatture non ci sono).</p></div>${S.puliziaFatta ? '<p class="msg verde">Pulizia già fatta.</p>' : fine}` };
+    if (ui.pulIdx == null || ui.pulIdx >= l.length) ui.pulIdx = 0;
+    const x = l[ui.pulIdx], p = x.p;
+    const usi = M.usatoIn('p:' + p.id).tutte.length;
+    return {
+      titolo: `Pulizia · ${ui.pulIdx + 1} di ${l.length}`, indietro: '#/impostazioni', html: `
+      <p class="tenue">Prodotto del tuo foglio a sinistra, prodotti arrivati dalle fatture a destra. Se è lo stesso, le ricette passano al prodotto vero e da lì in poi il prezzo lo fanno le fatture.</p>
+      <div class="ctrl">
+      <div class="card"><h3 class="grande-t">${esc(p.nomeBreve)}</h3>
+        <div class="sottotitolo">Dal foglio: ${esc(p.nomeCompleto)}<br>${esc((M.fornitore(p.fornitoreId) || {}).nome || '')}${usi ? ` · usato in ${usi} ${usi === 1 ? 'ricetta' : 'ricette'}` : ' · in nessuna ricetta'}</div>
+        <p>${descrPrezzo(p)}</p></div>
+      <div class="bottoni colonna ctrl-scelte">
+        ${x.sim.map((s, k) => `<button class="btn ${k === 0 ? 'primario grande' : ''} scelta-lunga" data-az="pul-si" data-da="${p.id}" data-a="${s.p.id}"><b>${k === 0 ? '✓ ' : ''}È ${esc(s.p.nomeCompleto)}</b><small>${esc((M.fornitore(s.p.fornitoreId) || {}).nome || '')} · ${descrPrezzo(s.p)}</small></button>`).join('')}
+        <button class="btn" data-az="pul-no" data-id="${p.id}">Nessuno di questi: tienilo com'è</button>
+        <div class="bottoni"><button class="btn piccolo" data-az="pul-indietro">‹ Precedente</button><button class="btn piccolo" data-az="pul-salta">Salta ›</button></div>
+      </div></div>
+      <p class="tenue piccolo">Controlla che i due prezzi al litro, al chilo o al pezzo siano simili: se sono molto diversi, il formato di uno dei due è sbagliato e lo sistemi dopo nel ricontrollo formati. Sul Mac: Invio = la prima scelta.</p>
+      ${fine}`
     };
   };
 
@@ -1076,6 +1114,7 @@
         <p class="tenue piccolo">${CLOUD ? 'Salvati online su Firebase.' : 'In questa prova i dati sono salvati su questo dispositivo.'}</p>
         <div class="bottoni colonna">
           <button class="btn" data-az="esporta-excel">Esporta in Excel</button>
+          <a class="btn" href="#/pulizia">Pulizia: collega i prodotti del foglio a quelli delle fatture</a>
           <button class="btn" data-az="scarica-copia">Scarica una copia dei dati</button>
           <label class="btn">Carica una copia dei dati<input type="file" accept=".json" hidden data-carica="copia"></label>
           <button class="btn pericolo" data-az="ripristina">Ricomincia con i dati della prova</button>
@@ -1086,7 +1125,7 @@
   // ---------- Disegno ----------
   const ALTRE = [['fornitori', 'Fornitori'], ['magazzino', 'Magazzino'], ['ordini', 'Ordini'], ['vendite', 'Vendite'], ['mappa', 'Mappa del menu'], ['simulatore', 'Simulatore'], ['eventi', 'Eventi'], ['olio', 'Costo olio'], ['impostazioni', 'Impostazioni']];
   const TAB = [['pannello', 'Pannello', 'M3 12l9-8 9 8v8a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z'], ['prodotti', 'Prodotti', 'M4 7l8-4 8 4v10l-8 4-8-4zM4 7l8 4 8-4M12 11v10'], ['ricette', 'Ricette', 'M6 3h12M8 3v6l-4 12h16L16 9V3'], ['fatture', 'Fatture', 'M6 2h9l5 5v15H6zM14 2v6h6M9 13h8M9 17h8'], ['altro', 'Altro', 'M5 12h.01M12 12h.01M19 12h.01']];
-  const SEZIONE = { 'controllo-fatture': 'fatture', controllo: 'prodotti', formati: 'prodotti', prodotto: 'prodotti', 'modifica-prodotto': 'prodotti', ricetta: 'ricette', 'modifica-ricetta': 'ricette', fattura: 'fatture' };
+  const SEZIONE = { 'controllo-fatture': 'fatture', controllo: 'prodotti', pulizia: 'altro', formati: 'prodotti', prodotto: 'prodotti', 'modifica-prodotto': 'prodotti', ricetta: 'ricette', 'modifica-ricetta': 'ricette', fattura: 'fatture' };
   function disegna() {
     if (!S) return;
     const [, nome, arg] = (location.hash || '#/pannello').split('/');
@@ -1322,8 +1361,36 @@
   AZ['fmt-giusto'] = (el) => { const p = M.prodotto(el.dataset.id); p.formatoOk = true; p.daCompletare = false; delete p.dubbio; if (!['dacontrollare', 'cartoni'].includes(ui.fmtFiltro || 'ricette')) ui.fmtIdx = (ui.fmtIdx || 0) + 1; salva(); ridisegnaMantenendo(); window.scrollTo(0, 0); };
   AZ['fmt-salta'] = () => { ui.fmtIdx = (ui.fmtIdx || 0) + 1; ridisegnaMantenendo(); window.scrollTo(0, 0); };
   AZ['fmt-indietro'] = () => { ui.fmtIdx = Math.max(0, (ui.fmtIdx || 0) - 1); ridisegnaMantenendo(); window.scrollTo(0, 0); };
+  AZ['pul-si'] = (el) => {
+    const fo = M.prodotto(el.dataset.da), ve = M.prodotto(el.dataset.a);
+    const err = M.collegaAlFoglio(el.dataset.da, el.dataset.a); if (err) { alert(err); return; }
+    salva(); ridisegnaMantenendo(); avviso(`Collegato: «${ve.nomeBreve}» ora prende il prezzo dalle fatture.`);
+  };
+  AZ['pul-no'] = (el) => { S.puliziaSaltati = (S.puliziaSaltati || []).concat(el.dataset.id); salva(); ridisegnaMantenendo(); };
+  AZ['pul-salta'] = () => { ui.pulIdx = (ui.pulIdx || 0) + 1; ridisegnaMantenendo(); };
+  AZ['pul-indietro'] = () => { ui.pulIdx = Math.max(0, (ui.pulIdx || 0) - 1); ridisegnaMantenendo(); };
+  AZ['pulizia-fine'] = () => {
+    if (!confirm('Finisco la pulizia? Prima scarico una copia dei dati.')) return;
+    AZ['scarica-copia']();
+    // fatture di esempio
+    S.fatture.filter(f => /ESEMPIO/i.test(f.numero || '') || /ESEMPIO/i.test(f.fornitoreNome || '')).forEach(f => { M.annullaFattura(f); });
+    S.fatture = S.fatture.filter(f => !(/ESEMPIO/i.test(f.numero || '') || /ESEMPIO/i.test(f.fornitoreNome || '')));
+    // magazzino: le giacenze del foglio sono vecchie e le fatture sommate da sole non dicono cosa c'è: si riparte da zero (e dalla prima conta)
+    S.prodotti.forEach(p => { p.giacenza = 0; });
+    S.fatture.forEach(f => { f.magazzino = false; });
+    // fornitori scritti a mano: se c'è quello vero delle fatture, unisco; se non serve a nessuno, lo tolgo
+    const conFatture = new Set(S.fatture.map(f => f.fornitoreId));
+    S.fornitori.filter(f => !conFatture.has(f.id)).forEach(f => {
+      const vero = S.fornitori.find(z => z !== f && conFatture.has(z.id) && (norm2(z.nome).includes(norm2(f.nome)) || norm2(f.nome).includes(norm2(z.nome))));
+      if (vero) M.unisciFornitori(f.id, vero.id);
+    });
+    const usati = new Set(); S.prodotti.forEach(p => { usati.add(p.fornitoreId); (p.prezzi || []).forEach(e => usati.add(e.fornitoreId)); (p.articoli || []).forEach(e => usati.add(e.fornitoreId)); });
+    const fattureIds = new Set(S.fatture.map(f => f.fornitoreId));
+    S.fornitori = S.fornitori.filter(f => fattureIds.has(f.id) || usati.has(f.id));
+    S.puliziaFatta = true; M.svuota(); salva(); ridisegnaMantenendo(); avviso('Pulizia fatta.');
+  };
   const ctrlAvanti = (rimosso) => { if (!rimosso) ui.ctrlIdx = (ui.ctrlIdx || 0) + 1; salva(); ridisegnaMantenendo(); };
-  AZ['ctrl-giusto'] = (el) => { const p = M.prodotto(el.dataset.id); p.daCompletare = false; delete p.dubbio; ctrlAvanti(true); };
+  AZ['ctrl-giusto'] = (el) => { const p = M.prodotto(el.dataset.id); p.daCompletare = false; delete p.dubbio; delete p.forseDoppioneDi; ctrlAvanti(true); };
   AZ['ctrl-materiale'] = (el) => { const p = M.prodotto(el.dataset.id); p.categoria = 'Non alimentare'; p.daCompletare = false; ctrlAvanti(true); avviso('Segnato come materiale.'); };
   AZ['ctrl-togli'] = (el) => { const p = M.prodotto(el.dataset.id); M.togliProdotto(p.id); ctrlAvanti(true); avviso(`Tolto «${p.nomeBreve}»: le prossime fatture lo salteranno.`); };
   AZ['ctrl-servizi'] = (el) => { const forn = M.fornitore(el.dataset.id); if (!confirm(`${forn.nome} non vende merce? Tolgo tutti i prodotti creati dalle sue fatture.`)) return; const n = M.segnaServizi(forn.id, true); ctrlAvanti(true); avviso(`Tolti ${n} prodotti di ${forn.nome}.`); };
@@ -1467,6 +1534,12 @@
     if (e.key === 'Enter' && e.target.dataset && e.target.dataset.fmtRighe) {
       e.preventDefault(); const t = e.target, id = t.dataset.fmtRighe; t.blur();
       setTimeout(() => { const b = $(`[data-az="fmt-giusto"][data-id="${id}"]`); if (b) b.click(); else { const p = M.prodotto(id); if (p) { p.formatoOk = true; p.daCompletare = false; salva(); } } }, 80); return;
+    }
+    if (h.startsWith('#/pulizia') && !/INPUT|SELECT|TEXTAREA/.test(e.target.tagName || '')) {
+      if (e.key === 'Enter') { const b = $('[data-az="pul-si"]'); if (b) { e.preventDefault(); b.click(); } }
+      if (e.key === 'ArrowRight') { e.preventDefault(); AZ['pul-salta'](); }
+      if (e.key === 'ArrowLeft') { e.preventDefault(); AZ['pul-indietro'](); }
+      return;
     }
     if (!(h.startsWith('#/controllo') || h.startsWith('#/formati')) || /INPUT|SELECT|TEXTAREA/.test((e.target.tagName || ''))) return;
     const f = h.startsWith('#/controllo-fatture') ? 'ctrlf' : h.startsWith('#/formati') ? 'fmt' : 'ctrl';

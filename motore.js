@@ -329,7 +329,7 @@
       const p = M.prodotto(x.prodottoId);
       const nuovo = x.confezioni > 0 && x.spesa > 0 ? x.spesa / x.confezioni : null;
       const listino = x.confPagate > 0 ? x.spesaPagata / x.confPagate : null;
-      const prec = (p.prezzi || []).filter(e => e.fatturaId !== f.id).slice().sort((a, b) => a.data < b.data ? -1 : 1);
+      const prec = (p.prezzi || []).filter(e => e.fatturaId !== f.id && (!f.data || !e.data || e.data <= f.data)).slice().sort((a, b) => a.data < b.data ? -1 : 1);
       const ultimo = prec.length ? prec[prec.length - 1] : null;
       const variazione = nuovo != null && ultimo && ultimo.prezzo ? (nuovo / ultimo.prezzo - 1) * 100 : null;
       if (!nota && variazione != null && Math.abs(variazione) >= soglia) avvisi.push({ tipo: variazione > 0 ? 'aumento' : 'calo', testo: `${p.nomeBreve}: ${variazione > 0 ? 'aumentato' : 'sceso'} del ${Math.abs(variazione).toFixed(1).replace('.', ',')}%` + (x.omaggio ? ' (contando l\'omaggio)' : '') });
@@ -448,6 +448,9 @@
         iva: rg.aliquota || 22, giacenza: 0, scortaMinima: 0, resa: 100, allergeni: [], venditaDiretta: null, fornitoreId: f.fornitoreId, articoli: [], prezzi: [], note: '',
         daCompletare: g.dubbio || !(M.fornitore(f.fornitoreId) || {}).controllato, creatoDa: f.id };
       if (g.dubbio) p.dubbio = 'cartone';
+      const foglio = S.prodotti.filter(x => M.daFoglio(x) || (!M.daFattura(x) && !x.speciale && (x.prezzi || []).length));
+      const sim = foglio.length ? M.somiglianti(p, foglio)[0] : null;
+      if (sim && sim.punti >= 0.8) { p.forseDoppioneDi = sim.p.id; p.daCompletare = true; }
       // ricordo subito come compare in fattura, così le fatture successive lo riconoscono
       p.articoli.push({ fornitoreId: f.fornitoreId, codice: rg.codice, descrizione: rg.descrizione, confezioniPerUnita: g.perUnita });
       S.prodotti.push(p); creati.push(p.id);
@@ -529,6 +532,49 @@
     M.svuota();
     return null;
   };
+  // ---------- Dati del foglio contro dati delle fatture ----------
+  M.daFoglio = (p) => !p.speciale && (p.prezzi || []).some(e => /^Foglio/.test(e.origine || '')) && !(p.prezzi || []).some(e => e.fatturaId);
+  M.daFattura = (p) => !p.speciale && (!!p.creatoDa || (p.prezzi || []).some(e => e.fatturaId));
+  const VUOTE = new Set(['con', 'per', 'del', 'della', 'dei', 'alla', 'allo', 'al', 'bottiglia', 'litro', 'litri', 'confezione', 'cartone', 'fatto', 'fatta', 'casa', 'chilo', 'pezzo', 'pezzi', 'busta', 'vetro', 'pet', 'kg', 'cl', 'ml', 'lt', 'gr', 'ct', 'cf', 'pz', 'bt', 'conf', 'fus', 'fusto']);
+  const parole = (s) => norm(s).split(' ').filter(w => w.length >= 3 && !/\d/.test(w) && !VUOTE.has(w));
+  // prodotti delle fatture che somigliano a un prodotto del foglio, dal più probabile
+  M.somiglianti = function (p, lista) {
+    const mie = new Set(parole(p.nomeBreve + ' ' + p.nomeCompleto));
+    const brevi = parole(p.nomeBreve);
+    const fp = M.fornitore(p.fornitoreId);
+    return (lista || S.prodotti.filter(x => x.id !== p.id && M.daFattura(x))).map(x => {
+      const loro = new Set(parole(x.nomeBreve + ' ' + x.nomeCompleto + ' ' + (x.articoli || []).map(a => a.descrizione).join(' ')));
+      const comuni = [...mie].filter(w => loro.has(w) || [...loro].some(l => l.length >= 5 && w.length >= 5 && (l.startsWith(w) || w.startsWith(l))));
+      if (!comuni.length || !comuni.some(w => w.length >= 4)) return null;
+      // la prima parola del nome breve (di solito la marca) deve esserci
+      if (brevi.length && !comuni.includes(brevi[0]) && !(loro.has(brevi[0]))) return null;
+      let punti = comuni.length / Math.max(1, Math.min(mie.size, 4));
+      if (brevi.length && brevi.every(w => comuni.includes(w))) punti += 0.6;
+      const fx = M.fornitore(x.fornitoreId);
+      if (fp && fx && (fx.id === fp.id || norm(fx.nome).includes(norm(fp.nome)) || norm(fp.nome).includes(norm(fx.nome)))) punti += 0.3;
+      if (x.unita === p.unita) punti += 0.1;
+      return { p: x, punti };
+    }).filter(x => x && x.punti >= 0.6).sort((a, b) => b.punti - a.punti);
+  };
+  // il prodotto del foglio diventa quello vero della fattura: nome breve, formato e ricette del foglio, prezzi e giacenza delle fatture
+  M.collegaAlFoglio = function (foglioId, veroId) {
+    const fo = M.prodotto(foglioId), ve = M.prodotto(veroId);
+    if (!fo || !ve || fo === ve) return 'Scegli un prodotto diverso.';
+    if (ve.unita !== fo.unita || (!(ve.contenuto > 1) && fo.contenuto > 1)) {
+      // la fattura non sapeva il formato: vale quello del foglio (1 confezione della fattura = 1 confezione del foglio)
+      ve.unita = fo.unita; ve.contenuto = fo.contenuto; ve.confezione = fo.confezione;
+    }
+    ['nomeBreve', 'categoria', 'reparto', 'resa', 'scortaMinima', 'venditaDiretta', 'note'].forEach(c => { if (fo[c] != null && fo[c] !== '' && !(c === 'resa' && fo[c] === 100)) ve[c] = fo[c]; });
+    (fo.allergeni || []).forEach(x => { if (!(ve.allergeni || []).includes(x)) (ve.allergeni = ve.allergeni || []).push(x); });
+    S.ricette.forEach(r => { (r.righe || []).forEach(rg => { if (rg.rif === 'p:' + foglioId) rg.rif = 'p:' + veroId; }); (r.asporto || []).forEach(x => { if (x.rif === 'p:' + foglioId) x.rif = 'p:' + veroId; }); });
+    S.fatture.forEach(f => f.righe.forEach(rg => { if (rg.prodottoId === foglioId) rg.prodottoId = veroId; }));
+    (S.eventi || []).forEach(ev => (ev.righe || ev.ricette || []).forEach(x => { if (x && x.prodottoId === foglioId) x.prodottoId = veroId; }));
+    ve.daCompletare = false; ve.formatoOk = true; delete ve.dubbio; delete ve.forseDoppioneDi;
+    S.prodotti = S.prodotti.filter(p => p.id !== foglioId);
+    S.prodotti.forEach(p => { if (p.forseDoppioneDi === foglioId) p.forseDoppioneDi = veroId; });
+    M.svuota();
+    return null;
+  };
   // Unisce due fornitori (es. «Doreca» e «Emilia Romagna Doreca S.r.l.»)
   M.unisciFornitori = function (daId, aId) {
     const da = M.fornitore(daId), a = M.fornitore(aId);
@@ -545,17 +591,24 @@
     M.svuota();
   };
 
+  M.inizioMagazzino = function () {
+    const conte = (S.conte || []).map(c => c.data).filter(Boolean).sort();
+    if (conte.length) return conte[conte.length - 1];
+    return new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
+  };
   M.registraFattura = function (f) {
     M.assicuraFornitore(f);
     const forn = M.fornitore(f.fornitoreId);
     if (forn && f.piva && !forn.piva) forn.piva = f.piva;
     const an = M.analizzaFattura(f);
+    // le fatture vecchie (prima dell'ultima conta, o di più di 30 giorni se non c'è una conta) danno il prezzo ma non toccano il magazzino
+    const tocca = (f.data || '') >= M.inizioMagazzino(); f.magazzino = tocca;
     const prima = {}; S.ricette.forEach(r => { prima[r.id] = M.costo(r); });
     const prezziPrima = {}; an.prodotti.forEach(x => { prezziPrima[x.prodottoId] = M.prezzo(M.prodotto(x.prodottoId)); });
     an.prodotti.forEach(x => {
       const p = M.prodotto(x.prodottoId);
       if (!an.nota && x.nuovo != null) p.prezzi.push({ data: f.data, fornitoreId: f.fornitoreId, prezzo: x.nuovo, listino: x.listino, sconto: x.sconto, confezioni: x.confezioni, fatturaId: f.id, origine: 'Fattura ' + f.numero });
-      p.giacenza = Math.round(((Number(p.giacenza) || 0) + (an.nota ? -1 : 1) * x.confezioni) * 1000) / 1000;
+      if (tocca) p.giacenza = Math.round(((Number(p.giacenza) || 0) + (an.nota ? -1 : 1) * x.confezioni) * 1000) / 1000;
       if (!p.fornitoreId) p.fornitoreId = f.fornitoreId;
     });
     // ricorda i collegamenti per le prossime fatture
@@ -589,7 +642,7 @@
     if (f.stato !== 'registrata') return;
     const an = M.analizzaFattura(f);
     S.prodotti.forEach(p => { p.prezzi = (p.prezzi || []).filter(e => e.fatturaId !== f.id); });
-    an.prodotti.forEach(x => { const p = M.prodotto(x.prodottoId); if (p) p.giacenza = Math.round(((Number(p.giacenza) || 0) - (an.nota ? -1 : 1) * x.confezioni) * 1000) / 1000; });
+    if (f.magazzino !== false) an.prodotti.forEach(x => { const p = M.prodotto(x.prodottoId); if (p) p.giacenza = Math.round(((Number(p.giacenza) || 0) - (an.nota ? -1 : 1) * x.confezioni) * 1000) / 1000; });
     f.stato = 'da_abbinare'; f.resoconto = null;
     M.svuota();
   };
