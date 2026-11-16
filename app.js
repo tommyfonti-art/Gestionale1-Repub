@@ -1366,14 +1366,24 @@
   AZ['fmt-giusto'] = (el) => { const p = M.prodotto(el.dataset.id); p.formatoOk = true; p.daCompletare = false; delete p.dubbio; if (!['dacontrollare', 'cartoni'].includes(ui.fmtFiltro || 'ricette')) ui.fmtIdx = (ui.fmtIdx || 0) + 1; salva(); ridisegnaMantenendo(); window.scrollTo(0, 0); };
   AZ['fmt-salta'] = () => { ui.fmtIdx = (ui.fmtIdx || 0) + 1; ridisegnaMantenendo(); window.scrollTo(0, 0); };
   AZ['fmt-indietro'] = () => { ui.fmtIdx = Math.max(0, (ui.fmtIdx || 0) - 1); ridisegnaMantenendo(); window.scrollTo(0, 0); };
+  function pulMemoria(conDati) {
+    (ui.pulStorico = ui.pulStorico || []).push({ idx: ui.pulIdx || 0, dati: conDati ? JSON.stringify({ p: S.prodotti, r: S.ricette, f: S.fatture, e: S.eventi || [], s: S.puliziaSaltati || [] }) : null });
+    if (ui.pulStorico.length > 15) ui.pulStorico.shift();
+  }
   AZ['pul-si'] = (el) => {
+    pulMemoria(true);
     const fo = M.prodotto(el.dataset.da), ve = M.prodotto(el.dataset.a);
-    const err = M.collegaAlFoglio(el.dataset.da, el.dataset.a); if (err) { alert(err); return; }
+    const err = M.collegaAlFoglio(el.dataset.da, el.dataset.a); if (err) { ui.pulStorico.pop(); alert(err); return; }
     salva(); ridisegnaMantenendo(); avviso(`Collegato: «${ve.nomeBreve}» ora prende il prezzo dalle fatture.`);
   };
-  AZ['pul-no'] = (el) => { S.puliziaSaltati = (S.puliziaSaltati || []).concat(el.dataset.id); salva(); ridisegnaMantenendo(); };
-  AZ['pul-salta'] = () => { ui.pulIdx = (ui.pulIdx || 0) + 1; ridisegnaMantenendo(); };
-  AZ['pul-indietro'] = () => { ui.pulIdx = Math.max(0, (ui.pulIdx || 0) - 1); ridisegnaMantenendo(); };
+  AZ['pul-no'] = (el) => { pulMemoria(true); S.puliziaSaltati = (S.puliziaSaltati || []).concat(el.dataset.id); salva(); ridisegnaMantenendo(); };
+  AZ['pul-salta'] = () => { pulMemoria(false); ui.pulIdx = (ui.pulIdx || 0) + 1; ridisegnaMantenendo(); };
+  AZ['pul-indietro'] = () => {
+    const u = (ui.pulStorico || []).pop();
+    if (!u) { ui.pulIdx = Math.max(0, (ui.pulIdx || 0) - 1); ridisegnaMantenendo(); return; }
+    if (u.dati) { const d = JSON.parse(u.dati); S.prodotti = d.p; S.ricette = d.r; S.fatture = d.f; S.eventi = d.e; S.puliziaSaltati = d.s; M.svuota(); salva(); }
+    ui.pulIdx = u.idx; ridisegnaMantenendo();
+  };
   AZ['pulizia-fine'] = () => {
     if (!confirm('Finisco la pulizia? Prima scarico una copia dei dati.')) return;
     AZ['scarica-copia']();
