@@ -409,7 +409,7 @@
       const g = M.indovinaProdotto(rg);
       const p = { id: M.uid('p'), nomeBreve: g.nomeBreve, nomeCompleto: rg.descrizione, categoria: g.categoria, unita: g.unita, contenuto: g.contenuto, confezione: g.confezione,
         iva: rg.aliquota || 22, giacenza: 0, scortaMinima: 0, resa: 100, allergeni: [], venditaDiretta: null, fornitoreId: f.fornitoreId, articoli: [], prezzi: [], note: '',
-        daCompletare: true, creatoDa: f.id };
+        daCompletare: !(M.fornitore(f.fornitoreId) || {}).controllato, creatoDa: f.id };
       // ricordo subito come compare in fattura, così le fatture successive lo riconoscono
       p.articoli.push({ fornitoreId: f.fornitoreId, codice: rg.codice, descrizione: rg.descrizione, confezioniPerUnita: g.perUnita });
       S.prodotti.push(p); creati.push(p.id);

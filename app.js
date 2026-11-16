@@ -101,6 +101,8 @@
       ['Nov-dic 2024', '2025', 'Gen-feb 2026', 'Mar-ago 2026'].forEach(k => { if (!S.periodiVendita.includes(k)) S.periodiVendita.push(k); });
       S.versioneRicette = AG.versione;
     }
+    // i prodotti dei fornitori già confermati non vanno ricontrollati
+    S.fornitori.forEach(f => { if (f.controllato) confermaProdottiDi(f); });
     // fatture doppie (es. lette insieme da due dispositivi): ne tengo una
     const viste = new Set();
     S.fatture = S.fatture.filter(f => { const k = [f.piva || f.fornitoreNome, f.numero, f.data].join('|'); if (viste.has(k)) return false; viste.add(k); return true; });
@@ -304,6 +306,14 @@
   };
 
   // ----- Prodotti -----
+  // un fornitore confermato «vende merce»: i suoi prodotti creati dalle fatture entrano già buoni
+  function confermaProdottiDi(f) {
+    if (!f || f.servizi) return 0;
+    const sue = new Set(S.fatture.filter(x => x.fornitoreId === f.id).map(x => x.id));
+    let n = 0;
+    S.prodotti.forEach(p => { if (p.daCompletare && (sue.has(p.creatoDa) || p.fornitoreId === f.id)) { p.daCompletare = false; n++; } });
+    return n;
+  }
   const nuoviDaCompletare = () => S.prodotti.filter(p => p.daCompletare).length;
   function categorie() { return Array.from(new Set(S.prodotti.map(p => p.categoria))).sort(); }
   function listaProdotti() {
@@ -467,7 +477,7 @@
         : `<button class="btn primario grande" data-az="ctrlf-ok" data-id="${f.id}">✓ Vende merce, va bene</button>
           <button class="btn" data-az="ctrlf-servizi" data-id="${f.id}">Non vende merce (bollette, servizi, ricambi, lavori)</button>`}
         <div class="bottoni"><button class="btn piccolo" data-az="ctrlf-indietro">‹ Precedente</button><button class="btn piccolo" data-az="ctrlf-salta">Salta ›</button><a class="btn piccolo" href="#/fornitore/${f.id}">Scheda del fornitore</a></div>
-        <p class="tenue piccolo">La scelta vale per tutte le sue fatture, anche quelle che arriveranno.</p>
+        <p class="tenue piccolo">La scelta vale per tutte le sue fatture, anche quelle che arriveranno. Se vende merce, i suoi prodotti entrano già confermati: non serve ricontrollarli.</p>
       </div></div>`
     };
   };
@@ -1215,7 +1225,7 @@
     setTimeout(ridisegnaMantenendo, 150);
   };
   const ctrlFAvanti = () => { salva(); ridisegnaMantenendo(); };
-  AZ['ctrlf-ok'] = (el) => { M.fornitore(el.dataset.id).controllato = true; ctrlFAvanti(); };
+  AZ['ctrlf-ok'] = (el) => { const f = M.fornitore(el.dataset.id); f.controllato = true; const n = confermaProdottiDi(f); if (n) avviso(`${n} prodotti di ${f.nome} confermati.`); ctrlFAvanti(); };
   AZ['ctrlf-servizi'] = (el) => { const f = M.fornitore(el.dataset.id); const n = M.segnaServizi(f.id, true); f.controllato = true; ctrlFAvanti(); avviso(`${f.nome}: solo fatture, ${n} prodotti tolti.`); };
   AZ['ctrlf-merce'] = (el) => { const f = M.fornitore(el.dataset.id); const n = M.togliServizi(f.id); f.controllato = true; ctrlFAvanti(); avviso(`${f.nome}: creati ${n} prodotti.`); };
   AZ['ctrlf-salta'] = () => { ui.ctrlFIdx = (ui.ctrlFIdx || 0) + 1; ridisegnaMantenendo(); };
