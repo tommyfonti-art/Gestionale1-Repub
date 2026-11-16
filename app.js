@@ -577,10 +577,11 @@
     const perRiga = ur ? (Number(ur.rg.confezioniPerUnita) || 1) : null;
     const pr = M.prezzo(p), rif = M.prezzoRiferimento(p);
     const usoRic = M.usatoIn('p:' + p.id).tutte.length;
-    const conto = ur ? `<div class="card form"><h3>Il conto, passo per passo</h3>
+    const conto = ur ? `<div class="card form"><h3>Livello in più: quanti «${esc(p.confezione)}» ci sono in ogni ${esc(ur.rg.um || 'confezione')} di fattura</h3>
         <p>In fattura${ur.f.fornitoreNome ? ' di <b>' + esc(forn ? forn.nome : ur.f.fornitoreNome) + '</b>' : ''} del ${dataIt(ur.f.data)}:<br><b>${esc(ur.rg.descrizione)}</b><br>${qta(ur.rg.quantita)} ${esc(ur.rg.um || '')} a ${euro(ur.rg.prezzoUnitario, 3)}</p>
         ${cartoneSospetto(p) ? `<p class="msg giallo">In fattura c'è scritto <b>${esc(ur.rg.um)}</b>, ma adesso è contato come un pezzo solo. Scrivi quanti pezzi ci sono dentro e premi Invio.</p>` : ''}
-        <label>Ogni riga di fattura (1 ${esc(ur.rg.um || 'pezzo')}) contiene quanti pezzi «${esc(p.confezione)}»?<input type="number" step="any" inputmode="decimal" data-fmt-righe="${p.id}" data-fattura="${ur.f.id}" value="${esc(perRiga)}"></label>
+        <label>1 ${esc(ur.rg.um || 'pezzo')} di fattura = quanti «${esc(p.confezione)}»? (es. cartone da 12 bottiglie: scrivi 12)<input type="number" step="any" inputmode="decimal" data-fmt-righe="${p.id}" data-fattura="${ur.f.id}" value="${esc(perRiga)}"></label>
+        <p class="msg grigio"><b>Riassunto:</b> 1 ${esc(ur.rg.um || 'confezione')} di fattura = ${qta(perRiga)} ${esc(p.confezione)} · 1 ${esc(p.confezione)} = ${qta(p.contenuto)} ${esc(p.unita)}</p>
         <p class="msg grigio">${pr != null ? `Quindi: <b>${euro(pr, 3)}</b> a ${esc(p.confezione)} · ${esc(p.confezione)} da ${qta(p.contenuto)} ${esc(p.unita)} · <b>${rif ? n2(rif.valore) + ' ' + rif.etichetta : ''}</b>` : 'Senza prezzo.'}</p>
       </div>` : `<div class="card"><h3>Prezzo</h3><p>${pr != null ? `${euro(pr, 3)} a ${esc(p.confezione)} · <b>${rif ? n2(rif.valore) + ' ' + rif.etichetta : ''}</b>` : 'Senza prezzo.'}</p><p class="tenue piccolo">Non arriva da nessuna fattura: il prezzo è quello del foglio o messo a mano.</p></div>`;
     return {
