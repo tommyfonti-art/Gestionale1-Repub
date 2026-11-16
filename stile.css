@@ -121,3 +121,53 @@ input.mini.largo { width: 140px; text-align: left; }
 .casella { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin: 12px 0 4px; padding: 10px 12px; background: var(--accento-chiaro); border-radius: 10px; }
 .casella small { display: block; color: var(--tenue); font-size: 13px; }
 .casella .btn { margin: 0; }
+
+/* ---------- iPad e Mac ---------- */
+#tabbar .marchio, #tabbar .gruppo, #tabbar .solo-largo { display: none; }
+.riga, .voce, .chip, .btn, #tabbar a { transition: background .15s; }
+@media (hover: hover) {
+  a.riga:hover { background: #f7f4ee; }
+  .voce:hover, .btn:hover { filter: brightness(.97); }
+  #tabbar a:hover { background: rgba(31, 95, 74, .07); }
+}
+@media (min-width: 700px) {
+  #contenuto { max-width: 1100px; padding: 20px 24px; }
+  .card.lista { display: grid; grid-template-columns: 1fr 1fr; column-gap: 36px; padding: 6px 18px; }
+  .card.lista > .tenue.centro { grid-column: 1 / -1; }
+  .modale-sfondo { align-items: center; }
+  .modale { border-radius: 18px; padding: 22px; }
+  .cerca { max-width: 520px; }
+  /* schede di dettaglio su due colonne */
+  #contenuto.colonne { column-count: 2; column-gap: 16px; }
+  #contenuto.colonne > * { break-inside: avoid; -webkit-column-break-inside: avoid; }
+  #contenuto.colonne > .card { display: inline-block; width: 100%; }
+  #contenuto.colonne > .kpi-griglia, #contenuto.colonne > .msg, #contenuto.colonne > .bottoni, #contenuto.colonne > .chips,
+  #contenuto.colonne > .btn.largo, #contenuto.colonne > p.tenue, #contenuto.colonne > .card.evidenza, #contenuto.colonne > .card.larga { column-span: all; display: block; }
+  .grafico { max-height: 240px; }
+  .griglia-voci { grid-template-columns: repeat(3, 1fr); }
+  .mappa { max-width: 680px; margin: 0 auto 8px; }
+  .fr { display: grid; grid-template-columns: 1fr 1fr; column-gap: 24px; align-items: start; }
+  .fr > .fr-testa, .fr > .tenue { grid-column: 1; }
+  .fr > .fr-coll { grid-column: 2; grid-row: 1 / span 2; margin-top: 0; }
+  .fr.evento { display: block; }
+}
+@media (min-width: 1000px) {
+  body { padding-bottom: 0; padding-left: 232px; }
+  #tabbar { top: 0; right: auto; width: 232px; flex-direction: column; align-items: stretch; gap: 2px; padding: calc(18px + env(safe-area-inset-top)) 12px 18px; border-top: 0; border-right: 1px solid var(--linea); background: #fbf9f4; overflow-y: auto; }
+  #tabbar .marchio { display: block; font-size: 20px; font-weight: 800; padding: 4px 12px 18px; letter-spacing: -.3px; }
+  #tabbar .marchio span { color: var(--accento); }
+  #tabbar a { flex: none; flex-direction: row; gap: 12px; padding: 9px 12px; border-radius: 10px; font-size: 15px; color: var(--testo); }
+  #tabbar a svg { width: 21px; height: 21px; color: var(--grigio); }
+  #tabbar a.on { background: var(--accento-chiaro); color: var(--accento); }
+  #tabbar a.on svg { color: var(--accento); }
+  #tabbar .solo-stretto { display: none; }
+  #tabbar .solo-largo { display: flex; }
+  #tabbar .gruppo { display: block; font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color: var(--grigio); padding: 18px 12px 6px; }
+  #tabbar a.secondaria { padding: 7px 12px 7px 45px; font-size: 14px; }
+  #testa { padding-left: 24px; padding-right: 24px; }
+  .toast { bottom: 28px; left: calc(50% + 116px); }
+  #contenuto { padding: 24px 32px; }
+}
+@media (min-width: 1300px) {
+  .card.lista { grid-template-columns: 1fr 1fr 1fr; }
+}

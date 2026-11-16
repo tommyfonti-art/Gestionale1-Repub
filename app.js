@@ -419,7 +419,7 @@
         <div><span>Totale</span><b>${euro(f.totale)}</b></div>
       </div>${f.daVerificare && !reg ? '<p class="msg giallo">Letta da una foto: controlla numeri e prezzi prima di registrarla.</p>' : ''}</div>
       ${avvisi.length ? `<div class="card"><h3>Controlli</h3>${avvisi.map(a => `<p class="msg ${a.tipo === 'aumento' || a.tipo === 'attenzione' ? 'rosso' : a.tipo === 'calo' ? 'verde' : 'grigio'}">${esc(a.testo)}</p>`).join('')}</div>` : ''}
-      <div class="card"><h3>Righe</h3>${righe}</div>
+      <div class="card larga"><h3>Righe</h3>${righe}</div>
       ${(f.scadenze || []).length ? `<div class="card"><h3>Pagamento</h3>${f.scadenze.map((s, k) => `<label class="riga interruttore"><span>Entro il ${dataIt(s.data)} · ${euro(s.importo)}</span><input type="checkbox" data-az="pagata" data-id="${f.id}" data-k="${k}" ${s.pagata ? 'checked' : ''}> pagata</label>`).join('')}</div>` : ''}
       <div class="bottoni">
         ${reg ? `<button class="btn" data-az="annulla-fattura" data-id="${f.id}">Annulla la registrazione</button>` : `<button class="btn primario" data-az="registra-fattura" data-id="${f.id}" ${daColl ? 'disabled' : ''}>${daColl ? 'Collega ancora ' + daColl + (daColl === 1 ? ' riga' : ' righe') : 'Registra e aggiorna i costi'}</button>`}
@@ -644,7 +644,7 @@
     const righe = e.righe.map((rg, k) => {
       const r = M.ricetta(rg.ricettaId); const c = (M.costo(r) || 0) + extra;
       incasso += rg.prezzo * rg.previsti; costi += c * rg.previsti;
-      return `<div class="fr"><div class="fr-testa"><b>${esc(r ? r.nome : '?')}</b><button class="x" data-az="ev-togli" data-id="${id}" data-k="${k}">✕</button></div>
+      return `<div class="fr evento"><div class="fr-testa"><b>${esc(r ? r.nome : '?')}</b><button class="x" data-az="ev-togli" data-id="${id}" data-k="${k}">✕</button></div>
         <div class="due"><label>Prezzo<input type="number" step="any" inputmode="decimal" data-ev="${id}" data-k="${k}" data-c="prezzo" value="${esc(rg.prezzo)}"></label><label>Pezzi previsti<input type="number" inputmode="numeric" data-ev="${id}" data-k="${k}" data-c="previsti" value="${esc(rg.previsti)}"></label></div>
         <div class="tenue piccolo">Costo ${euro(c)} con il bicchiere · moltiplicatore <span class="badge ${rg.prezzo / c < ((S.impostazioni.soglie || {})[r && r.tipo] || 0) ? 'rosso' : 'verde'}">× ${n2(rg.prezzo / c)}</span></div></div>`;
     }).join('');
@@ -712,6 +712,7 @@
   };
 
   // ---------- Disegno ----------
+  const ALTRE = [['fornitori', 'Fornitori'], ['magazzino', 'Magazzino'], ['ordini', 'Ordini'], ['scadenze', 'Scadenze'], ['vendite', 'Vendite'], ['mappa', 'Mappa del menu'], ['simulatore', 'Simulatore'], ['eventi', 'Eventi'], ['olio', 'Costo olio'], ['impostazioni', 'Impostazioni']];
   const TAB = [['pannello', 'Pannello', 'M3 12l9-8 9 8v8a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z'], ['prodotti', 'Prodotti', 'M4 7l8-4 8 4v10l-8 4-8-4zM4 7l8 4 8-4M12 11v10'], ['ricette', 'Ricette', 'M6 3h12M8 3v6l-4 12h16L16 9V3'], ['fatture', 'Fatture', 'M6 2h9l5 5v15H6zM14 2v6h6M9 13h8M9 17h8'], ['altro', 'Altro', 'M5 12h.01M12 12h.01M19 12h.01']];
   const SEZIONE = { prodotto: 'prodotti', 'modifica-prodotto': 'prodotti', ricetta: 'ricette', 'modifica-ricetta': 'ricette', fattura: 'fatture' };
   function disegna() {
@@ -724,7 +725,14 @@
     const sez = SEZIONE[nome] || (PAGINE[nome] && TAB.some(t => t[0] === nome) ? nome : (PAGINE[nome] ? 'altro' : 'pannello'));
     $('#testa').innerHTML = `${pag.indietro ? `<a class="indietro" href="${pag.indietro}" data-az="indietro" aria-label="Indietro">‹</a>` : '<span></span>'}<h1>${esc(pag.titolo)}</h1>${pag.azione || '<span></span>'}`;
     $('#contenuto').innerHTML = pag.html;
-    $('#tabbar').innerHTML = TAB.map(t => `<a href="#/${t[0]}" class="${sez === t[0] ? 'on' : ''}"><svg viewBox="0 0 24 24"><path d="${t[2]}"/></svg><span>${t[1]}</span></a>`).join('');
+    // sul telefono: barra in basso; su Mac e iPad: colonna a sinistra con tutte le sezioni
+    const PAGINA_DI = { fornitore: 'fornitori', evento: 'eventi' };
+    const attiva = PAGINA_DI[nome] || nome;
+    $('#tabbar').innerHTML = '<div class="marchio">Repub <span>Costi</span></div>' +
+      TAB.map(t => `<a href="#/${t[0]}" class="${sez === t[0] ? 'on' : ''} ${t[0] === 'altro' ? 'solo-stretto' : ''}"><svg viewBox="0 0 24 24"><path d="${t[2]}"/></svg><span>${t[1]}</span></a>`).join('') +
+      '<div class="gruppo solo-largo">Altro</div>' +
+      ALTRE.map(v => `<a href="#/${v[0]}" class="solo-largo secondaria ${attiva === v[0] ? 'on' : ''}"><span>${v[1]}</span></a>`).join('');
+    $('#contenuto').className = ['pannello', 'prodotto', 'ricetta', 'fattura', 'fornitore', 'evento', 'impostazioni', 'mappa', 'scadenze', 'magazzino', 'modifica-prodotto', 'modifica-ricetta', undefined].includes(nome) && !(nome === 'magazzino' && ui.conta) ? 'colonne' : '';
     document.title = pag.titolo + ' · Gestionale Repub';
   }
   function ridisegnaMantenendo() { const y = window.scrollY; disegna(); window.scrollTo(0, y); }
