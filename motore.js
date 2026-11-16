@@ -426,7 +426,7 @@
     S.fatture.forEach(f => {
       if (f.fornitoreId !== f0.fornitoreId) return;
       let toccata = false;
-      f.righe.forEach(rg => { if (stessa(rg)) { const pr = Number(rg.confezioniPerUnita) || 1; if (f.stato === 'registrata') p.giacenza = Math.round(((Number(p.giacenza) || 0) + (f.tipoDoc === 'TD04' ? -1 : 1) * rg.quantita * pr * (k - 1)) * 1000) / 1000; rg.confezioniPerUnita = pr * k; toccata = true; } });
+      f.righe.forEach(rg => { if (stessa(rg)) { const pr = Number(rg.confezioniPerUnita) || 1; if (f.stato === 'registrata' && f.magazzino !== false) p.giacenza = Math.round(((Number(p.giacenza) || 0) + (f.tipoDoc === 'TD04' ? -1 : 1) * rg.quantita * pr * (k - 1)) * 1000) / 1000; rg.confezioniPerUnita = pr * k; toccata = true; } });
       if (toccata) (p.prezzi || []).forEach(x => { if (x.fatturaId === f.id) { x.prezzo = x.prezzo / k; if (x.listino) x.listino = x.listino / k; if (x.confezioni) x.confezioni = x.confezioni * k; } });
     });
     (p.articoli || []).forEach(a => { if (a.fornitoreId === f0.fornitoreId && ((r0.codice && a.codice === r0.codice) || norm(a.descrizione) === norm(r0.descrizione))) a.confezioniPerUnita = nuovo; });
@@ -601,8 +601,8 @@
     const forn = M.fornitore(f.fornitoreId);
     if (forn && f.piva && !forn.piva) forn.piva = f.piva;
     const an = M.analizzaFattura(f);
-    // le fatture vecchie (prima dell'ultima conta, o di più di 30 giorni se non c'è una conta) danno il prezzo ma non toccano il magazzino
-    const tocca = (f.data || '') >= M.inizioMagazzino(); f.magazzino = tocca;
+    // il magazzino lo fa solo l'inventario: le fatture danno i prezzi, non le quantità
+    const tocca = false; f.magazzino = false;
     const prima = {}; S.ricette.forEach(r => { prima[r.id] = M.costo(r); });
     const prezziPrima = {}; an.prodotti.forEach(x => { prezziPrima[x.prodottoId] = M.prezzo(M.prodotto(x.prodottoId)); });
     an.prodotti.forEach(x => {

@@ -103,6 +103,8 @@
     S.fornitori.forEach(f => { if (f.servizi && S.fatture.some(x => x.fornitoreId === f.id && (x.stato !== 'registrata' || x.righe.some(rg => !rg.ignora)))) M.segnaServizi(f.id, true); });
     // fatture già complete rimaste in sospeso: le registro
     if ((S.impostazioni || {}).autoRegistra !== false) S.fatture.forEach(f => { if (f.stato !== 'registrata' && !f.daVerificare && f.righe.length && !M.daAbbinare(f)) { M.registraFattura(f); M.svuota(); } });
+    // una volta: il magazzino lo fa solo l'inventario, si riparte da zero
+    if (!S.magazzinoSoloInventario) { S.prodotti.forEach(p => { p.giacenza = 0; }); S.fatture.forEach(f => { f.magazzino = false; }); S.magazzinoSoloInventario = true; }
     // i prodotti dei fornitori già confermati non vanno ricontrollati
     S.fornitori.forEach(f => { if (f.controllato) confermaProdottiDi(f); });
     // fatture doppie (es. lette insieme da due dispositivi): ne tengo una
@@ -288,7 +290,7 @@
       <div class="kpi-griglia">
         ${kpi('Incidenza media bar', perc(media(bar)), 'costo sul prezzo senza IVA')}
         ${kpi('Incidenza media cucina', perc(media(cucina)), 'costo sul prezzo senza IVA')}
-        ${kpi('Valore del magazzino', euro(M.valoreMagazzino(), 0), 'prezzi senza IVA')}
+        ${kpi('Valore del magazzino', euro(M.valoreMagazzino(), 0), 'dall\'ultimo inventario')}
         ${kpi('Ricette', S.ricette.filter(r => r.tipo !== 'semilavorato').length, 'drink, cucina e dolci')}
       </div>
       ${!S.fatture.length ? `<div class="card evidenza"><h3>Prova con una fattura</h3><p>Carica una fattura di esempio e guarda come l'app aggiorna da sola i costi di panini e drink.</p>
@@ -621,7 +623,7 @@
   PAGINE.pulizia = function () {
     const l = coppieFoglio();
     const nFoglio = S.prodotti.filter(p => M.daFoglio(p)).length;
-    const fine = `<div class="card"><h3>Ultimo passo</h3><p>Tolgo le due fatture di esempio, azzero il magazzino (poi fai una conta e da lì le fatture nuove lo aggiornano da sole) e tolgo i fornitori scritti a mano che non hanno fatture (se esiste quello vero delle fatture, i prodotti passano a lui). I prodotti del foglio che non compaiono in nessuna fattura restano col prezzo del foglio, finché non arriva la prima fattura.</p>
+    const fine = `<div class="card"><h3>Ultimo passo</h3><p>Tolgo le due fatture di esempio, e tolgo i fornitori scritti a mano che non hanno fatture (se esiste quello vero delle fatture, i prodotti passano a lui). I prodotti del foglio che non compaiono in nessuna fattura restano col prezzo del foglio, finché non arriva la prima fattura.</p>
       <div class="bottoni"><button class="btn primario" data-az="pulizia-fine">Finisci la pulizia</button></div><p class="tenue piccolo">Prima scarico da solo una copia di tutti i dati, per sicurezza.</p></div>`;
     if (!l.length) return { titolo: 'Pulizia dati del foglio', indietro: '#/impostazioni', html: `<div class="card evidenza"><h3>Collegamenti finiti</h3><p>Non restano prodotti del foglio da collegare alle fatture (ne restano ${nFoglio} che nelle fatture non ci sono).</p></div>${S.puliziaFatta ? '<p class="msg verde">Pulizia già fatta.</p>' : fine}` };
     if (ui.pulIdx == null || ui.pulIdx >= l.length) ui.pulIdx = 0;
@@ -831,7 +833,7 @@
   // ----- Altro -----
   PAGINE.altro = function () {
     const voci = [
-      ['fornitori', 'Fornitori', 'contatti, spesa, prodotti'], ['magazzino', 'Magazzino', 'giacenze e conta veloce'], ['ordini', 'Ordini', 'cosa ordinare a chi'],
+      ['fornitori', 'Fornitori', 'contatti, spesa, prodotti'], ['magazzino', 'Magazzino', 'inventario ogni sei mesi'], ['ordini', 'Ordini', 'cosa ordinare a chi'],
 ['vendite', 'Vendite', 'pezzi venduti per periodo'], ['mappa', 'Mappa del menu', 'cosa vende e cosa rende'],
       ['simulatore', 'Simulatore', 'e se cambia un prezzo?'], ['eventi', 'Eventi', 'listini per le serate'], ['olio', 'Costo olio', 'quanto costa friggere'],
       ['impostazioni', 'Impostazioni', 'soglie, IVA, esportazione']
@@ -883,7 +885,7 @@
     if (c) {
       const lista = S.prodotti.filter(p => !p.speciale && (c.categoria === 'Tutte' || p.categoria === c.categoria)).sort((a, b) => a.nomeBreve.localeCompare(b.nomeBreve));
       return {
-        titolo: 'Conta del magazzino', indietro: '#/magazzino', html: `
+        titolo: 'Inventario', indietro: '#/magazzino', html: `
         <p class="tenue">Scrivi quante confezioni ci sono davvero (anche a metà: 0,5). Quelle che non tocchi restano come sono.</p>
         <div class="chips">${['Tutte'].concat(cats).map(x => `<button class="chip ${c.categoria === x ? 'on' : ''}" data-az="conta-cat" data-v="${esc(x)}">${esc(x)}</button>`).join('')}</div>
         <div class="card">${lista.map(p => { const v = c.valori[p.id]; return `<div class="conta ${v != null ? 'toccato' : ''}"><span>${esc(p.nomeBreve)}<small>${esc(p.confezione)} · in app ${qta(p.giacenza)}</small></span>
@@ -896,13 +898,15 @@
     return {
       titolo: 'Magazzino', indietro: '#/altro', html: `
       <div class="kpi-griglia">${kpi('Valore totale', euro(M.valoreMagazzino(), 0))}${kpi('Sotto scorta', M.sottoScorta().length, '<a href="#/ordini">ordini ›</a>')}</div>
-      <button class="btn primario largo" data-az="inizia-conta">Inizia una conta veloce</button>
+      <p class="tenue">Il magazzino lo fa solo l'inventario: le fatture aggiornano i prezzi, non le quantità. Quando fai l'inventario scrivi quanto c'è e da lì vedi il valore.</p>
+      <button class="btn primario largo" data-az="inizia-conta">Fai l'inventario</button>
       <div class="card"><h3>Per categoria</h3>${perCat.map(x => `<div class="riga"><span>${esc(x.c)}</span><span>${euro(x.v, 0)}</span></div>`).join('')}</div>
-      ${ultima ? `<div class="card"><h3>Ultima conta: ${dataIt(ultima.data)}</h3>
-        <p>Differenza tra quello che dovevi avere e quello che c'era: <b class="${ultima.differenzaValore < 0 ? 'rosso-t' : ''}">${euro(ultima.differenzaValore)}</b></p>
-        <table class="tab"><tr><th>Prodotto</th><th class="n">In app</th><th class="n">Contato</th><th class="n">Valore</th></tr>
-        ${ultima.righe.filter(r => Math.abs(r.reale - r.teorica) > 0.001).map(r => { const p = M.prodotto(r.prodottoId); return `<tr><td>${esc(p ? p.nomeBreve : '?')}</td><td class="n">${qta(r.teorica)}</td><td class="n">${qta(r.reale)}</td><td class="n ${r.valore < 0 ? 'rosso-t' : ''}">${euro(r.valore)}</td></tr>`; }).join('')}</table>
-        <p class="tenue piccolo">Le differenze negative sono sprechi, omaggi, rotture o ammanchi. «In app» comprende i carichi delle fatture e gli scarichi delle vendite.</p></div>` : ''}`
+      ${ultima ? `<div class="card"><h3>Ultimo inventario: ${dataIt(ultima.data)}</h3>
+
+        <p>Valore contato: <b>${euro(ultima.righe.reduce((s, r) => { const p = M.prodotto(r.prodottoId); return s + (p ? (M.prezzo(p) || 0) * r.reale : 0); }, 0), 0)}</b> (ai prezzi di oggi, senza IVA)</p>
+        <table class="tab"><tr><th>Prodotto</th><th class="n">Contato</th><th class="n">Valore</th></tr>
+        ${ultima.righe.filter(r => r.reale > 0).map(r => { const p = M.prodotto(r.prodottoId); return `<tr><td>${esc(p ? p.nomeBreve : '?')}</td><td class="n">${qta(r.reale)}</td><td class="n">${euro(p ? (M.prezzo(p) || 0) * r.reale : 0)}</td></tr>`; }).join('')}</table>
+        </div>` : ''}`
     };
   };
 
@@ -946,8 +950,8 @@
     const scaricato = S.periodiScaricati.includes(per);
     return {
       titolo: 'Vendite', indietro: '#/altro', html: `${scelta}${nuovo}
-      <div class="card"><h3>${esc(per)}</h3><p class="tenue">${date ? `dal ${dataIt(date.dal)} al ${dataIt(date.al)} · ` : ''}${qta(tot)} pezzi · incasso ${euro(incasso, 0)}${scaricato ? ' · magazzino già scaricato' : ''}</p>
-        <div class="bottoni">${scaricato ? '' : `<button class="btn piccolo" data-az="scarica" data-p="${esc(per)}">Scarica il magazzino</button>`}<button class="btn piccolo" data-az="vend-rinomina">Rinomina</button><button class="btn piccolo" data-az="vend-elimina">Elimina il periodo</button></div></div>
+      <div class="card"><h3>${esc(per)}</h3><p class="tenue">${date ? `dal ${dataIt(date.dal)} al ${dataIt(date.al)} · ` : ''}${qta(tot)} pezzi · incasso ${euro(incasso, 0)}</p>
+        <div class="bottoni"><button class="btn piccolo" data-az="vend-rinomina">Rinomina</button><button class="btn piccolo" data-az="vend-elimina">Elimina il periodo</button></div></div>
       <input class="cerca" placeholder="Cerca una ricetta" value="${esc(ui.vendFiltro || '')}" data-filtro="vendFiltro">
       <div class="griglia-vend">${blocchi}</div>
       <p class="tenue piccolo">Scegli il periodo in alto e scrivi quanti pezzi hai venduto: si salva da solo. I periodi possono essere lunghi quanto vuoi (un mese, una stagione, un anno).</p>`
@@ -1097,7 +1101,7 @@
         <label>Segnala gli aumenti a partire da (%)<input type="number" step="any" data-imp="sogliaAumento" value="${esc(im.sogliaAumento)}"></label></div>
       <div class="card form"><h3>Fatture</h3>
         <label class="interruttore"><input type="checkbox" data-az="imp-bool" data-k="autoCrea" ${im.autoCrea !== false ? 'checked' : ''}> Crea in automatico i prodotti nuovi che arrivano dalle fatture</label>
-        <label class="interruttore"><input type="checkbox" data-az="imp-bool" data-k="autoRegistra" ${im.autoRegistra !== false ? 'checked' : ''}> Registra subito le fatture complete (prezzi e magazzino si aggiornano da soli)</label>
+        <label class="interruttore"><input type="checkbox" data-az="imp-bool" data-k="autoRegistra" ${im.autoRegistra !== false ? 'checked' : ''}> Registra subito le fatture complete (i prezzi si aggiornano da soli)</label>
         <p class="tenue piccolo">Le spese di trasporto, le cauzioni e simili vengono saltate da sole. Le fatture lette da foto restano sempre da controllare prima di registrarle.</p></div>
       <div class="card form"><h3>Casella delle fatture</h3>
         <p class="tenue piccolo">L'indirizzo dell'app web creata nella casella Gmail delle fatture e la parola segreta scritta nel suo programma. Il gestionale la controlla da solo ogni volta che lo apri.</p>
@@ -1375,9 +1379,6 @@
     // fatture di esempio
     S.fatture.filter(f => /ESEMPIO/i.test(f.numero || '') || /ESEMPIO/i.test(f.fornitoreNome || '')).forEach(f => { M.annullaFattura(f); });
     S.fatture = S.fatture.filter(f => !(/ESEMPIO/i.test(f.numero || '') || /ESEMPIO/i.test(f.fornitoreNome || '')));
-    // magazzino: le giacenze del foglio sono vecchie e le fatture sommate da sole non dicono cosa c'è: si riparte da zero (e dalla prima conta)
-    S.prodotti.forEach(p => { p.giacenza = 0; });
-    S.fatture.forEach(f => { f.magazzino = false; });
     // fornitori scritti a mano: se c'è quello vero delle fatture, unisco; se non serve a nessuno, lo tolgo
     const conFatture = new Set(S.fatture.map(f => f.fornitoreId));
     S.fornitori.filter(f => !conFatture.has(f.id)).forEach(f => {
@@ -1601,7 +1602,7 @@
     if (d.fmtSel) { ui[d.fmtSel] = el.value; if (el.value && (ui.fmtFiltro || 'ricette') === 'ricette') ui.fmtFiltro = 'tutti'; ui.fmtIdx = 0; ridisegnaMantenendo(); return; }
     if (d.fmtRighe) {
       const n = numDa(el.value); if (!n || n <= 0) return;
-      M.cambiaPezziPerRiga(d.fmtRighe, d.fattura, n); const pp = M.prodotto(d.fmtRighe); if (pp) { delete pp.dubbio; if (pp.unita === 'pz' && n > 1 && /cartone|confezione|scatola|pezzo/i.test(pp.confezione)) pp.confezione = 'pezzo'; } salva(); ridisegnaMantenendo(); avviso('Prezzi e magazzino ricalcolati.'); return;
+      M.cambiaPezziPerRiga(d.fmtRighe, d.fattura, n); const pp = M.prodotto(d.fmtRighe); if (pp) { delete pp.dubbio; if (pp.unita === 'pz' && n > 1 && /cartone|confezione|scatola|pezzo/i.test(pp.confezione)) pp.confezione = 'pezzo'; } salva(); ridisegnaMantenendo(); avviso('Prezzi ricalcolati.'); return;
     }
     if (d.ctrl) {
       const p = M.prodotto(d.ctrl); if (!p) return;
