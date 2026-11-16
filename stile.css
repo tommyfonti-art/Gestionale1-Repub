@@ -116,3 +116,5 @@ input.mini.largo { width: 140px; text-align: left; }
 .toast { position: fixed; left: 50%; bottom: calc(90px + env(safe-area-inset-bottom)); transform: translateX(-50%); background: #1d1b18; color: #fff; padding: 11px 18px; border-radius: 999px; font-size: 14px; z-index: 30; transition: opacity .4s; }
 .toast.via { opacity: 0; }
 @media (min-width: 700px) { .kpi-griglia { grid-template-columns: repeat(4, 1fr); } .griglia-voci { grid-template-columns: repeat(3, 1fr); } }
+.g-num { font-size: 10px; font-weight: 700; fill: #fff; }
+.num { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; color: #fff; font-size: 11px; font-weight: 700; margin-right: 8px; vertical-align: 1px; }

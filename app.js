@@ -564,15 +564,15 @@
     const NOMI = { vincenti: ['Vincenti', 'vendono tanto e rendono tanto: non toccarli'], rendere: ['Da far rendere di più', 'vendono tanto ma rendono poco: rivedi costo o prezzo'], spingere: ['Da spingere', 'rendono bene ma vendono poco: mettili in vista'], ripensare: ['Da ripensare', 'vendono poco e rendono poco'] };
     const W = 340, H = 260, P = 34;
     const maxQ = Math.max(...voci.map(x => x.q)), maxM = Math.max(...voci.map(x => x.i.margine)), minM = Math.min(0, ...voci.map(x => x.i.margine));
-    const X = q => P + q / maxQ * (W - P - 10), Y = m => H - P - (m - minM) / (maxM - minM || 1) * (H - P - 14);
+    const X = q => P + 10 + q / maxQ * (W - P - 24), Y = m => H - P - 10 - (m - minM) / (maxM - minM || 1) * (H - P - 30);
     const col = { vincenti: 'var(--verde)', rendere: 'var(--giallo)', spingere: 'var(--accento)', ripensare: 'var(--rosso)' };
     html += `<div class="card"><svg class="mappa" viewBox="0 0 ${W} ${H}">
       <line x1="${X(sogliaQ)}" y1="8" x2="${X(sogliaQ)}" y2="${H - P}" class="asse-s"/><line x1="${P}" y1="${Y(sogliaM)}" x2="${W - 6}" y2="${Y(sogliaM)}" class="asse-s"/>
       <line x1="${P}" y1="${H - P}" x2="${W - 6}" y2="${H - P}" class="asse"/><line x1="${P}" y1="8" x2="${P}" y2="${H - P}" class="asse"/>
       <text x="${W / 2}" y="${H - 8}" text-anchor="middle" class="g-x">quanto vende →</text><text x="12" y="${H / 2}" transform="rotate(-90 12 ${H / 2})" text-anchor="middle" class="g-x">quanto rende a pezzo →</text>
-      ${voci.slice().sort((a, b) => a.q - b.q).map((x, k) => { const cx = X(x.q), cy = Y(x.i.margine); const anc = cx > W - 70 ? 'end' : cx < P + 40 ? 'start' : 'middle'; const ty = k % 2 ? cy + 18 : cy - 10; return `<circle cx="${cx}" cy="${cy}" r="6" fill="${col[gruppo(x)]}"/><text x="${cx}" y="${ty}" text-anchor="${anc}" class="g-val">${esc(x.r.nome)}</text>`; }).join('')}
+      ${voci.map((x, k) => `<circle cx="${X(x.q)}" cy="${Y(x.i.margine)}" r="9" fill="${col[gruppo(x)]}" stroke="#fff" stroke-width="1.5"/><text x="${X(x.q)}" y="${Y(x.i.margine) + 3.5}" text-anchor="middle" class="g-num">${k + 1}</text>`).join('')}
     </svg><p class="tenue piccolo">Rende = margine a pezzo senza IVA (${euro(sogliaM)} di media). Vende = pezzi venduti (la soglia è il 70% della media, ${n2(sogliaQ, 0)} pezzi).</p></div>`;
-    html += Object.keys(NOMI).map(g => { const l = voci.filter(x => gruppo(x) === g); return l.length ? `<div class="card"><h3><span class="punto" style="background:${col[g]}"></span>${NOMI[g][0]}</h3><p class="tenue piccolo">${NOMI[g][1]}</p>${l.map(x => `<a class="riga" href="#/ricetta/${x.r.id}"><span>${esc(x.r.nome)}<small>${qta(x.q)} venduti</small></span><span class="destra">${euro(x.i.margine)}<small>a pezzo · ${euro(x.q * x.i.margine, 0)} in tutto</small></span></a>`).join('')}</div>` : ''; }).join('');
+    html += Object.keys(NOMI).map(g => { const l = voci.filter(x => gruppo(x) === g); return l.length ? `<div class="card"><h3><span class="punto" style="background:${col[g]}"></span>${NOMI[g][0]}</h3><p class="tenue piccolo">${NOMI[g][1]}</p>${l.map(x => `<a class="riga" href="#/ricetta/${x.r.id}"><span><span><span class="num" style="background:${col[g]}">${voci.indexOf(x) + 1}</span>${esc(x.r.nome)}</span><small>${qta(x.q)} venduti</small></span><span class="destra">${euro(x.i.margine)}<small>a pezzo · ${euro(x.q * x.i.margine, 0)} in tutto</small></span></a>`).join('')}</div>` : ''; }).join('');
     return { titolo: 'Mappa del menu', indietro: '#/altro', html };
   };
 
