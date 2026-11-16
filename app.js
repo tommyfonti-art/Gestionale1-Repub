@@ -597,15 +597,10 @@
         </div>
         <label>Si compra a<input data-ctrl="${p.id}" data-k="confezione" value="${esc(p.confezione)}" placeholder="bottiglia, kg, cartone…"></label>
         <div class="due">
-          <label>Dentro ci sono quanti pezzi<input type="number" step="any" inputmode="decimal" data-ctrl="${p.id}" data-k="pezziConf" value="${esc(p.pezziConf || 1)}"></label>
-          <label>Come si chiamano<input data-ctrl="${p.id}" data-k="nomePezzo" value="${esc(p.nomePezzo || '')}" placeholder="bottiglie, lattine, buste…"></label>
-        </div>
-        <div class="due">
-          <label>Ogni pezzo contiene<input type="number" step="any" inputmode="decimal" data-ctrl="${p.id}" data-k="perPezzo" value="${esc(Math.round(p.contenuto / (p.pezziConf || 1) * 1000) / 1000)}"></label>
+          <label>Che contiene<input type="number" step="any" inputmode="decimal" data-ctrl="${p.id}" data-k="contenuto" value="${esc(p.contenuto)}"></label>
           <label>Unità<select data-ctrl="${p.id}" data-k="unita">${['ml', 'g', 'pz'].map(u => `<option ${p.unita === u ? 'selected' : ''}>${u}</option>`).join('')}</select></label>
         </div>
-        <p class="msg grigio"><b>Riassunto:</b> 1 ${esc(p.confezione)}${(p.pezziConf || 1) > 1 ? ` = ${qta(p.pezziConf)} ${esc(p.nomePezzo || 'pezzi')} da ${qta(p.contenuto / p.pezziConf)} ${esc(p.unita)}` : ''} · in tutto ${qta(p.contenuto)} ${esc(p.unita)}</p>
-        <p class="tenue piccolo">Esempi: bottiglia da 700 ml · kg da 1000 g · cartone da 12 bottiglie da 1000 ml · fusto da 30000 ml.</p>
+        <p class="tenue piccolo">Esempi: bottiglia da 700 ml · kg da 1000 g · cartone da 24 pz · fusto da 30000 ml.</p>
         ${p.unita === 'pz' ? '<p class="tenue piccolo">Venduto a pezzo ma nelle ricette lo usi a grammi o millilitri? Metti «pezzo», quanti grammi (o ml) pesa un pezzo e l\'unità g (o ml): il costo al grammo si calcola da solo.</p>' : ''}
       </div>
       ${conto}
@@ -1623,9 +1618,7 @@
     }
     if (d.ctrl) {
       const p = M.prodotto(d.ctrl); if (!p) return;
-      if (d.k === 'pezziConf') { const v = numDa(el.value) || 1, per = p.contenuto / (p.pezziConf || 1); p.pezziConf = v; p.contenuto = Math.round(v * per * 1000) / 1000; }
-      else if (d.k === 'perPezzo') p.contenuto = Math.round((numDa(el.value) || 1) * (p.pezziConf || 1) * 1000) / 1000;
-      else p[d.k] = d.k === 'contenuto' ? (numDa(el.value) || 1) : el.value.trim();
+      p[d.k] = d.k === 'contenuto' ? (numDa(el.value) || 1) : el.value.trim();
       salva(); if (d.k !== 'nomeBreve') ridisegnaMantenendo(); return;
     }
     if (d.azChange === 'ctrl-unisci' && el.value) {
