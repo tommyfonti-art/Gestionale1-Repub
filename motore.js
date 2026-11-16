@@ -394,6 +394,22 @@
   // fornitori che non vendono merce: bollette, banche, pagamenti, assicurazioni, SIAE...
   const SERVIZI = /\benel\b|\beni\b|enimoov|plenitude|hera\b|a2a\b|edison|nova aeg|iren\b|acea\b|sorgenia|\btim\b|telecom|vodafone|fastweb|wind ?tre|iliad|nexi|sumup|satispay|paypal|s\.?i\.?a\.?e|assicura|generali|unipol|allianz|reale mutua|leasing|banca|banco|poste italiane|amazon web|google|microsoft|apple|aruba|register|sistemi s\.?p\.?a|studio|commercialist|consulen|noleggio|autostrad|telepass/i;
   M.pareServizi = (nome) => SERVIZI.test(nome || '');
+
+  // cambia quante confezioni ci sono in una riga di fattura (es. CT da 6): ricalcola prezzi e magazzino di quel prodotto
+  M.cambiaPezziPerRiga = function (pId, fatturaId, nuovo) {
+    const p = M.prodotto(pId); const f0 = S.fatture.find(x => x.id === fatturaId); if (!p || !f0) return;
+    const r0 = f0.righe.find(rg => rg.prodottoId === pId && !rg.ignora); if (!r0) return;
+    const vecchio = Number(r0.confezioniPerUnita) || 1; if (vecchio === nuovo) return;
+    const stessa = (rg) => rg.prodottoId === pId && ((r0.codice && rg.codice === r0.codice) || norm(rg.descrizione) === norm(r0.descrizione));
+    const k = nuovo / vecchio;
+    S.fatture.forEach(f => {
+      if (f.fornitoreId !== f0.fornitoreId) return;
+      let toccata = false;
+      f.righe.forEach(rg => { if (stessa(rg)) { const pr = Number(rg.confezioniPerUnita) || 1; if (f.stato === 'registrata') p.giacenza = Math.round(((Number(p.giacenza) || 0) + (f.tipoDoc === 'TD04' ? -1 : 1) * rg.quantita * pr * (k - 1)) * 1000) / 1000; rg.confezioniPerUnita = pr * k; toccata = true; } });
+      if (toccata) (p.prezzi || []).forEach(x => { if (x.fatturaId === f.id) { x.prezzo = x.prezzo / k; if (x.listino) x.listino = x.listino / k; if (x.confezioni) x.confezioni = x.confezioni * k; } });
+    });
+    (p.articoli || []).forEach(a => { if (a.fornitoreId === f0.fornitoreId && ((r0.codice && a.codice === r0.codice) || norm(a.descrizione) === norm(r0.descrizione))) a.confezioniPerUnita = nuovo; });
+  };
   M.creaProdottiDaFattura = function (f) {
     if (f.stato === 'registrata') return [];
     const forn = M.assicuraFornitore(f);

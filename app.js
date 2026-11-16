@@ -332,6 +332,7 @@
     return {
       titolo: 'Prodotti', azione: '<a class="btn-top" href="#/modifica-prodotto/nuovo">＋ Nuovo</a>', html: `
       ${nuoviDaCompletare() ? `<a class="btn primario largo" href="#/controllo">Controllo rapido dei prodotti nuovi (${nuoviDaCompletare()})</a>` : ''}
+      <a class="btn largo" href="#/formati">Ricontrolla i formati, uno dopo l'altro</a>
       <input class="cerca" type="search" placeholder="Cerca un prodotto" value="${esc(ui.filtroProdotti)}" data-filtro="prodotti">
       <div class="chips">${(nuoviDaCompletare() ? [['__nuovi', 'Da completare (' + nuoviDaCompletare() + ')']] : []).concat([['Tutte', 'Tutte']], categorie().map(c => [c, c])).map(([v, t]) => `<button class="chip ${ui.categoria === v ? 'on' : ''} ${v === '__nuovi' ? 'giallo' : ''}" data-az="categoria" data-v="${esc(v)}">${esc(t)}</button>`).join('')}</div>
       <div class="card lista" id="lista">${listaProdotti()}</div>`
@@ -517,6 +518,61 @@
         <div class="bottoni"><button class="btn piccolo" data-az="ctrl-indietro">‹ Precedente</button><button class="btn piccolo" data-az="ctrl-salta">Salta ›</button><a class="btn piccolo" href="#/prodotto/${p.id}">Scheda completa</a></div>
       </div></div>
       <p class="tenue piccolo">Sul Mac: Invio = «È giusto», freccia destra = salta.</p>`
+    };
+  };
+
+
+  // ----- Ricontrollo dei formati, uno dopo l'altro (anche dei prodotti già accettati) -----
+  function listaFormati() {
+    const usati = new Set();
+    S.ricette.forEach(r => (r.righe || []).concat(r.asporto || []).forEach(rg => { const m = /^p:(.+)$/.exec(rg.rif); if (m) usati.add(m[1]); }));
+    const filtro = ui.fmtFiltro || 'ricette';
+    return S.prodotti.filter(p => !p.speciale && (filtro === 'tutti' || (filtro === 'ricette' ? usati.has(p.id) : !p.formatoOk)))
+      .sort((x, y) => (x.categoria || '').localeCompare(y.categoria || '') || x.nomeBreve.localeCompare(y.nomeBreve));
+  }
+  function ultimaRiga(p) {
+    let best = null;
+    S.fatture.forEach(f => f.righe.forEach(rg => { if (rg.prodottoId === p.id && !rg.ignora && (!best || (f.data || '') > (best.f.data || ''))) best = { f, rg }; }));
+    return best;
+  }
+  PAGINE.formati = function () {
+    const lista = listaFormati();
+    const filtro = ui.fmtFiltro || 'ricette';
+    const chips = `<div class="chips">${[['ricette', 'Usati nelle ricette'], ['dacontrollare', 'Non ancora ricontrollati'], ['tutti', 'Tutti']].map(([k, v]) => `<button class="chip ${filtro === k ? 'on' : ''}" data-az="fmt-filtro" data-v="${k}">${v}</button>`).join('')}</div>`;
+    if (!lista.length) return { titolo: 'Ricontrollo formati', indietro: '#/prodotti', html: chips + '<div class="card evidenza"><h3>Finito</h3><p>Non ci sono prodotti in questo elenco.</p><a class="btn primario" href="#/prodotti">Vai ai prodotti</a></div>' };
+    if (ui.fmtIdx == null || ui.fmtIdx >= lista.length) ui.fmtIdx = 0;
+    const p = lista[ui.fmtIdx];
+    const forn = M.fornitore(p.fornitoreId);
+    const ur = ultimaRiga(p);
+    const art = ur ? (p.articoli || []).find(a => a.fornitoreId === ur.f.fornitoreId && ((ur.rg.codice && a.codice === ur.rg.codice) || a.descrizione === ur.rg.descrizione)) : null;
+    const perRiga = ur ? (Number(ur.rg.confezioniPerUnita) || 1) : null;
+    const pr = M.prezzo(p), rif = M.prezzoRiferimento(p);
+    const usoRic = M.usatoIn('p:' + p.id).tutte.length;
+    const conto = ur ? `<div class="card form"><h3>Il conto, passo per passo</h3>
+        <p>In fattura${ur.f.fornitoreNome ? ' di <b>' + esc(forn ? forn.nome : ur.f.fornitoreNome) + '</b>' : ''} del ${dataIt(ur.f.data)}:<br><b>${esc(ur.rg.descrizione)}</b><br>${qta(ur.rg.quantita)} ${esc(ur.rg.um || '')} a ${euro(ur.rg.prezzoUnitario, 3)}</p>
+        <label>Ogni riga di fattura (1 ${esc(ur.rg.um || 'pezzo')}) contiene quante «${esc(p.confezione)}»?<input type="number" step="any" inputmode="decimal" data-fmt-righe="${p.id}" data-fattura="${ur.f.id}" value="${esc(perRiga)}"></label>
+        <p class="msg grigio">${pr != null ? `Quindi: <b>${euro(pr, 3)}</b> a ${esc(p.confezione)} · ${esc(p.confezione)} da ${qta(p.contenuto)} ${esc(p.unita)} · <b>${rif ? n2(rif.valore) + ' ' + rif.etichetta : ''}</b>` : 'Senza prezzo.'}</p>
+      </div>` : `<div class="card"><h3>Prezzo</h3><p>${pr != null ? `${euro(pr, 3)} a ${esc(p.confezione)} · <b>${rif ? n2(rif.valore) + ' ' + rif.etichetta : ''}</b>` : 'Senza prezzo.'}</p><p class="tenue piccolo">Non arriva da nessuna fattura: il prezzo è quello del foglio o messo a mano.</p></div>`;
+    return {
+      titolo: `Ricontrollo formati · ${ui.fmtIdx + 1} di ${lista.length}`, indietro: '#/prodotti', html: chips + `
+      <div class="ctrl">
+      <div class="card form">
+        <h3 class="grande-t">${esc(p.nomeBreve)}${p.formatoOk ? ' <span class="badge verde">ricontrollato</span>' : ''}</h3>
+        <div class="sottotitolo">${esc(p.nomeCompleto)}<br>${esc(forn ? forn.nome : 'senza fornitore')} · ${esc(p.categoria || '')}${usoRic ? ` · usato in ${usoRic} ${usoRic === 1 ? 'ricetta' : 'ricette'}` : ''}</div>
+        <label>Nome breve<input data-ctrl="${p.id}" data-k="nomeBreve" value="${esc(p.nomeBreve)}"></label>
+        <label>Si compra a<input data-ctrl="${p.id}" data-k="confezione" value="${esc(p.confezione)}" placeholder="bottiglia, kg, cartone…"></label>
+        <div class="due">
+          <label>Che contiene<input type="number" step="any" inputmode="decimal" data-ctrl="${p.id}" data-k="contenuto" value="${esc(p.contenuto)}"></label>
+          <label>Unità<select data-ctrl="${p.id}" data-k="unita">${['ml', 'g', 'pz'].map(u => `<option ${p.unita === u ? 'selected' : ''}>${u}</option>`).join('')}</select></label>
+        </div>
+        <p class="tenue piccolo">Esempi: bottiglia da 700 ml · kg da 1000 g · cartone da 24 pz · fusto da 30000 ml.</p>
+      </div>
+      ${conto}
+      <div class="bottoni colonna ctrl-scelte">
+        <button class="btn primario grande" data-az="fmt-giusto" data-id="${p.id}">✓ Giusto, avanti</button>
+        <div class="bottoni"><button class="btn piccolo" data-az="fmt-indietro">‹ Precedente</button><button class="btn piccolo" data-az="fmt-salta">Salta ›</button><a class="btn piccolo" href="#/prodotto/${p.id}">Scheda completa</a></div>
+      </div></div>
+      <p class="tenue piccolo">Sul Mac: Invio = «Giusto, avanti», frecce = precedente e successivo. Le modifiche si salvano da sole e il costo delle ricette si aggiorna subito.</p>`
     };
   };
 
@@ -1001,7 +1057,7 @@
   // ---------- Disegno ----------
   const ALTRE = [['fornitori', 'Fornitori'], ['magazzino', 'Magazzino'], ['ordini', 'Ordini'], ['scadenze', 'Scadenze'], ['vendite', 'Vendite'], ['mappa', 'Mappa del menu'], ['simulatore', 'Simulatore'], ['eventi', 'Eventi'], ['olio', 'Costo olio'], ['impostazioni', 'Impostazioni']];
   const TAB = [['pannello', 'Pannello', 'M3 12l9-8 9 8v8a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z'], ['prodotti', 'Prodotti', 'M4 7l8-4 8 4v10l-8 4-8-4zM4 7l8 4 8-4M12 11v10'], ['ricette', 'Ricette', 'M6 3h12M8 3v6l-4 12h16L16 9V3'], ['fatture', 'Fatture', 'M6 2h9l5 5v15H6zM14 2v6h6M9 13h8M9 17h8'], ['altro', 'Altro', 'M5 12h.01M12 12h.01M19 12h.01']];
-  const SEZIONE = { 'controllo-fatture': 'fatture', controllo: 'prodotti', prodotto: 'prodotti', 'modifica-prodotto': 'prodotti', ricetta: 'ricette', 'modifica-ricetta': 'ricette', fattura: 'fatture' };
+  const SEZIONE = { 'controllo-fatture': 'fatture', controllo: 'prodotti', formati: 'prodotti', prodotto: 'prodotti', 'modifica-prodotto': 'prodotti', ricetta: 'ricette', 'modifica-ricetta': 'ricette', fattura: 'fatture' };
   function disegna() {
     if (!S) return;
     const [, nome, arg] = (location.hash || '#/pannello').split('/');
@@ -1230,6 +1286,10 @@
   AZ['ctrlf-merce'] = (el) => { const f = M.fornitore(el.dataset.id); const n = M.togliServizi(f.id); f.controllato = true; ctrlFAvanti(); avviso(`${f.nome}: creati ${n} prodotti.`); };
   AZ['ctrlf-salta'] = () => { ui.ctrlFIdx = (ui.ctrlFIdx || 0) + 1; ridisegnaMantenendo(); };
   AZ['ctrlf-indietro'] = () => { ui.ctrlFIdx = Math.max(0, (ui.ctrlFIdx || 0) - 1); ridisegnaMantenendo(); };
+  AZ['fmt-filtro'] = (el) => { ui.fmtFiltro = el.dataset.v; ui.fmtIdx = 0; ridisegnaMantenendo(); };
+  AZ['fmt-giusto'] = (el) => { const p = M.prodotto(el.dataset.id); p.formatoOk = true; p.daCompletare = false; if ((ui.fmtFiltro || 'ricette') !== 'dacontrollare') ui.fmtIdx = (ui.fmtIdx || 0) + 1; salva(); ridisegnaMantenendo(); window.scrollTo(0, 0); };
+  AZ['fmt-salta'] = () => { ui.fmtIdx = (ui.fmtIdx || 0) + 1; ridisegnaMantenendo(); window.scrollTo(0, 0); };
+  AZ['fmt-indietro'] = () => { ui.fmtIdx = Math.max(0, (ui.fmtIdx || 0) - 1); ridisegnaMantenendo(); window.scrollTo(0, 0); };
   const ctrlAvanti = (rimosso) => { if (!rimosso) ui.ctrlIdx = (ui.ctrlIdx || 0) + 1; salva(); ridisegnaMantenendo(); };
   AZ['ctrl-giusto'] = (el) => { M.prodotto(el.dataset.id).daCompletare = false; ctrlAvanti(true); };
   AZ['ctrl-materiale'] = (el) => { const p = M.prodotto(el.dataset.id); p.categoria = 'Non alimentare'; p.daCompletare = false; ctrlAvanti(true); avviso('Segnato come materiale.'); };
@@ -1332,9 +1392,10 @@
   AZ['porta-locali'] = () => { if (confirm('Porto online le fatture salvate su questo dispositivo? Quelle già presenti vengono saltate.')) portaFattureLocali(); };
 
   document.addEventListener('keydown', (e) => {
-    if (!(location.hash || '').startsWith('#/controllo') || /INPUT|SELECT|TEXTAREA/.test((e.target.tagName || ''))) return;
-    const f = (location.hash || '').startsWith('#/controllo-fatture') ? 'ctrlf' : 'ctrl';
-    if (e.key === 'Enter') { const b = $(f === 'ctrlf' ? '[data-az="ctrlf-ok"]' : '[data-az="ctrl-giusto"]'); if (b) { e.preventDefault(); b.click(); } }
+    const h = location.hash || '';
+    if (!(h.startsWith('#/controllo') || h.startsWith('#/formati')) || /INPUT|SELECT|TEXTAREA/.test((e.target.tagName || ''))) return;
+    const f = h.startsWith('#/controllo-fatture') ? 'ctrlf' : h.startsWith('#/formati') ? 'fmt' : 'ctrl';
+    if (e.key === 'Enter') { const b = $({ ctrlf: '[data-az="ctrlf-ok"]', ctrl: '[data-az="ctrl-giusto"]', fmt: '[data-az="fmt-giusto"]' }[f]); if (b) { e.preventDefault(); b.click(); } }
     if (e.key === 'ArrowRight') { e.preventDefault(); AZ[f + '-salta'](); }
     if (e.key === 'ArrowLeft') { e.preventDefault(); AZ[f + '-indietro'](); }
   });
@@ -1387,6 +1448,10 @@
         if (rg.prodottoId) { const p = M.prodotto(rg.prodottoId); const a = (p.articoli || []).find(x => x.fornitoreId === f.fornitoreId); rg.confezioniPerUnita = a ? a.confezioniPerUnita : 1; }
       } else rg.confezioniPerUnita = numDa(el.value) || 1;
       salva(); ridisegnaMantenendo(); return;
+    }
+    if (d.fmtRighe) {
+      const n = numDa(el.value); if (!n || n <= 0) return;
+      M.cambiaPezziPerRiga(d.fmtRighe, d.fattura, n); salva(); ridisegnaMantenendo(); avviso('Prezzi e magazzino ricalcolati.'); return;
     }
     if (d.ctrl) {
       const p = M.prodotto(d.ctrl); if (!p) return;
