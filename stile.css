@@ -175,3 +175,9 @@ input.mini.largo { width: 140px; text-align: left; }
 .fr-testa > span { white-space: nowrap; }
 .card.evidenza.giallo { border-color: var(--giallo); background: #fffaf0; }
 .chip.giallo:not(.on) { border-color: var(--giallo); color: #8a5d00; }
+.campo-occhio { position: relative; display: block; }
+.campo-occhio input { padding-right: 46px !important; }
+.occhio { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); margin-top: 2px; width: 36px; height: 36px; border: 0; background: none; cursor: pointer; color: var(--grigio); display: flex; align-items: center; justify-content: center; }
+.occhio svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.occhio.aperto { color: var(--accento); }
+.accesso { max-width: 420px; margin: 40px auto; }

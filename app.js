@@ -26,6 +26,15 @@
     try { const t = localStorage.getItem(CHIAVE); if (t) return JSON.parse(t); } catch (e) { /* niente */ }
     return JSON.parse(JSON.stringify(window.DATI_INIZIALI));
   }
+  const OCCHIO = '<svg viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+  // l'occhio accanto alle password: mostra o nasconde quello che hai scritto
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-occhio]'); if (!b) return;
+    e.preventDefault();
+    const i = document.getElementById(b.dataset.occhio); if (!i) return;
+    i.type = i.type === 'password' ? 'text' : 'password';
+    b.classList.toggle('aperto', i.type === 'text');
+  });
   const CLOUD = !!(window.FIREBASE_CONFIG && window.FIREBASE_CONFIG.apiKey);
   function salva() {
     M.svuota();
@@ -92,7 +101,7 @@
     $('#tabbar').innerHTML = ''; $('#contenuto').className = '';
     $('#contenuto').innerHTML = `<div class="card form accesso"><h3>Entra nel gestionale</h3>${msg ? `<p class="msg rosso">${esc(msg)}</p>` : ''}
       <label>Email<input id="acc-email" type="email" autocomplete="username" autocapitalize="none"></label>
-      <label>Password<input id="acc-pw" type="password" autocomplete="current-password"></label>
+      <label>Password<span class="campo-occhio"><input id="acc-pw" type="password" autocomplete="current-password"><button type="button" class="occhio" data-occhio="acc-pw" aria-label="Mostra la password">${OCCHIO}</button></span></label>
       <div class="bottoni colonna"><button class="btn primario" id="acc-ok">Entra</button><button class="btn piccolo" id="acc-dim">Ho dimenticato la password</button></div></div>`;
     const entra = () => firebase.auth().signInWithEmailAndPassword($('#acc-email').value.trim(), $('#acc-pw').value)
       .catch(e => schermataAccesso(/password|credential|user-not-found|invalid/i.test(e.code || '') ? 'Email o password sbagliate.' : 'Accesso non riuscito: ' + e.message));
@@ -833,11 +842,11 @@
       <div class="card form"><h3>Casella delle fatture</h3>
         <p class="tenue piccolo">L'indirizzo dell'app web creata nella casella Gmail delle fatture e la parola segreta scritta nel suo programma. Il gestionale la controlla da solo ogni volta che lo apri.</p>
         <label>Indirizzo dell'app web<input data-cas="url" value="${esc(S.casella.url)}" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off"></label>
-        <label>Parola segreta<input type="password" data-cas="chiave" value="${esc(S.casella.chiave)}" autocomplete="off"></label>
+        <label>Parola segreta<span class="campo-occhio"><input type="password" id="cas-chiave" data-cas="chiave" value="${esc(S.casella.chiave)}" autocomplete="off"><button type="button" class="occhio" data-occhio="cas-chiave" aria-label="Mostra">${OCCHIO}</button></span></label>
         <button class="btn piccolo" data-az="controlla-casella">Prova adesso</button></div>
       <div class="card form"><h3>Lettura delle foto</h3>
         <p class="tenue piccolo">Serve una chiave della piattaforma per sviluppatori di Anthropic (console.anthropic.com), a consumo: pochi centesimi a foto. Resta salvata solo su questo dispositivo.</p>
-        <label>Chiave<input type="password" autocomplete="off" data-imp="chiaveClaude" value="${esc(im.chiaveClaude)}" placeholder="sk-ant-…"></label>
+        <label>Chiave<span class="campo-occhio"><input type="password" id="imp-chiave" autocomplete="off" data-imp="chiaveClaude" value="${esc(im.chiaveClaude)}" placeholder="sk-ant-…"><button type="button" class="occhio" data-occhio="imp-chiave" aria-label="Mostra">${OCCHIO}</button></span></label>
         <label>Modello<input data-imp="modelloClaude" value="${esc(im.modelloClaude)}"></label></div>
       ${CLOUD && utente ? `<div class="card"><h3>Account</h3><p>Sei entrato come <b>${esc(utente.email)}</b>. I dati sono online e uguali su tutti i dispositivi.</p>
         <div class="bottoni colonna">${(datiDelDispositivo() || {}).fatture && datiDelDispositivo().fatture.length ? `<button class="btn" data-az="porta-locali">Porta online le fatture salvate su questo dispositivo (${datiDelDispositivo().fatture.length})</button>` : ''}<button class="btn" data-az="esci">Esci</button></div></div>` : ''}
