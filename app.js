@@ -1618,7 +1618,7 @@
     if (/BURGER/.test(n)) return 'panino';
     if (/SPIZZICARE|FRITT/.test(n)) return 'fritto';
     if (/DESSERT|DOLC/.test(n)) return 'dolce';
-    if (/SALSE|INSALAT/.test(n)) return 'altro';
+    if (/SALSE|INSALAT|COPERT/.test(n)) return 'altro';
     if (/BIBITE|BEVANDE|BIRR|VINI|CAFFETTERIA|TISANA|ACQUA/.test(n)) return 'bevanda';
     if (/ - (PICCOLA|MEDIA|PINTA|MEZZA PINTA|CARAFFA|BOCCALE)/.test(tutti)) return 'bevanda';
     if (/\bACQUA\b|MEZZA (NAT|GAS)/.test(tutti)) return 'bevanda';
@@ -1634,7 +1634,8 @@
     const perCat = {};
     P.forEach(p => {
       const desc = String(p['Descrizione'] || '').trim(); if (!desc) return;
-      const cat = String(p['Categoria'] || 'Senza categoria');
+      // il coperto ha un costo (tovagliette, tovaglioli, pane…): diventa una ricetta come le altre
+      const cat = /^coperto$/i.test(desc) ? 'COPERTO' : String(p['Categoria'] || 'Senza categoria');
       const vv = varDi[p['ID']] || [];
       // varianti che sono solo «quanti bicchieri» (vino, acqua): stessa ricetta del prodotto
       const soloBicchieri = (et) => /^(NO )?BICC\.?\s*\d*$|^\d+$/i.test(et);
