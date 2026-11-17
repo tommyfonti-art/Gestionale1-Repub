@@ -316,11 +316,34 @@
   // ---------- Pagine ----------
   const PAGINE = {};
 
+  // Analisi del menu per un periodo: quanto vende e quanto rende ogni ricetta con gli ingredienti completi
+  const GRUPPI_MENU = { tutto: null, bar: ['drink', 'premium', 'bevanda'], cucina: ['panino', 'fritto', 'combo', 'dolce', 'altro'] };
+  const completa = (r) => { const c = M.costoRicetta(r); return c.totale > 0 && !c.mancanti.length && !/^Ricetta da completare/.test(r.note || ''); };
+  function analisiMenu(per, gruppo) {
+    const tipi = GRUPPI_MENU[gruppo];
+    const vendute = S.ricette.filter(r => r.tipo !== 'semilavorato' && (!tipi || tipi.includes(r.tipo)) && ((r.vendite || {})[per] || 0) > 0);
+    const voci = vendute.filter(completa).map(r => { const i = M.indicatori(r); return { r, q: r.vendite[per], i, tot: r.vendite[per] * i.margine }; }).filter(x => x.i.margine != null);
+    const pezziTutti = vendute.reduce((s, r) => s + r.vendite[per], 0), pezziOk = voci.reduce((s, x) => s + x.q, 0);
+    let gruppoDi = () => null, sogliaQ = 0, sogliaM = 0;
+    if (voci.length >= 2) {
+      sogliaQ = 0.7 * pezziOk / voci.length;
+      sogliaM = voci.reduce((s, x) => s + x.q * x.i.margine, 0) / pezziOk;
+      gruppoDi = (x) => x.q >= sogliaQ ? (x.i.margine >= sogliaM ? 'vincenti' : 'rendere') : (x.i.margine >= sogliaM ? 'spingere' : 'ripensare');
+    }
+    voci.forEach(x => { x.g = gruppoDi(x); });
+    return { vendute, voci, pezziTutti, pezziOk, sogliaQ, sogliaM };
+  }
+  const QUADRANTI = {
+    vincenti: ['Vincenti', 'Vendono tanto e fanno guadagnare tanto. Non toccarli.', 'var(--verde)'],
+    rendere: ['Da far rendere di più', 'Vendono tanto ma guadagnano poco a pezzo. Rivedi il costo o il prezzo.', 'var(--giallo)'],
+    spingere: ['Da spingere', 'Guadagnano bene ma vendono poco. Mettili in vista, consigliali.', 'var(--accento)'],
+    ripensare: ['Da ripensare', 'Vendono poco e guadagnano poco. Da cambiare o togliere.', 'var(--rosso)']
+  };
+
   PAGINE.pannello = function () {
-    const bar = S.ricette.filter(r => ['drink', 'premium', 'bevanda'].includes(r.tipo)).map(r => M.indicatori(r)).filter(i => i.incidenza != null);
-    const cucina = S.ricette.filter(r => ['panino', 'fritto', 'dolce'].includes(r.tipo)).map(r => M.indicatori(r)).filter(i => i.incidenza != null);
-    const media = (l) => l.length ? l.reduce((s, i) => s + i.incidenza, 0) / l.length : null;
-    const oggi = M.oggi(); const tra30 = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10);
+    const conVendite = S.periodiVendita.filter(pp => S.ricette.some(r => (r.vendite || {})[pp]));
+    const per = conVendite.includes(ui.panPer) ? ui.panPer : conVendite[conVendite.length - 1];
+    const gruppo = ui.panGruppo || 'tutto';
     const aumenti = [];
     S.prodotti.forEach(p => {
       const l = (p.prezzi || []).slice().sort((a, b) => a.data < b.data ? -1 : 1);
@@ -330,30 +353,64 @@
       if (Math.abs(v) >= (S.impostazioni.sogliaAumento || 3)) aumenti.push({ p, v, data: b.data });
     });
     aumenti.sort((a, b) => a.data < b.data ? 1 : -1);
-    const sotto = S.ricette.filter(r => r.tipo !== 'semilavorato' && M.indicatori(r).sotto);
+    const sotto = S.ricette.filter(r => r.tipo !== 'semilavorato' && completa(r) && M.indicatori(r).sotto);
     const scorta = M.sottoScorta();
     const daFare = S.fatture.filter(f => f.stato !== 'registrata');
-    return {
-      titolo: 'Gestionale Repub', html: `
+
+    // ---- com'è andato il periodo
+    let andamento = '';
+    if (per) {
+      const A = analisiMenu(per, gruppo);
+      const iva = 1 + (S.impostazioni.ivaVendita || 0) / 100;
+      const incassoRic = A.vendute.reduce((s, r) => s + r.vendite[per] * (r.prezzo || 0), 0);
+      const cassa = gruppo === 'tutto' && S.periodiCassa[per] ? S.periodiCassa[per].incasso : null;
+      const nettoOk = A.voci.reduce((s, x) => s + x.q * x.i.netto, 0), costoOk = A.voci.reduce((s, x) => s + x.q * x.i.costo, 0);
+      const su100 = nettoOk ? costoOk / nettoOk * 100 : null;
+      const copertura = A.pezziTutti ? A.pezziOk / A.pezziTutti : 0;
+      const daCompletare = A.vendute.filter(r => !completa(r)).sort((a, b) => b.vendite[per] - a.vendite[per]);
+      const scelte = `<div class="chips">${conVendite.map(pp => `<button class="chip ${per === pp ? 'on' : ''}" data-az="pan-per" data-v="${esc(pp)}">${esc(pp)}</button>`).join('')}</div>
+        <div class="chips sotto">${[['tutto', 'Tutto il locale'], ['bar', 'Bar'], ['cucina', 'Cucina']].map(([k, v]) => `<button class="chip ${gruppo === k ? 'on' : ''}" data-az="pan-gruppo" data-v="${k}">${v}</button>`).join('')}</div>`;
+      const top = (lista, titolo, spiega, valore) => `<div class="card"><h3>${titolo}</h3><p class="tenue piccolo">${spiega}</p>${lista.length ? lista.map((x, k) => `<a class="riga" href="#/ricetta/${x.r.id}"><span>${k + 1}. ${esc(x.r.nome)}</span><span class="destra">${valore(x)}</span></a>`).join('') : '<p class="tenue">Ancora nessuna ricetta completa venduta.</p>'}</div>`;
+      const piuVendute = A.vendute.slice().sort((a, b) => b.vendite[per] - a.vendite[per]).slice(0, 5).map(r => ({ r, q: r.vendite[per] }));
+      const piuGuadagno = A.voci.slice().sort((a, b) => b.tot - a.tot).slice(0, 5);
+      const menoAPezzo = A.voci.filter(x => x.i.molt != null).sort((a, b) => a.i.molt - b.i.molt).slice(0, 5);
+      andamento = `${scelte}
       <div class="kpi-griglia">
-        ${kpi('Incidenza media bar', perc(media(bar)), 'costo sul prezzo senza IVA')}
-        ${kpi('Incidenza media cucina', perc(media(cucina)), 'costo sul prezzo senza IVA')}
-        ${kpi('Valore del magazzino', euro(M.valoreMagazzino(), 0), 'dall\'ultimo inventario')}
-        ${kpi('Ricette', S.ricette.filter(r => r.tipo !== 'semilavorato').length, 'drink, cucina e dolci')}
+        ${kpi('Incasso', euro(cassa != null ? cassa : incassoRic, 0), cassa != null ? 'dalla cassa, IVA compresa' : 'pezzi venduti × prezzo, IVA compresa')}
+        ${kpi('Su 100 € incassati', su100 == null ? '—' : euro(su100, 0) + ' di merce', 'ingredienti, senza contare l\'IVA', su100 == null ? '' : su100 > 30 ? 'rosso' : su100 > 25 ? 'giallo' : 'verde')}
+        ${kpi('Guadagno sulla merce', euro(A.voci.reduce((s, x) => s + x.tot, 0), 0), 'incasso senza IVA meno ingredienti, prima di personale e spese')}
+        ${kpi('Calcolato su', Math.round(copertura * 100) + '% delle vendite', 'il resto non ha ancora la ricetta completa', copertura < 0.6 ? 'giallo' : '')}
       </div>
-      ${!S.fatture.length ? `<div class="card evidenza"><h3>Prova con una fattura</h3><p>Carica una fattura di esempio e guarda come l'app aggiorna da sola i costi di panini e drink.</p>
-        <div class="bottoni">${window.FATTURE_ESEMPIO.map((x, i) => `<button class="btn" data-az="esempio" data-i="${i}">${esc(x.nome)}</button>`).join('')}</div></div>` : ''}
+      ${daCompletare.length ? `<div class="card larga"><h3>Ricette vendute ma senza ingredienti completi (${daCompletare.length})</h3><p class="tenue piccolo">Finché non le completi i conti sono parziali. Parti da quelle che vendono di più:</p>
+        ${daCompletare.slice(0, 5).map(r => `<a class="riga" href="#/ricetta/${r.id}"><span>${esc(r.nome)}</span><span class="destra">${qta(r.vendite[per])} venduti</span></a>`).join('')}
+        <div class="bottoni"><button class="btn primario" data-az="pan-completa">Completale una per una, dalle più vendute</button></div></div>` : ''}
+      <div class="card larga"><h3>La mappa del menu · ${esc(per)}</h3>
+        <p class="tenue piccolo">Ogni ricetta finisce in una delle quattro caselle, secondo quanto vende e quanto fa guadagnare a pezzo rispetto alla media (${euro(A.sogliaM)} a pezzo).</p>
+        ${A.voci.length >= 2 ? `<div class="quadranti">${Object.entries(QUADRANTI).map(([k, [nome, spiega, col]]) => { const l = A.voci.filter(x => x.g === k).sort((a, b) => b.tot - a.tot); return `<div class="quad" style="border-color:${col}"><h4 style="color:${col}">${nome} <small>(${l.length})</small></h4><p class="tenue piccolo">${spiega}</p>${l.slice(0, 6).map(x => `<a class="riga piccola" href="#/ricetta/${x.r.id}"><span>${esc(x.r.nome)}</span><small>${qta(x.q)} · ${euro(x.i.margine)}</small></a>`).join('')}${l.length > 6 ? `<p class="tenue piccolo">e altre ${l.length - 6}</p>` : ''}</div>`; }).join('')}</div>
+          <p class="tenue piccolo">Accanto al nome: pezzi venduti · guadagno a pezzo. <a href="#/mappa" data-az="pan-mappa">Vedi la mappa con il grafico ›</a></p>` : '<p class="tenue">Servono almeno due ricette complete con delle vendite in questo periodo.</p>'}
+      </div>
+      <div class="griglia-tre">
+        ${top(piuVendute, 'I più venduti', 'Pezzi venduti nel periodo.', x => qta(x.q) + ' pz')}
+        ${top(piuGuadagno, 'Fanno guadagnare di più', 'Guadagno sulla merce in tutto il periodo.', x => euro(x.tot, 0))}
+        ${top(menoAPezzo, 'Rendono meno a pezzo', 'Il moltiplicatore più basso tra quelli venduti.', x => badgeMolt(x.i))}
+      </div>`;
+    } else {
+      andamento = `<div class="card evidenza"><h3>Carica le vendite</h3><p>Qui vedrai com'è andato il periodo: incasso, quanto se ne va in merce, cosa vende e cosa fa guadagnare. Servono le vendite della cassa.</p><a class="btn primario" href="#/importa">Importa dalla cassa</a></div>`;
+    }
+
+    return {
+      titolo: 'Gestionale Repub', html: `${andamento}
+      <h2 class="sezione">Da fare</h2>
       ${!S.puliziaFatta && S.fatture.length && S.prodotti.some(p => M.daFoglio(p)) ? `<div class="card evidenza"><h3>Collega il foglio alle fatture</h3><p class="tenue">Ci sono prodotti del foglio che hanno un doppione arrivato dalle fatture: collegali, così le ricette prendono i prezzi veri.</p><a class="btn primario" href="#/pulizia">Inizia la pulizia</a></div>` : ''}
       ${fornitoriDaControllare().length ? `<div class="card"><h3>Fornitori nuovi da controllare</h3><p class="tenue">Dimmi chi vende merce e chi manda solo bollette o servizi: vale per tutte le loro fatture.</p><a class="btn primario" href="#/controllo-fatture">Controllo rapido (${fornitoriDaControllare().length})</a></div>` : ''}
       ${nuoviDaCompletare() ? `<div class="card"><h3>Prodotti nuovi da completare</h3><p class="tenue">Creati in automatico dalle fatture: controlla nome breve e formato.</p>${S.prodotti.filter(p => p.daCompletare).slice(0, 6).map(p => `<a class="riga" href="#/prodotto/${p.id}"><span>${esc(p.nomeBreve)}<small>${esc(p.nomeCompleto)}</small></span><span class="badge giallo">da completare</span></a>`).join('')}<div class="bottoni"><a class="btn primario" href="#/controllo">Controllo rapido (${nuoviDaCompletare()})</a><a class="btn" href="#/prodotti" data-az="vai-nuovi">Vedi l'elenco</a></div></div>` : ''}
       ${daFare.length ? `<div class="card"><h3>Fatture da completare</h3>${daFare.map(f => `<a class="riga" href="#/fattura/${f.id}"><span>${esc(f.fornitoreNome)} · n. ${esc(f.numero)}</span><span class="badge giallo">${M.daAbbinare(f)} righe da collegare</span></a>`).join('')}</div>` : ''}
       <div class="card"><h3>Prezzi cambiati</h3>${aumenti.length ? aumenti.slice(0, 8).map(x => `<a class="riga" href="#/prodotto/${x.p.id}"><span>${esc(x.p.nomeBreve)}<small>${dataIt(x.data)}</small></span><span class="badge ${x.v > 0 ? 'rosso' : 'verde'}">${x.v > 0 ? '+' : ''}${n2(x.v, 1)}%</span></a>`).join('') : '<p class="tenue">Nessun cambio di prezzo. Compariranno qui quando registri le fatture.</p>'}</div>
-      <div class="card"><h3>Sotto la soglia del moltiplicatore</h3>${sotto.length ? sotto.map(r => { const i = M.indicatori(r); return `<a class="riga" href="#/ricetta/${r.id}"><span>${esc(r.nome)}<small>${M.TIPI_SINGOLARE[r.tipo]} · soglia × ${n2(i.soglia)}</small></span>${badgeMolt(i)}</a>`; }).join('') : '<p class="tenue">Tutte le ricette sono sopra la soglia.</p>'}</div>
+      <div class="card"><h3>Sotto la soglia del moltiplicatore</h3>${sotto.length ? sotto.map(r => { const i = M.indicatori(r); return `<a class="riga" href="#/ricetta/${r.id}"><span>${esc(r.nome)}<small>${M.TIPI_SINGOLARE[r.tipo]} · soglia × ${n2(i.soglia)}</small></span>${badgeMolt(i)}</a>`; }).join('') : '<p class="tenue">Tutte le ricette complete sono sopra la soglia.</p>'}</div>
       ${scorta.length ? `<div class="card"><h3>Sotto la scorta minima</h3>${scorta.map(p => `<a class="riga" href="#/prodotto/${p.id}"><span>${esc(p.nomeBreve)}</span><span>${qta(p.giacenza)} / ${qta(p.scortaMinima)} ${esc(p.confezione)}</span></a>`).join('')}</div>` : ''}
 `
     };
   };
-
   // ----- Prodotti -----
   // un fornitore confermato «vende merce»: i suoi prodotti creati dalle fatture entrano già buoni
   function confermaProdottiDi(f) {
@@ -1806,6 +1863,19 @@
     });
     S.periodiCassa[nome] = { incasso: Math.round(Vd.reduce((s, v) => s + v.incasso, 0) * 100) / 100, pezzi: Vd.reduce((s, v) => s + v.q, 0) };
     ui.ccVendite = null; ui.vendPer = nome; salva(); avviso(`Vendite salvate: ${n} voci nel periodo «${nome}».`); vai('#/vendite');
+  };
+  AZ['pan-per'] = (el) => { ui.panPer = el.dataset.v; ridisegnaMantenendo(); };
+  AZ['pan-gruppo'] = (el) => { ui.panGruppo = el.dataset.v; ridisegnaMantenendo(); };
+  AZ['pan-mappa'] = () => { ui.mappaPeriodo = ui.panPer || null; if (ui.panGruppo && ui.panGruppo !== 'tutto') ui.mappaGruppo = ui.panGruppo; };
+  AZ['pan-completa'] = () => {
+    // il tipo con più vendite da completare: «Rivedi» con filtro incomplete, dalle più vendute, in quel periodo
+    const conVendite = S.periodiVendita.filter(pp => S.ricette.some(r => (r.vendite || {})[pp]));
+    const per = conVendite.includes(ui.panPer) ? ui.panPer : conVendite[conVendite.length - 1];
+    const tipi = GRUPPI_MENU[ui.panGruppo || 'tutto'];
+    const conta = {}; S.ricette.forEach(r => { if (r.tipo !== 'semilavorato' && (!tipi || tipi.includes(r.tipo)) && !completa(r) && (r.vendite || {})[per]) conta[r.tipo] = (conta[r.tipo] || 0) + r.vendite[per]; });
+    const tipo = Object.keys(conta).sort((a, b) => conta[b] - conta[a])[0] || 'panino';
+    ui.tipoRicette = tipo; ui.rivFiltro = 'incomplete'; ui.rivOrdine = 'piu'; ui.rivPer = per; ui.filtroRicette = ''; ui.rivIdx = 0; ui.rivStorico = []; ui.rivFisso = null; ui.bozza = null;
+    vai('#/rivedi-ricette');
   };
   AZ['ordine-ricette'] = (el) => { ui.ordineRicette = el.dataset.v; ridisegnaMantenendo(); };
   AZ['riv-inizia'] = () => { ui.rivIdx = 0; ui.rivStorico = []; ui.rivFisso = null; ui.rivFiltro = ui.rivFiltro || 'darivedere'; ui.bozza = null; vai('#/rivedi-ricette'); };
