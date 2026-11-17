@@ -1664,12 +1664,21 @@
   }
   function preparaVendite(fogli) {
     const nome = Object.keys(fogli).find(k => /venduto/i.test(k)) || Object.keys(fogli)[0];
-    const righe = tabellaDa(fogli[nome]);
-    if (!righe.length || !('Sku' in righe[0] || 'Quantità' in righe[0])) throw new Error('Non trovo le colonne «Sku» e «Quantità»: serve il resoconto «Venduto per sku» di Cassa in Cloud.');
+    let tutte = fogli[nome] || [];
+    // la riga dei titoli può non essere la prima: cerco quella con la colonna della quantità
+    const qRe = /^(quantit[aà]|q\.?t[aà]|pezzi|venduti)$/i;
+    const iTit = tutte.findIndex(r => (r || []).some(x => qRe.test(String(x == null ? '' : x).trim())));
+    if (iTit < 0) throw new Error('Non trovo la colonna «Quantità». Serve il resoconto «Venduto per sku» di Cassa in Cloud, esportato in Excel.');
+    const righe = tabellaDa(tutte.slice(iTit));
+    const chiavi = Object.keys(righe[0] || {});
+    const cNome = ['Sku', 'Prodotto', 'Descrizione', 'Articolo', 'Nome', 'Variante'].find(k => chiavi.includes(k)) || chiavi.find(k => /sku|prodott|descriz|articol/i.test(k));
+    const cQ = chiavi.find(k => qRe.test(k)), cInc = chiavi.find(k => /^(incasso|totale|importo|venduto)/i.test(k));
+    if (!cNome) throw new Error('Non trovo la colonna con il nome dei prodotti (colonne trovate: ' + chiavi.join(', ') + ').');
+    ui.ccPerProdotto = cNome !== 'Sku';
     return righe.map(r => {
-      const sku = String(r['Sku'] || '').trim(); const ric = ricettaDiSku(sku);
-      return { sku, q: Number(r['Quantità']) || 0, incasso: Number(r['Incasso']) || 0, scelta: ric ? ric.id : '' };
-    }).filter(r => r.sku);
+      const sku = String(r[cNome] || '').trim(); const ric = ricettaDiSku(sku);
+      return { sku, q: Number(r[cQ]) || 0, incasso: Number(cInc ? r[cInc] : 0) || 0, scelta: ric ? ric.id : '' };
+    }).filter(r => r.sku && !/^tot(ale)?$/i.test(r.sku));
   }
   async function caricaCassa(file, tipo) {
     try {
@@ -1709,9 +1718,10 @@
       const pezzi = coll.reduce((s, v) => s + v.q, 0), tot = Vd.reduce((s, v) => s + v.q, 0), inc = Vd.reduce((s, v) => s + v.incasso, 0);
       const nome = ui.ccDal && ui.ccAl ? nomeDaDate(ui.ccDal, ui.ccAl) : '';
       vendite += `<div class="card evidenza"><h3>Anteprima delle vendite${ui.ccFileVendite ? ' · ' + esc(ui.ccFileVendite) : ''}</h3>
+        ${ui.ccPerProdotto ? '<p class="msg giallo">Questo file è il venduto <b>per prodotto</b>: le varianti (piccola, media, doppio…) sono sommate insieme e non si possono dividere. Meglio esportare il resoconto <b>«Venduto per sku»</b>.</p>' : ''}
         <p>${Vd.length} voci, ${qta(tot)} pezzi, incasso ${euro(inc, 0)}. Collegate a una ricetta: <b>${coll.length}</b> voci (${qta(pezzi)} pezzi). Senza ricetta: <b>${non.length}</b>.</p>
-        ${nome ? `<p>Periodo: <b>${esc(nome)}</b>${S.periodiVendita.includes(nome) ? ' (esiste già: sostituisco i numeri)' : ''}</p>` : '<p class="msg giallo">Metti le date del periodo qui sopra.</p>'}
-        <div class="bottoni"><button class="btn primario" data-az="cc-vendite-ok" ${nome ? '' : 'disabled'}>Salva le vendite</button><button class="btn" data-az="cc-vendite-annulla">Annulla</button></div></div>
+        ${nome ? `<p>Periodo: <b>${esc(nome)}</b>${S.periodiVendita.includes(nome) ? ' (esiste già: sostituisco i numeri)' : ''}</p>` : '<p class="msg giallo">Scegli le date «Dal» e «Al» qui sopra: la data grigia che vedi è solo un suggerimento, il campo è ancora vuoto.</p>'}
+        <div class="bottoni"><button class="btn primario" data-az="cc-vendite-ok">Salva le vendite</button><button class="btn" data-az="cc-vendite-annulla">Annulla</button></div></div>
         ${non.length ? `<div class="card"><h3>Voci senza ricetta (${non.length})</h3><p class="tenue piccolo">Se una di queste è una ricetta con un altro nome, collegala: me lo ricordo per le prossime volte. Le altre (coperto, consegne…) restano fuori.</p>
           ${Vd.map((v, i) => v.scelta ? '' : `<div class="riga-ed cc-riga"><span>${esc(v.sku)}<small>${qta(v.q)} pezzi · ${euro(v.incasso, 0)}</small></span><select data-cc-vv="${i}"><option value="">Lascia fuori</option>${opzioniRicette('', '')}</select></div>`).join('')}</div>` : ''}`;
     }
@@ -1739,7 +1749,10 @@
     avviso(`Fatto: ${nuove} ricette nuove, ${agg} aggiornate. Le trovi in Ricette, con «ingredienti incompleti».`);
   };
   AZ['cc-vendite-ok'] = () => {
-    const Vd = ui.ccVendite, nome = nomeDaDate(ui.ccDal, ui.ccAl); if (!nome) return;
+    const Vd = ui.ccVendite;
+    if (!ui.ccDal || !ui.ccAl) { alert('Prima scegli le date «Dal» e «Al» del periodo.'); return; }
+    if (ui.ccAl < ui.ccDal) { alert('La data «Al» è prima di «Dal».'); return; }
+    const nome = nomeDaDate(ui.ccDal, ui.ccAl); if (!nome) return;
     if (S.periodiVendita.includes(nome) && !confirm(`Il periodo «${nome}» esiste già: sostituisco i suoi numeri con quelli della cassa?`)) return;
     if (!S.periodiVendita.includes(nome)) S.periodiVendita.push(nome);
     S.periodiDate = S.periodiDate || {}; S.periodiDate[nome] = { dal: ui.ccDal, al: ui.ccAl };
@@ -1911,6 +1924,7 @@
     if (d.b != null && ui.bozza) { ui.bozza[d.b] = el.value; if (d.ridisegna) ridisegnaMantenendo(); return; }
     if (d.vd != null && ui.bozza) { ui.bozza.venditaDiretta[d.vd] = el.value; return; }
     if (d.r != null && ui.bozza) { ui.bozza.righe[+d.r][d.k] = el.value; aggiornaAnteprima(); return; }
+    if (d.ccData) { ui[d.ccData === 'dal' ? 'ccDal' : 'ccAl'] = el.value; return; }
     if (d.e != null && ui.bozza) { ui.bozza.costiExtra[+d.e][d.k] = el.value; aggiornaAnteprima(); return; }
     if (d.a != null && ui.bozza) { ui.bozza.asporto[+d.a][d.k] = el.value; return; }
     if (d.v != null && ui.bozza) { ui.bozza.vendite = ui.bozza.vendite || {}; const x = numDa(el.value); if (x) ui.bozza.vendite[d.v] = x; else delete ui.bozza.vendite[d.v]; return; }
