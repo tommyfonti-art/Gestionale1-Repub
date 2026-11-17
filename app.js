@@ -125,6 +125,11 @@
       });
       S.correzioneOmaggi = true; M.svuota();
     }
+    // una volta: i prezzi del foglio di Tommi erano IVA compresa (pagati al banco); i costi si fanno senza IVA, come in fattura
+    if (!S.ivaFoglioTolta) {
+      S.prodotti.forEach(p => (p.prezzi || []).forEach(e => { if (/^Foglio/.test(e.origine || '') && !e.ivaTolta) { e.prezzo = Math.round(e.prezzo / (1 + (p.iva != null ? p.iva : 22) / 100) * 10000) / 10000; e.ivaTolta = true; } }));
+      S.ivaFoglioTolta = true; M.svuota();
+    }
     // una volta: le scorte minime erano numeri d'esempio della prova, non del Repub: le azzero
     if (!S.scortePulite) { S.prodotti.forEach(p => { p.scortaMinima = 0; }); S.scortePulite = true; }
     // una volta: «bianco» e «rosso» da soli facevano finire nel vino anche aceto e altro
