@@ -1649,7 +1649,8 @@
     const nuovo = b._per === 'r:nuovo'; delete b._per;
     // se ha aggiunto ingredienti a una ricetta segnata come incompleta, tolgo l'avviso
     const prima = nuovo ? null : M.ricetta(b.id);
-    if (prima && /^Ricetta da completare/.test(b.note || '') && b.righe.length > (prima.righe || []).length) b.note = String(b.note).replace(/^Ricetta da completare[^.]*\.\s*/, '');
+    const doseOk = b.righe.length && b.righe.every(rg => rg.quantita > 0) && (b.tipo !== 'semilavorato' || b.resa > 0);
+    if (prima && /^Ricetta da completare/.test(b.note || '') && (b.righe.length > (prima.righe || []).length || doseOk)) b.note = String(b.note).replace(/^Ricetta da completare[^.]*\.\s*/, '');
     if (nuovo) S.ricette.push(b); else S.ricette[S.ricette.findIndex(r => r.id === b.id)] = b;
     ui.bozza = null; ui.tipoRicette = b.tipo; salva(); return b;
   }
@@ -1821,7 +1822,36 @@
         ${non.length ? `<div class="card"><h3>Voci senza ricetta (${non.length})</h3><p class="tenue piccolo">Se una di queste è una ricetta con un altro nome, collegala: me lo ricordo per le prossime volte. Le altre (coperto, consegne…) restano fuori.</p>
           ${Vd.map((v, i) => v.scelta ? '' : `<div class="riga-ed cc-riga"><span>${esc(v.sku)}<small>${qta(v.q)} pezzi · ${euro(v.incasso, 0)}</small></span><select data-cc-vv="${i}"><option value="">Lascia fuori</option>${opzioniRicette('', '')}</select></div>`).join('')}</div>` : ''}`;
     }
-    return { titolo: 'Importa dalla cassa', indietro: '#/impostazioni', html: listino + vendite };
+    const tipoL = ui.lsTipo || 'semilavorato';
+    let lista = `<div class="card form"><h3>3. Ricette da una lista scritta</h3>
+      <p class="tenue piccolo">Scrivi (o incolla) una riga per ricetta: il nome, due punti, gli ingredienti separati da virgole. Le dosi sono facoltative: le puoi mettere dopo.<br>Esempio: <i>Cipolle stufate: cipolla affettata 3 kg, olio 200 ml, paprika</i></p>
+      <label>Diventano<select data-ls-tipo="1">${Object.entries(M.TIPI).map(([k, v]) => `<option value="${k}" ${tipoL === k ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></label>
+      <textarea id="ls-testo" rows="6" placeholder="Cipolle stufate: cipolla, olio, paprika&#10;Salsa del Repub: maionese, senape, paprika">${esc(ui.lsTesto || '')}</textarea>
+      <div class="bottoni"><button class="btn" data-az="ls-leggi">Leggi la lista</button></div></div>`;
+    if (ui.lsAnte) {
+      const nIngr = ui.lsAnte.reduce((s, x) => s + x.ingr.length, 0), nOk = ui.lsAnte.reduce((s, x) => s + x.ingr.filter(i => i.rif).length, 0);
+      lista += `<div class="card evidenza"><h3>Anteprima: ${ui.lsAnte.length} ricette, ${nOk} ingredienti su ${nIngr} trovati</h3>
+        <p class="tenue piccolo">Controlla che ogni ingrediente sia il prodotto giusto. Quelli non trovati restano scritti nelle note: li aggiungi tu quando arriva la fattura.</p>
+        <div class="bottoni"><button class="btn primario" data-az="ls-crea">Crea le ricette</button><button class="btn" data-az="ls-annulla">Annulla</button></div></div>` +
+        ui.lsAnte.map((x, i) => `<div class="card"><h3>${esc(x.nome)}${x.gia ? ' <span class="badge giallo">esiste già: la salto</span>' : ''}</h3>
+          ${x.ingr.map((g, j) => `<div class="riga-ed cc-riga"><span>${esc(g.testo)}${g.q ? `<small>${qta(g.q)} ${esc(g.u || '')}</small>` : ''}</span><select data-ls="${i},${j}"><option value="">Non trovato: lo metto nelle note</option>${opzioniRif(g.rif)}</select></div>`).join('')}</div>`).join('');
+    }
+    return { titolo: 'Importa dalla cassa', indietro: '#/impostazioni', html: listino + vendite + lista };
+  };
+  AZ['ls-leggi'] = () => { ui.lsTesto = $('#ls-testo').value; ui.lsAnte = leggiListaRicette(ui.lsTesto); if (!ui.lsAnte.length) { alert('Non trovo righe del tipo «Nome: ingrediente, ingrediente».'); ui.lsAnte = null; } ridisegnaMantenendo(); };
+  AZ['ls-annulla'] = () => { ui.lsAnte = null; ridisegnaMantenendo(); };
+  AZ['ls-crea'] = () => {
+    const tipo = ui.lsTipo || 'semilavorato'; let n = 0;
+    ui.lsAnte.forEach(x => {
+      if (x.gia) return;
+      const righe = x.ingr.filter(g => g.rif).map(g => ({ rif: g.rif, quantita: g.q || 0, nota: '' }));
+      const mancano = x.ingr.filter(g => !g.rif).map(g => g.testo);
+      S.ricette.push({ id: M.uid('r'), nome: x.nome, tipo, prezzo: null, righe, resa: null, unita: 'g', asporto: [], costiExtra: [], vendite: {},
+        note: 'Ricetta da completare: mancano le dosi' + (tipo === 'semilavorato' ? ' e quanto ne viene' : '') + '.' + (mancano.length ? ' Ingredienti da aggiungere: ' + mancano.join(', ') + '.' : '') });
+      n++;
+    });
+    ui.lsAnte = null; ui.lsTesto = ''; ui.tipoRicette = tipo; M.svuota(); salva(); ridisegnaMantenendo(); window.scrollTo(0, 0);
+    avviso(`Create ${n} ricette in «${M.TIPI[tipo]}». Le trovi con «ingredienti incompleti».`);
   };
   AZ['cc-listino-annulla'] = () => { ui.ccListino = null; ridisegnaMantenendo(); };
   AZ['cc-vendite-annulla'] = () => { ui.ccVendite = null; ridisegnaMantenendo(); };
@@ -1877,6 +1907,30 @@
     ui.tipoRicette = tipo; ui.rivFiltro = 'incomplete'; ui.rivOrdine = 'piu'; ui.rivPer = per; ui.filtroRicette = ''; ui.rivIdx = 0; ui.rivStorico = []; ui.rivFisso = null; ui.bozza = null;
     vai('#/rivedi-ricette');
   };
+  // ---------- Ricette da una lista scritta (es. le preparazioni della cucina) ----------
+  // Una riga per ricetta: «Cipolle stufate: cipolla affettata 3000 g, olio 200 ml, paprika»
+  function leggiListaRicette(testo) {
+    const unita = { g: 'g', gr: 'g', grammi: 'g', kg: 'kg', ml: 'ml', cl: 'cl', l: 'l', lt: 'l', litri: 'l', pz: 'pz', pezzi: 'pz', pezzo: 'pz' };
+    const fattore = { kg: 1000, cl: 10, l: 1000 };
+    return String(testo || '').split(/\n+/).map(r => r.trim()).filter(r => r && r.includes(':')).map(r => {
+      const k = r.indexOf(':'); const nome = r.slice(0, k).replace(/^[-•*\d.)\s]+/, '').trim();
+      const ingr = r.slice(k + 1).split(/[,;]+/).map(x => x.trim()).filter(Boolean).map(x => {
+        // «olio 200 ml», «200 ml olio», «paprika»
+        let m = x.match(/^(.*?)\s+(\d+(?:[.,]\d+)?)\s*([a-zA-Z]+)?$/) || null, q = 0, u = '', n = x;
+        if (m && (!m[3] || unita[m[3].toLowerCase()])) { n = m[1]; q = numDa(m[2]) || 0; u = m[3] ? unita[m[3].toLowerCase()] : ''; }
+        else { m = x.match(/^(\d+(?:[.,]\d+)?)\s*([a-zA-Z]+)?\s+(.*)$/); if (m && (!m[2] || unita[m[2].toLowerCase()])) { q = numDa(m[1]) || 0; u = m[2] ? unita[m[2].toLowerCase()] : ''; n = m[3]; } }
+        if (fattore[u]) { q = q * fattore[u]; u = u === 'kg' ? 'g' : 'ml'; }
+        n = n.replace(/^(di|del|della|dello|dei|delle)\s+/i, '').trim();
+        // il prodotto o la preparazione che somiglia di più
+        let migliore = null, punti = 0;
+        S.prodotti.forEach(p => { const sc = Math.max(somiglianzaNomi(n, p.nomeBreve), somiglianzaNomi(n, p.nomeCompleto) - 0.05); if (sc > punti) { punti = sc; migliore = 'p:' + p.id; } });
+        S.ricette.filter(x => x.tipo === 'semilavorato').forEach(x => { const sc = somiglianzaNomi(n, x.nome); if (sc > punti) { punti = sc; migliore = 'r:' + x.id; } });
+        return { testo: x, nome: n, q, u, rif: punti >= 0.5 ? migliore : '' };
+      });
+      const gia = S.ricette.find(x => normCassa(x.nome) === normCassa(nome));
+      return { nome, ingr, gia: gia ? gia.id : null };
+    });
+  }
   AZ['ordine-ricette'] = (el) => { ui.ordineRicette = el.dataset.v; ridisegnaMantenendo(); };
   AZ['riv-inizia'] = () => { ui.rivIdx = 0; ui.rivStorico = []; ui.rivFisso = null; ui.rivFiltro = ui.rivFiltro || 'darivedere'; ui.bozza = null; vai('#/rivedi-ricette'); };
   AZ['riv-tipo'] = (el) => { ui.tipoRicette = el.dataset.v; ui.rivIdx = 0; ui.rivFisso = null; ui.rivStorico = []; ui.bozza = null; ridisegnaMantenendo(); };
@@ -2082,6 +2136,8 @@
     if (d.carica === 'cassa-listino' || d.carica === 'cassa-vendite') { if (el.files[0]) caricaCassa(el.files[0], d.carica === 'cassa-listino' ? 'listino' : 'vendite'); el.value = ''; return; }
     if (d.ccG != null) { ui.ccAperto = +d.ccG; ui.ccListino.gruppi[+d.ccG].tipo = el.value; ui.ccListino.gruppi[+d.ccG].voci.forEach(v => { if (el.value !== 'salta' && v.scelta === '__salta' && v.prezzo > 0 && v.prezzo <= 100) v.scelta = ''; }); ridisegnaMantenendo(); return; }
     if (d.ccV != null) { const [gi, vi] = d.ccV.split(',').map(Number); ui.ccAperto = gi; ui.ccListino.gruppi[gi].voci[vi].scelta = el.value; ridisegnaMantenendo(); return; }
+    if (d.lsTipo) { ui.lsTipo = el.value; return; }
+    if (d.ls != null) { const [i, j] = d.ls.split(',').map(Number); ui.lsAnte[i].ingr[j].rif = el.value; return; }
     if (d.ccVv != null) { ui.ccVendite[+d.ccVv].scelta = el.value; ridisegnaMantenendo(); return; }
     if (d.ccData) { ui[d.ccData === 'dal' ? 'ccDal' : 'ccAl'] = el.value; ridisegnaMantenendo(); return; }
     if (d.carica === 'copia') {
