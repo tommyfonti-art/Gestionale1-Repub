@@ -514,6 +514,7 @@
         const diretta = (r.righe || []).find(rg => rg.rif === 'p:' + p.id);
         return `<a class="riga" href="#/ricetta/${r.id}"><span>${esc(r.nome)}<small>${diretta ? qta(diretta.quantita) + ' ' + esc(p.unita) + ' · ' + euro(M.costoUnita(p) * diretta.quantita, 3) : 'dentro una preparazione'}</small></span><span class="destra">${euro(M.costo(r))}<small>${M.TIPI_SINGOLARE[r.tipo]}</small></span></a>`;
       }).join('') : '<p class="tenue">Non è usato in nessuna ricetta.</p>'}</div>
+      ${!p.speciale ? collegaARicette(p) : ''}
       ${(p.articoli || []).length ? `<div class="card"><h3>Come compare nelle fatture</h3>${p.articoli.map(a => `<div class="riga"><span>${esc(a.descrizione)}<small>${esc((M.fornitore(a.fornitoreId) || {}).nome || '')}${a.codice ? ' · codice ' + esc(a.codice) : ''}</small></span><span>${a.confezioniPerUnita > 1 ? a.confezioniPerUnita + ' ' + esc(p.confezione) + ' per unità' : ''}</span></div>`).join('')}</div>` : ''}
       ${p.note ? `<div class="card"><h3>Note</h3><p>${esc(p.note)}</p></div>` : ''}
       <button class="btn piccolo" data-az="simula-prodotto" data-id="${p.id}">Simula un cambio di prezzo</button>`
@@ -879,7 +880,7 @@
         ${semi ? `<div class="due"><label>Quanto ne viene<input type="number" step="any" inputmode="decimal" data-b="resa" value="${esc(b.resa)}"></label><label>Unità<select data-b="unita">${['ml', 'g', 'pz'].map(u => `<option ${b.unita === u ? 'selected' : ''}>${u}</option>`).join('')}</select></label></div>`
           : `<label>Prezzo di vendita (con IVA)<input type="number" step="any" inputmode="decimal" data-b="prezzo" value="${esc(b.prezzo)}"></label>`}
         <h3>Ingredienti</h3>
-        ${b.righe.map((rg, k) => `<div class="riga-ed"><select data-r="${k}" data-k="rif" data-ridisegna="1">${opzioniRif(rg.rif, b.id)}</select>
+        ${b.righe.map((rg, k) => `<div class="riga-ed">${campoIngrediente(rg, k)}
           <input type="number" step="any" inputmode="decimal" data-r="${k}" data-k="quantita" value="${esc(rg.quantita)}" placeholder="dose"><span class="u">${esc(M.unitaRif(rg.rif))}</span>
           <button class="x" data-az="togli-riga" data-k="${k}" aria-label="Togli">✕</button></div>`).join('')}
         <button class="btn piccolo" data-az="aggiungi-riga">＋ Aggiungi ingrediente</button>
@@ -912,7 +913,7 @@
         ${semi ? `<label>Unità della preparazione<select data-b="unita">${['ml', 'g', 'pz'].map(u => `<option ${b.unita === u ? 'selected' : ''}>${u}</option>`).join('')}</select></label>` : ''}
       </div>
       <div class="card form"><h3>Ingredienti</h3>
-        ${b.righe.map((rg, k) => `<div class="riga-ed"><select data-r="${k}" data-k="rif" data-ridisegna="1">${opzioniRif(rg.rif, b.id)}</select>
+        ${b.righe.map((rg, k) => `<div class="riga-ed">${campoIngrediente(rg, k)}
           <input type="number" step="any" inputmode="decimal" data-r="${k}" data-k="quantita" value="${esc(rg.quantita)}" placeholder="dose"><span class="u">${esc(M.unitaRif(rg.rif))}</span>
           <button class="x" data-az="togli-riga" data-k="${k}" aria-label="Togli">✕</button></div>`).join('')}
         <button class="btn piccolo" data-az="aggiungi-riga">＋ Aggiungi ingrediente</button>
@@ -1632,7 +1633,7 @@
   };
   AZ['simula-prodotto'] = (el) => { ui.sim = { modo: 'prodotto', prodottoId: el.dataset.id, valore: '', inPercentuale: true }; vai('#/simulatore'); };
   AZ['simula-ricetta'] = (el) => { ui.sim = { modo: 'ricetta', ricettaId: el.dataset.id, prezzo: '' }; vai('#/simulatore'); };
-  AZ['aggiungi-riga'] = () => { ui.bozza.righe.push({ rif: '', quantita: '', nota: '' }); ridisegnaMantenendo(); };
+  AZ['aggiungi-riga'] = () => { ui.bozza.righe.push({ rif: '', quantita: '', nota: '' }); ridisegnaMantenendo(); const k = ui.bozza.righe.length - 1; setTimeout(() => { const c = document.querySelector(`[data-cr="${k}"]`); if (c) c.focus(); }, 30); };
   AZ['togli-riga'] = (el) => { ui.bozza.righe.splice(+el.dataset.k, 1); ridisegnaMantenendo(); };
   AZ['aggiungi-extra'] = () => { (ui.bozza.costiExtra = ui.bozza.costiExtra || []).push({ nome: '', costo: '' }); ridisegnaMantenendo(); };
   AZ['togli-extra'] = (el) => { ui.bozza.costiExtra.splice(+el.dataset.k, 1); ridisegnaMantenendo(); };
@@ -1931,6 +1932,64 @@
       return { nome, ingr, gia: gia ? gia.id : null };
     });
   }
+  // ---------- Scegliere un ingrediente scrivendo (invece di scorrere un elenco lunghissimo) ----------
+  function campoIngrediente(rg, k) {
+    return `<div class="scegli-rif"><input class="cerca-rif" data-cr="${k}" autocomplete="off" value="${esc(rg.rif ? M.nomeRif(rg.rif) : '')}" placeholder="Scrivi per cercare: es. Guinness"><div class="sugg" id="sugg-${k}"></div></div>`;
+  }
+  function suggerimentiIngrediente(testo, escludiId) {
+    const t = normCassa(testo); if (!t) return [];
+    const parole = t.split(' ');
+    const trova = (s) => { const n = normCassa(s); return parole.every(w => n.includes(w)); };
+    const prod = S.prodotti.filter(p => trova(p.nomeBreve + ' ' + p.nomeCompleto + ' ' + ((M.fornitore(p.fornitoreId) || {}).nome || '')))
+      .map(p => { const f = M.fornitore(p.fornitoreId), pr = M.prezzo(p), rf = M.prezzoRiferimento(p);
+        return { rif: 'p:' + p.id, nome: p.nomeBreve, inizia: normCassa(p.nomeBreve).startsWith(t),
+          info: [f ? f.nome : '', `${p.confezione} da ${qta(p.contenuto)} ${p.unita}`, pr != null ? euro(pr) : 'senza prezzo', rf ? n2(rf.valore) + ' ' + rf.etichetta : ''].filter(Boolean).join(' · ') }; });
+    const ric = S.ricette.filter(r => r.id !== escludiId && trova(r.nome)).map(r => { const c = M.costo(r);
+      return { rif: 'r:' + r.id, nome: r.nome, inizia: normCassa(r.nome).startsWith(t), info: (r.tipo === 'semilavorato' ? 'preparazione' : M.TIPI_SINGOLARE[r.tipo]) + (c != null && r.resa ? ' · ' + euro(c / r.resa * 1000) + (r.unita === 'g' ? ' al kg' : ' al litro') : c != null ? ' · ' + euro(c) : '') }; });
+    return prod.concat(ric).sort((a, b) => (b.inizia - a.inizia) || a.nome.localeCompare(b.nome)).slice(0, 12);
+  }
+  function mostraSuggerimenti(el) {
+    const k = el.dataset.cr, box = document.getElementById('sugg-' + k); if (!box) return;
+    const l = suggerimentiIngrediente(el.value, ui.bozza && ui.bozza.id);
+    box.innerHTML = l.length ? l.map((x, i) => `<button type="button" class="sugg-voce ${i === 0 ? 'primo' : ''}" data-az="scegli-rif" data-k="${k}" data-rif="${x.rif}"><b>${esc(x.nome)}</b><small>${esc(x.info)}</small></button>`).join('')
+      : (el.value.trim() ? '<p class="tenue piccolo">Nessun prodotto con questo nome. Arriverà con la prossima fattura, oppure crealo in Prodotti.</p>' : '');
+  }
+  AZ['scegli-rif'] = (el) => {
+    const k = +el.dataset.k; if (!ui.bozza || !ui.bozza.righe[k]) return;
+    ui.bozza.righe[k].rif = el.dataset.rif; ridisegnaMantenendo();
+    // subito pronto per scrivere la dose
+    setTimeout(() => { const q = document.querySelector(`input[data-r="${k}"][data-k="quantita"]`); if (q) q.focus(); }, 30);
+  };
+  // ---------- Dal prodotto alle ricette: «questo fusto va nella Guinness piccola, media, pinta…» ----------
+  function collegaARicette(p) {
+    const gia = new Set(M.usatoIn('p:' + p.id).dirette.map(r => r.id));
+    const cerca = ui.cpCerca && ui.cpProd === p.id ? ui.cpCerca : '';
+    let l;
+    if (cerca) { const t = normCassa(cerca).split(' '); l = S.ricette.filter(r => r.tipo !== 'semilavorato' && !gia.has(r.id) && t.every(w => normCassa(r.nome).includes(w))); }
+    else {
+      // proposte: ricette col nome simile al prodotto (es. tutte le «Guinness …»)
+      const parole = normCassa(p.nomeBreve).split(' ').filter(w => w.length > 2);
+      l = S.ricette.filter(r => r.tipo !== 'semilavorato' && !gia.has(r.id) && parole.length && parole.some(w => normCassa(r.nome).split(' ').includes(w)));
+    }
+    l = l.sort((a, b) => (a.righe || []).length - (b.righe || []).length || a.nome.localeCompare(b.nome)).slice(0, 15);
+    return `<div class="card form"><h3>Mettilo nelle ricette</h3>
+      <p class="tenue piccolo">Comodo per birre, bibite e vini: scrivi la dose (in ${esc(p.unita)}) e premi Aggiungi. Il costo della ricetta si calcola da solo.</p>
+      <input class="cerca" type="search" placeholder="Cerca una ricetta…" value="${esc(cerca)}" data-cp-cerca="${p.id}">
+      <div id="cp-lista">${l.length ? l.map(r => `<div class="riga-ed cc-riga"><span>${esc(r.nome)}<small>${r.prezzo ? 'prezzo ' + euro(r.prezzo) + ' · ' : ''}${(r.righe || []).length ? (r.righe || []).length + ' ingredienti' : 'nessun ingrediente'}</small></span>
+        <input type="text" inputmode="decimal" class="senza-frecce" data-cp-dose="${r.id}" placeholder="dose"><span class="u">${esc(p.unita)}</span><button class="btn piccolo" data-az="cp-aggiungi" data-p="${p.id}" data-r="${r.id}">Aggiungi</button></div>`).join('')
+        : `<p class="tenue">${cerca ? 'Nessuna ricetta con questo nome.' : 'Nessuna ricetta col nome simile: cercala qui sopra.'}</p>`}</div></div>`;
+  }
+  AZ['cp-aggiungi'] = (el) => {
+    const p = M.prodotto(el.dataset.p), r = M.ricetta(el.dataset.r);
+    const campo = document.querySelector(`[data-cp-dose="${r.id}"]`); const q = numDa(campo && campo.value);
+    if (!q) { alert('Scrivi la dose (in ' + p.unita + ').'); if (campo) campo.focus(); return; }
+    const vuota = !(r.righe || []).length;
+    r.righe = (r.righe || []).concat({ rif: 'p:' + p.id, quantita: q, nota: '' });
+    // bibite e birre: un ingrediente solo, la ricetta è completa
+    if (vuota && r.tipo === 'bevanda' && /^Ricetta da completare/.test(r.note || '')) r.note = String(r.note).replace(/^Ricetta da completare[^.]*\.\s*/, '');
+    M.svuota(); salva(); ridisegnaMantenendo();
+    const i = M.indicatori(r); avviso(`${r.nome}: costo ${euro(i.costo)}${i.molt ? ' · × ' + n2(i.molt) : ''}`);
+  };
   AZ['ordine-ricette'] = (el) => { ui.ordineRicette = el.dataset.v; ridisegnaMantenendo(); };
   AZ['riv-inizia'] = () => { ui.rivIdx = 0; ui.rivStorico = []; ui.rivFisso = null; ui.rivFiltro = ui.rivFiltro || 'darivedere'; ui.bozza = null; vai('#/rivedi-ricette'); };
   AZ['riv-tipo'] = (el) => { ui.tipoRicette = el.dataset.v; ui.rivIdx = 0; ui.rivFisso = null; ui.rivStorico = []; ui.bozza = null; ridisegnaMantenendo(); };
@@ -2058,6 +2117,10 @@
   AZ['porta-locali'] = () => { if (confirm('Porto online le fatture salvate su questo dispositivo? Quelle già presenti vengono saltate.')) portaFattureLocali(); };
 
   document.addEventListener('keydown', (e) => {
+    if (e.target.dataset && e.target.dataset.cr != null) {
+      if (e.key === 'Enter') { e.preventDefault(); const b = document.querySelector(`#sugg-${e.target.dataset.cr} .sugg-voce`); if (b) b.click(); return; }
+      if (e.key === 'Escape') { const box = document.getElementById('sugg-' + e.target.dataset.cr); if (box) box.innerHTML = ''; return; }
+    }
     const h = location.hash || '';
     if (e.key === 'Enter' && e.target.dataset && e.target.dataset.fmtRighe) {
       e.preventDefault(); const t = e.target, id = t.dataset.fmtRighe; t.blur();
@@ -2095,6 +2158,8 @@
     }
     if (d.b != null && ui.bozza) { ui.bozza[d.b] = el.value; if (d.ridisegna) ridisegnaMantenendo(); return; }
     if (d.vd != null && ui.bozza) { ui.bozza.venditaDiretta[d.vd] = el.value; return; }
+    if (d.cr != null) { mostraSuggerimenti(el); return; }
+    if (d.cpCerca) { ui.cpCerca = el.value; ui.cpProd = d.cpCerca; const p = M.prodotto(d.cpCerca); const tmp = document.createElement('div'); tmp.innerHTML = collegaARicette(p); $('#cp-lista').innerHTML = tmp.querySelector('#cp-lista').innerHTML; return; }
     if (d.r != null && ui.bozza) { ui.bozza.righe[+d.r][d.k] = el.value; aggiornaAnteprima(); return; }
     if (d.ccData) { ui[d.ccData === 'dal' ? 'ccDal' : 'ccAl'] = el.value; return; }
     if (d.e != null && ui.bozza) { ui.bozza.costiExtra[+d.e][d.k] = el.value; aggiornaAnteprima(); return; }

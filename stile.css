@@ -222,3 +222,13 @@ h2.sezione { font-size: 17px; margin: 22px 4px 8px; color: var(--tenue); font-we
 
 /* mentre trascini dei file sulla finestra */
 body.trascina::after { content: 'Lascia qui i file'; position: fixed; inset: 12px; border: 3px dashed var(--accento); border-radius: 18px; background: rgba(227,239,233,.85); display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 700; color: var(--accento); z-index: 999; pointer-events: none; }
+
+/* scegliere un ingrediente scrivendo */
+.scegli-rif { position: relative; flex: 2.2; min-width: 0; }
+.scegli-rif .cerca-rif { width: 100%; }
+.sugg { position: absolute; left: 0; top: 100%; width: max(100%, min(420px, 86vw)); z-index: 50; background: var(--carta); border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,.16); max-height: 360px; overflow: auto; }
+.sugg:empty { display: none; }
+.sugg p { margin: 10px 12px; }
+.sugg-voce { display: block; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--linea); padding: 9px 12px; font: inherit; cursor: pointer; color: var(--testo); }
+.sugg-voce small { display: block; color: var(--tenue); font-size: 12px; margin-top: 2px; }
+.sugg-voce:hover, .sugg-voce.primo { background: var(--accento-chiaro); }
