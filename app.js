@@ -1031,9 +1031,11 @@
   PAGINE.fornitori = function () {
     const spesa = {}; S.fatture.filter(f => f.stato === 'registrata').forEach(f => { spesa[f.fornitoreId] = (spesa[f.fornitoreId] || 0) + (f.tipoDoc === 'TD04' ? -1 : 1) * (f.imponibile || f.totale); });
     return {
-      titolo: 'Fornitori', indietro: '#/altro', azione: '<button class="btn-top" data-az="nuovo-fornitore">＋ Nuovo</button>', html: `<div class="card lista">${S.fornitori.slice().sort((a, b) => a.nome.localeCompare(b.nome)).map(f => {
+      titolo: 'Fornitori', indietro: '#/altro', azione: '<button class="btn-top" data-az="nuovo-fornitore">＋ Nuovo</button>', html: `${coppieFornitori()}
+      <input class="cerca" type="search" placeholder="Cerca un fornitore" value="${esc(ui.filtroForn || '')}" data-filtro="fornitori">
+      <div class="card lista" id="lista-forn">${S.fornitori.slice().sort((a, b) => a.nome.localeCompare(b.nome)).map(f => {
         const np = S.prodotti.filter(p => p.fornitoreId === f.id).length;
-        return `<a class="riga" href="#/fornitore/${f.id}"><span>${esc(f.nome)}<small>${f.servizi ? 'servizi · ' : ''}${np} prodotti${f.giorniConsegna ? ' · consegna ' + esc(f.giorniConsegna) : ''}</small></span><span>${spesa[f.id] ? euro(spesa[f.id], 0) : ''}</span></a>`;
+        return `<a class="riga" data-nome="${esc(normCassa(f.nome))}" ${ui.filtroForn && !normCassa(f.nome).includes(normCassa(ui.filtroForn)) ? 'hidden' : ''} href="#/fornitore/${f.id}"><span>${esc(f.nome)}<small>${f.servizi ? 'servizi · ' : ''}${np} prodotti${f.giorniConsegna ? ' · consegna ' + esc(f.giorniConsegna) : ''}</small></span><span>${spesa[f.id] ? euro(spesa[f.id], 0) : ''}</span></a>`;
       }).join('')}</div>`
     };
   };
@@ -1058,8 +1060,8 @@
       <div class="card"><h3>Prodotti</h3>${prod.map(p => `<a class="riga" href="#/prodotto/${p.id}"><span>${esc(p.nomeBreve)}</span><span>${euro(M.prezzo(p))}</span></a>`).join('') || '<p class="tenue">Nessuno.</p>'}</div>
       <div class="card"><h3>Fatture</h3>${fatt.map(x => `<a class="riga" href="#/fattura/${x.id}"><span>n. ${esc(x.numero)}<small>${dataIt(x.data)}</small></span><span>${euro(x.totale)}</span></a>`).join('') || '<p class="tenue">Nessuna.</p>'}</div>
       <div class="card form"><h3>È lo stesso di un altro fornitore?</h3><p class="tenue piccolo">Per esempio «Doreca» ed «Emilia Romagna Doreca S.r.l.»: uniscili e fatture e prodotti finiscono in uno solo.</p>
-        <label>Unisci dentro<select id="unisci-forn"><option value="">scegli…</option>${S.fornitori.filter(x => x.id !== id).sort((x, y) => x.nome.localeCompare(y.nome)).map(x => `<option value="${x.id}">${esc(x.nome)}</option>`).join('')}</select></label>
-        <button class="btn piccolo" data-az="unisci-fornitore" data-id="${id}">Unisci</button></div>
+        ${(() => { const simili = fornitoriSimili(f); return simili.length ? `<p class="piccolo"><b>Forse è lo stesso di:</b></p>${simili.map(x => `<button class="btn piccolo" data-az="unisci-fornitore" data-id="${id}" data-a="${x.id}">Unisci dentro «${esc(x.nome)}»</button>`).join(' ')}` : ''; })()}
+        <label>Oppure cerca il fornitore<div class="scegli-rif"><input class="cerca-rif" data-cerca-forn="${id}" autocomplete="off" placeholder="Scrivi una parte del nome, es. doreca"><div class="sugg" id="sugg-forn"></div></div></label></div>
       <button class="btn pericolo piccolo" data-az="elimina-fornitore" data-id="${id}">Elimina fornitore</button>`
     };
   };
@@ -1614,11 +1616,26 @@
   AZ['ctrl-servizi'] = (el) => { const forn = M.fornitore(el.dataset.id); if (!confirm(`${forn.nome} non vende merce? Tolgo tutti i prodotti creati dalle sue fatture.`)) return; ricorda('ctrl', 'ctrlIdx', true); const n = M.segnaServizi(forn.id, true); ctrlAvanti(true); avviso(`Tolti ${n} prodotti di ${forn.nome}.`); };
   AZ['ctrl-salta'] = () => { ricordaPosto('ctrl', 'ctrlIdx'); ctrlAvanti(false); };
   AZ['ctrl-indietro'] = () => tornaIndietro('ctrl', 'ctrlIdx');
+  // fornitori che sembrano lo stesso: una parola importante del nome in comune (es. «Doreca»)
+  const PAROLE_VUOTE_FORN = new Set(['srl', 'spa', 'snc', 'sas', 'srls', 'societa', 'italia', 'italiana', 'commerciale', 'distribuzione', 'group', 'emilia', 'romagna', 'della', 'delle', 'unipersonale', 'cooperativa', 'coop']);
+  const paroleForn = (n) => normCassa(n).split(' ').filter(w => w.length >= 4 && !PAROLE_VUOTE_FORN.has(w));
+  function fornitoriSimili(f) { const mie = paroleForn(f.nome); return mie.length ? S.fornitori.filter(x => x.id !== f.id && paroleForn(x.nome).some(w => mie.includes(w))) : []; }
+  function coppieFornitori() {
+    const viste = new Set(), coppie = [];
+    S.fornitori.forEach(f => fornitoriSimili(f).forEach(x => { const k = [f.id, x.id].sort().join('|'); if (!viste.has(k)) { viste.add(k); coppie.push([f, x]); } }));
+    if (!coppie.length) return '';
+    const n = (f) => S.fatture.filter(z => z.fornitoreId === f.id).length;
+    return `<div class="card"><h3>Forse sono lo stesso fornitore (${coppie.length})</h3><p class="tenue piccolo">Hanno una parola importante del nome in comune. Se sono lo stesso, uniscili: prodotti uguali compresi.</p>
+      ${coppie.map(([x, y]) => { const [da, a] = n(x) > n(y) ? [y, x] : [x, y]; return `<div class="riga"><span>${esc(da.nome)}<small>e ${esc(a.nome)}</small></span><button class="btn piccolo" data-az="unisci-fornitore" data-id="${da.id}" data-a="${a.id}">Unisci</button></div>`; }).join('')}</div>`;
+  }
   AZ['unisci-fornitore'] = (el) => {
-    const sel = $('#unisci-forn'); if (!sel || !sel.value) { alert('Scegli il fornitore in cui unirlo.'); return; }
-    const da = M.fornitore(el.dataset.id), a = M.fornitore(sel.value);
+    const da = M.fornitore(el.dataset.id), a = M.fornitore(el.dataset.a);
+    if (!da || !a) { alert('Scegli il fornitore in cui unirlo.'); return; }
     if (!confirm(`Unisco «${da.nome}» dentro «${a.nome}»? Fatture e prodotti passano a ${a.nome}.`)) return;
-    M.unisciFornitori(da.id, a.id); salva(); vai('#/fornitore/' + a.id); avviso('Fornitori uniti.');
+    M.unisciFornitori(da.id, a.id);
+    // i prodotti uguali dei due fornitori (es. la stessa Guinness) diventano uno solo
+    let n = 0; M.gruppiDoppioni().filter(g => g.every(p => p.fornitoreId === a.id)).forEach(g => { n += unisciGruppo(g); });
+    salva(); vai('#/fornitore/' + a.id); avviso('Fornitori uniti' + (n ? `, e ${n} prodotti doppi uniti` : '') + '.');
   };
   AZ['imp-bool'] = (el) => { S.impostazioni[el.dataset.k] = el.checked; salva(); avviso('Salvato.'); };
   AZ.completato = (el) => { const p = M.prodotto(el.dataset.id); p.daCompletare = false; salva(); ridisegnaMantenendo(); avviso('Fatto.'); };
@@ -2180,6 +2197,7 @@
   document.addEventListener('input', (e) => {
     const el = e.target; const d = el.dataset;
     if (d.filtro === 'vendFiltro') { ui.vendFiltro = el.value; const f = el.value.toLowerCase(); document.querySelectorAll('.vend-riga').forEach(x => { x.style.display = !f || x.textContent.toLowerCase().includes(f) ? '' : 'none'; }); document.querySelectorAll('.griglia-vend > .card').forEach(c => { c.style.display = [...c.querySelectorAll('.vend-riga')].some(x => x.style.display !== 'none') ? '' : 'none'; }); return; }
+    if (d.filtro === 'fornitori') { ui.filtroForn = el.value; const t = normCassa(el.value); document.querySelectorAll('#lista-forn [data-nome]').forEach(x => { x.hidden = t && !x.dataset.nome.includes(t); }); return; }
     if (d.filtro === 'prodotti') { ui.filtroProdotti = el.value; $('#lista').innerHTML = listaProdotti(); return; }
     if (d.filtro === 'ricette') {
       ui.filtroRicette = el.value; $('#lista').innerHTML = listaRicette();
@@ -2189,6 +2207,12 @@
     if (d.b != null && ui.bozza) { ui.bozza[d.b] = el.value; if (d.ridisegna) ridisegnaMantenendo(); return; }
     if (d.vd != null && ui.bozza) { ui.bozza.venditaDiretta[d.vd] = el.value; return; }
     if (d.cr != null) { mostraSuggerimenti(el); return; }
+    if (d.cercaForn) {
+      const t = normCassa(el.value).split(' ').filter(Boolean), box = $('#sugg-forn');
+      const l = t.length ? S.fornitori.filter(x => x.id !== d.cercaForn && t.every(w => normCassa(x.nome).includes(w))).slice(0, 10) : [];
+      box.innerHTML = l.map(x => `<button type="button" class="sugg-voce" data-az="unisci-fornitore" data-id="${d.cercaForn}" data-a="${x.id}"><b>Unisci dentro «${esc(x.nome)}»</b><small>${S.fatture.filter(z => z.fornitoreId === x.id).length} fatture · ${S.prodotti.filter(p => p.fornitoreId === x.id).length} prodotti</small></button>`).join('') || (t.length ? '<p class="tenue piccolo">Nessun fornitore con questo nome.</p>' : '');
+      return;
+    }
     if (d.cpCerca) { ui.cpCerca = el.value; ui.cpProd = d.cpCerca; const p = M.prodotto(d.cpCerca); const tmp = document.createElement('div'); tmp.innerHTML = collegaARicette(p); $('#cp-lista').innerHTML = tmp.querySelector('#cp-lista').innerHTML; return; }
     if (d.r != null && ui.bozza) { ui.bozza.righe[+d.r][d.k] = el.value; aggiornaAnteprima(); return; }
     if (d.ccData) { ui[d.ccData === 'dal' ? 'ccDal' : 'ccAl'] = el.value; return; }
