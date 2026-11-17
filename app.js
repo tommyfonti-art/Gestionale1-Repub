@@ -695,6 +695,13 @@
     const f = ui.filtroRicette.toLowerCase();
     const l = S.ricette.filter(r => r.tipo === ui.tipoRicette && (!f || r.nome.toLowerCase().includes(f))).sort((a, b) => a.nome.localeCompare(b.nome));
     if (!l.length) return '<p class="tenue centro">Nessuna ricetta.</p>';
+    // ordinamento: dal guadagno più basso, o dal moltiplicatore più basso (così i problemi stanno in cima)
+    const ord = ui.ordineRicette || 'nome';
+    if (ord !== 'nome' && l[0].tipo !== 'semilavorato') {
+      const k = ord === 'guadagno' ? 'margine' : 'molt';
+      const v = (r) => { const x = M.indicatori(r)[k]; return x == null ? Infinity : x; };
+      l.sort((a, b) => v(a) - v(b));
+    }
     return l.map(r => {
       if (r.tipo === 'semilavorato') {
         const c = M.costo(r);
@@ -703,7 +710,7 @@
       const i = M.indicatori(r);
       // ricette con solo una parte degli ingredienti: i numeri sono troppo belli, lo dico chiaro
       const parziale = /^Ricetta da completare/.test(r.note || '');
-      return `<a class="riga" href="#/ricetta/${r.id}"><span>${esc(r.nome)}<small>costo ${euro(i.costo)} · prezzo ${euro(i.prezzo)} con IVA</small></span><span class="destra">${parziale ? '<span class="badge giallo">ingredienti incompleti</span>' : badgeMolt(i)}<small>incidenza ${perc(i.incidenza)}</small></span></a>`;
+      return `<a class="riga" href="#/ricetta/${r.id}"><span>${esc(r.nome)}<small>costo ${euro(i.costo)} → prezzo ${euro(i.prezzo)}</small></span><span class="destra">${parziale ? '<span class="badge giallo">ingredienti incompleti</span>' : badgeMolt(i)}<small>${i.margine != null ? 'guadagni ' + euro(i.margine) : ''}</small></span></a>`;
     }).join('');
   }
   PAGINE.ricette = function () {
@@ -711,6 +718,8 @@
       titolo: 'Ricette', azione: '<a class="btn-top" href="#/modifica-ricetta/nuovo">＋ Nuova</a>', html: `
       <input class="cerca" type="search" placeholder="Cerca una ricetta" value="${esc(ui.filtroRicette)}" data-filtro="ricette">
       <div class="chips">${Object.entries(M.TIPI).map(([k, v]) => `<button class="chip ${ui.tipoRicette === k ? 'on' : ''}" data-az="tipo-ricette" data-v="${k}">${esc(v)}</button>`).join('')}</div>
+      ${ui.tipoRicette !== 'semilavorato' ? `<div class="chips sotto"><span class="tenue piccolo">Ordina per:</span>${[['nome', 'Nome'], ['guadagno', 'Guadagno più basso'], ['molt', 'Moltiplicatore più basso']].map(([k, v]) => `<button class="chip ${(ui.ordineRicette || 'nome') === k ? 'on' : ''}" data-az="ordine-ricette" data-v="${k}">${v}</button>`).join('')}</div>` : ''}
+      <div class="bottoni"><button class="btn" data-az="riv-inizia">Rivedi le ${esc((M.TIPI[ui.tipoRicette] || 'ricette').toLowerCase())} una per una</button></div>
       <div class="card lista" id="lista">${listaRicette()}</div>`
     };
   };
@@ -759,6 +768,52 @@
     };
   };
 
+  // Rivedere le ricette una per una: ingredienti, dosi e prezzo, poi «Salva e avanti»
+  function listaRivedi() {
+    const filtro = ui.rivFiltro || 'darivedere';
+    return S.ricette.filter(r => r.tipo === ui.tipoRicette && (filtro === 'tutte' || r.id === ui.rivFisso || (filtro === 'incomplete' ? /^Ricetta da completare/.test(r.note || '') || !(r.righe || []).length : !r.rivista)))
+      .sort((a, b) => a.nome.localeCompare(b.nome));
+  }
+  PAGINE['rivedi-ricette'] = function () {
+    const lista = listaRivedi();
+    const filtro = ui.rivFiltro || 'darivedere';
+    const tutte = S.ricette.filter(r => r.tipo === ui.tipoRicette);
+    const fatte = tutte.filter(r => r.rivista).length;
+    const titolo = 'Rivedi ' + (M.TIPI[ui.tipoRicette] || 'ricette').toLowerCase();
+    const chips = `<div class="chips">${Object.entries(M.TIPI).map(([k, v]) => `<button class="chip ${ui.tipoRicette === k ? 'on' : ''}" data-az="riv-tipo" data-v="${k}">${esc(v)}</button>`).join('')}</div>
+      <div class="chips sotto">${[['darivedere', 'Da rivedere (' + (tutte.length - fatte) + ')'], ['incomplete', 'Con ingredienti incompleti'], ['tutte', 'Tutte (' + tutte.length + ')']].map(([k, v]) => `<button class="chip ${filtro === k ? 'on' : ''}" data-az="riv-filtro" data-v="${k}">${v}</button>`).join('')}</div>`;
+    if (!lista.length) { ui.bozza = null; return { titolo, indietro: '#/ricette', html: chips + `<div class="card evidenza"><h3>Finito</h3><p>Non ci sono ricette in questo elenco. Rivedute ${fatte} su ${tutte.length}.</p><a class="btn primario" href="#/ricette">Torna alle ricette</a></div>` }; }
+    if (ui.rivIdx == null || ui.rivIdx >= lista.length) ui.rivIdx = 0;
+    const r = lista[ui.rivIdx];
+    if (!ui.bozza || ui.bozza._per !== 'r:' + r.id) { const base = JSON.parse(JSON.stringify(r)); base._per = 'r:' + r.id; base._rivedi = true; ui.bozza = base; }
+    const b = ui.bozza; M.svuota();
+    const semi = b.tipo === 'semilavorato';
+    const c = M.costoRicetta(Object.assign({}, b, { id: '_bozza', righe: b.righe.map(rg => Object.assign({}, rg, { quantita: numDa(rg.quantita) || 0 })) })).totale;
+    const pr = numDa(b.prezzo);
+    return {
+      titolo: `${titolo} · ${ui.rivIdx + 1} di ${lista.length}`, indietro: '#/ricette', html: chips + `
+      <p class="tenue piccolo">Rivedute finora: ${fatte} su ${tutte.length}</p>
+      <div class="card form">
+        <h2>${esc(b.nome)}${r.rivista ? ' <span class="badge verde">già riveduta</span>' : ''}</h2>
+        ${b.note ? `<p class="msg ${/^Ricetta da completare/.test(b.note) ? 'giallo' : 'grigio'}">${esc(b.note)}</p>` : ''}
+        ${semi ? `<div class="due"><label>Quanto ne viene<input type="number" step="any" inputmode="decimal" data-b="resa" value="${esc(b.resa)}"></label><label>Unità<select data-b="unita">${['ml', 'g', 'pz'].map(u => `<option ${b.unita === u ? 'selected' : ''}>${u}</option>`).join('')}</select></label></div>`
+          : `<label>Prezzo di vendita (con IVA)<input type="number" step="any" inputmode="decimal" data-b="prezzo" value="${esc(b.prezzo)}"></label>`}
+        <h3>Ingredienti</h3>
+        ${b.righe.map((rg, k) => `<div class="riga-ed"><select data-r="${k}" data-k="rif" data-ridisegna="1">${opzioniRif(rg.rif, b.id)}</select>
+          <input type="number" step="any" inputmode="decimal" data-r="${k}" data-k="quantita" value="${esc(rg.quantita)}" placeholder="dose"><span class="u">${esc(M.unitaRif(rg.rif))}</span>
+          <button class="x" data-az="togli-riga" data-k="${k}" aria-label="Togli">✕</button></div>`).join('')}
+        <button class="btn piccolo" data-az="aggiungi-riga">＋ Aggiungi ingrediente</button>
+        <p class="anteprima">Costo: <b>${euro(c, 3)}</b>${!semi && pr && c ? ` · moltiplicatore × ${n2(pr / c)}` : ''}</p>
+        <label>Note<textarea data-b="note" rows="2">${esc(b.note)}</textarea></label>
+      </div>
+      <div class="bottoni">
+        <button class="btn" data-az="riv-indietro" ${ui.rivIdx === 0 && !ui.rivUltima ? 'disabled' : ''}>◀ Precedente</button>
+        <button class="btn primario" data-az="riv-salva">Salva e avanti ▶</button>
+        <button class="btn" data-az="riv-salta">Salta</button>
+        <a class="btn" href="#/modifica-ricetta/${r.id}">Scheda completa</a>
+      </div>`
+    };
+  };
   PAGINE['modifica-ricetta'] = function (id) {
     if (!ui.bozza || ui.bozza._per !== 'r:' + id) {
       const base = id === 'nuovo' ? { id: M.uid('r'), nome: '', tipo: ui.tipoRicette, prezzo: null, righe: [], resa: null, unita: 'ml', asporto: [], costiExtra: [], vendite: {}, note: '' } : JSON.parse(JSON.stringify(M.ricetta(id)));
@@ -1176,12 +1231,12 @@
   // ---------- Disegno ----------
   const ALTRE = [['fornitori', 'Fornitori'], ['magazzino', 'Magazzino'], ['ordini', 'Ordini'], ['vendite', 'Vendite'], ['mappa', 'Mappa del menu'], ['simulatore', 'Simulatore'], ['eventi', 'Eventi'], ['olio', 'Costo olio'], ['pulizia', 'Pulizia'], ['impostazioni', 'Impostazioni']];
   const TAB = [['pannello', 'Pannello', 'M3 12l9-8 9 8v8a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z'], ['prodotti', 'Prodotti', 'M4 7l8-4 8 4v10l-8 4-8-4zM4 7l8 4 8-4M12 11v10'], ['ricette', 'Ricette', 'M6 3h12M8 3v6l-4 12h16L16 9V3'], ['fatture', 'Fatture', 'M6 2h9l5 5v15H6zM14 2v6h6M9 13h8M9 17h8'], ['altro', 'Altro', 'M5 12h.01M12 12h.01M19 12h.01']];
-  const SEZIONE = { 'controllo-fatture': 'fatture', controllo: 'prodotti', pulizia: 'altro', formati: 'prodotti', prodotto: 'prodotti', 'modifica-prodotto': 'prodotti', ricetta: 'ricette', 'modifica-ricetta': 'ricette', fattura: 'fatture' };
+  const SEZIONE = { 'controllo-fatture': 'fatture', controllo: 'prodotti', pulizia: 'altro', formati: 'prodotti', prodotto: 'prodotti', 'modifica-prodotto': 'prodotti', ricetta: 'ricette', 'modifica-ricetta': 'ricette', 'rivedi-ricette': 'ricette', fattura: 'fatture' };
   function disegna() {
     if (!S) return;
     const [, nome, arg] = (location.hash || '#/pannello').split('/');
     const fn = PAGINE[nome] || PAGINE.pannello;
-    if (!(nome === 'modifica-prodotto' || nome === 'modifica-ricetta')) ui.bozza = null;
+    if (!(nome === 'modifica-prodotto' || nome === 'modifica-ricetta' || nome === 'rivedi-ricette')) ui.bozza = null;
     if (nome !== 'magazzino') ui.conta = null;
     let pag;
     try { pag = fn(arg); } catch (e) { console.error(e); pag = { titolo: 'Errore', html: `<p class="msg rosso">Qualcosa non ha funzionato: ${esc(e.message)}</p>` }; }
@@ -1485,8 +1540,10 @@
   AZ['togli-extra'] = (el) => { ui.bozza.costiExtra.splice(+el.dataset.k, 1); ridisegnaMantenendo(); };
   AZ['aggiungi-asporto'] = () => { (ui.bozza.asporto = ui.bozza.asporto || []).push({ rif: '', quantita: 1 }); ridisegnaMantenendo(); };
   AZ['togli-asporto'] = (el) => { ui.bozza.asporto.splice(+el.dataset.k, 1); ridisegnaMantenendo(); };
-  AZ['salva-ricetta'] = () => {
-    const b = ui.bozza; if (!b.nome.trim()) { alert('Scrivi il nome.'); return; }
+  AZ['salva-ricetta'] = () => { const b = salvaBozzaRicetta(); if (b) vai('#/ricetta/' + b.id); };
+  function salvaBozzaRicetta() {
+    const b = ui.bozza; if (!b.nome.trim()) { alert('Scrivi il nome.'); return null; }
+    delete b._rivedi;
     b.righe = b.righe.filter(rg => rg.rif).map(rg => Object.assign(rg, { quantita: numDa(rg.quantita) || 0 }));
     b.costiExtra = (b.costiExtra || []).filter(e => e.nome || e.costo).map(e => Object.assign(e, { costo: numDa(e.costo) || 0 }));
     b.asporto = (b.asporto || []).filter(a => a.rif).map(a => Object.assign(a, { quantita: numDa(a.quantita) || 1 }));
@@ -1496,7 +1553,32 @@
     const prima = nuovo ? null : M.ricetta(b.id);
     if (prima && /^Ricetta da completare/.test(b.note || '') && b.righe.length > (prima.righe || []).length) b.note = String(b.note).replace(/^Ricetta da completare[^.]*\.\s*/, '');
     if (nuovo) S.ricette.push(b); else S.ricette[S.ricette.findIndex(r => r.id === b.id)] = b;
-    ui.bozza = null; ui.tipoRicette = b.tipo; salva(); vai('#/ricetta/' + b.id);
+    ui.bozza = null; ui.tipoRicette = b.tipo; salva(); return b;
+  }
+  AZ['ordine-ricette'] = (el) => { ui.ordineRicette = el.dataset.v; ridisegnaMantenendo(); };
+  AZ['riv-inizia'] = () => { ui.rivIdx = 0; ui.rivFiltro = ui.rivFiltro || 'darivedere'; ui.bozza = null; vai('#/rivedi-ricette'); };
+  AZ['riv-tipo'] = (el) => { ui.tipoRicette = el.dataset.v; ui.rivIdx = 0; ui.rivFisso = ui.rivUltima = null; ui.bozza = null; ridisegnaMantenendo(); };
+  AZ['riv-filtro'] = (el) => { ui.rivFiltro = el.dataset.v; ui.rivIdx = 0; ui.rivFisso = ui.rivUltima = null; ui.bozza = null; ridisegnaMantenendo(); };
+  AZ['riv-salta'] = () => {
+    const l = listaRivedi(), cor = l[ui.rivIdx || 0];
+    if (cor && cor.id === ui.rivFisso) { ui.rivFisso = null; const n = listaRivedi(); ui.rivIdx = n.length < l.length ? (ui.rivIdx || 0) : (ui.rivIdx || 0) + 1; }
+    else ui.rivIdx = (ui.rivIdx || 0) + 1;
+    ui.bozza = null; ridisegnaMantenendo(); window.scrollTo(0, 0); };
+  AZ['riv-indietro'] = () => {
+    // se la ricetta di prima era «da rivedere» ed è stata appena salvata, non è più nell'elenco: la ritrovo
+    const prec = ui.rivUltima && M.ricetta(ui.rivUltima);
+    if (prec && !listaRivedi().includes(prec)) { ui.rivFisso = prec.id; ui.rivUltima = null; ui.rivIdx = listaRivedi().indexOf(prec); }
+    else ui.rivIdx = Math.max(0, (ui.rivIdx || 0) - 1);
+    ui.bozza = null; ridisegnaMantenendo(); window.scrollTo(0, 0);
+  };
+  AZ['riv-salva'] = () => {
+    const prima = listaRivedi(); const pos = ui.rivIdx || 0;
+    const b = salvaBozzaRicetta(); if (!b) return;
+    const r = M.ricetta(b.id); r.rivista = true; salva(); ui.rivUltima = r.id;
+    if (ui.rivFisso === r.id) ui.rivFisso = null;
+    // se la ricetta è uscita dall'elenco (era «da rivedere») resto allo stesso posto, sennò vado avanti
+    ui.rivIdx = listaRivedi().length < prima.length ? pos : pos + 1;
+    ridisegnaMantenendo(); window.scrollTo(0, 0); avviso('Salvata: ' + b.nome);
   };
   AZ['elimina-ricetta'] = () => {
     const b = ui.bozza; const uso = M.usatoIn('r:' + b.id).dirette;
