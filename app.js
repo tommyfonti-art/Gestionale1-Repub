@@ -401,9 +401,19 @@
     return {
       titolo: 'Gestionale Repub', html: `${andamento}
       <h2 class="sezione">Da fare</h2>
-      ${!S.puliziaFatta && S.fatture.length && S.prodotti.some(p => M.daFoglio(p)) ? `<div class="card evidenza"><h3>Collega il foglio alle fatture</h3><p class="tenue">Ci sono prodotti del foglio che hanno un doppione arrivato dalle fatture: collegali, così le ricette prendono i prezzi veri.</p><a class="btn primario" href="#/pulizia">Inizia la pulizia</a></div>` : ''}
+      ${(() => { const n = S.prodotti.filter(p => M.daFoglio(p) && !(S.foglioTenuti || []).includes(p.id)).length; return n && S.fatture.length ? `<div class="card evidenza"><h3>Prodotti del tuo foglio (${n})</h3><p class="tenue">Uno per uno: collegali a quelli delle fatture, trasformali in preparazioni se li fate voi, tienili o eliminali.</p><a class="btn primario" href="#/foglio" data-az="fg-apri">Inizia</a></div>` : ''; })()}
       ${fornitoriDaControllare().length ? `<div class="card"><h3>Fornitori nuovi da controllare</h3><p class="tenue">Dimmi chi vende merce e chi manda solo bollette o servizi: vale per tutte le loro fatture.</p><a class="btn primario" href="#/controllo-fatture">Controllo rapido (${fornitoriDaControllare().length})</a></div>` : ''}
       ${nuoviDaCompletare() ? `<div class="card"><h3>Prodotti nuovi da completare</h3><p class="tenue">Creati in automatico dalle fatture: controlla nome breve e formato.</p>${S.prodotti.filter(p => p.daCompletare).slice(0, 6).map(p => `<a class="riga" href="#/prodotto/${p.id}"><span>${esc(p.nomeBreve)}<small>${esc(p.nomeCompleto)}</small></span><span class="badge giallo">da completare</span></a>`).join('')}<div class="bottoni"><a class="btn primario" href="#/controllo">Controllo rapido (${nuoviDaCompletare()})</a><a class="btn" href="#/prodotti" data-az="vai-nuovi">Vedi l'elenco</a></div></div>` : ''}
+      ${(() => {
+        // ricette che costano più di quanto si vendono: quasi sempre un prodotto col prezzo del cartone intero contato come un pezzo
+        const colpevoli = {};
+        S.ricette.filter(r => r.tipo !== 'semilavorato' && r.prezzo).forEach(r => { const i = M.indicatori(r); if (i.costo == null || i.costo <= i.netto) return;
+          const c = M.costoRicetta(r).righe.filter(x => x.rif && x.rif.startsWith('p:')).sort((a, b) => (b.costo || 0) - (a.costo || 0))[0];
+          if (c) { const k = c.rif.slice(2); (colpevoli[k] = colpevoli[k] || []).push(r.nome); } });
+        const ks = Object.keys(colpevoli).filter(k => M.prodotto(k));
+        return ks.length ? `<div class="card evidenza"><h3>Costi impossibili</h3><p class="tenue">Queste ricette costano più di quanto le vendete: il colpevole è quasi sempre un prodotto con il prezzo di un cartone intero contato come un pezzo solo. Apri il prodotto e scrivi quanti pezzi ci sono nel cartone.</p>
+          ${ks.map(k => { const p = M.prodotto(k); return `<a class="riga" href="#/prodotto/${k}"><span>${esc(p.nomeBreve)}<small>${descrPrezzo(p)} · in ${colpevoli[k].slice(0, 4).map(esc).join(', ')}${colpevoli[k].length > 4 ? '…' : ''}</small></span><span class="badge rosso">${colpevoli[k].length} ricette</span></a>`; }).join('')}</div>` : '';
+      })()}
       ${M.gruppiDoppioni().length ? `<div class="card"><h3>Prodotti doppi</h3><p class="tenue">${M.gruppiDoppioni().length} prodotti compaiono più volte con lo stesso nome e formato (es. da due fornitori): uniscili, così nelle ricette ne trovi uno solo.</p><a class="btn primario" href="#/doppioni">Vedi e unisci</a></div>` : ''}
       ${daFare.length ? `<div class="card"><h3>Fatture da completare</h3>${daFare.map(f => `<a class="riga" href="#/fattura/${f.id}"><span>${esc(f.fornitoreNome)} · n. ${esc(f.numero)}</span><span class="badge giallo">${M.daAbbinare(f)} righe da collegare</span></a>`).join('')}</div>` : ''}
       <div class="card"><h3>Prezzi cambiati</h3>${aumenti.length ? aumenti.slice(0, 8).map(x => `<a class="riga" href="#/prodotto/${x.p.id}"><span>${esc(x.p.nomeBreve)}<small>${dataIt(x.data)}</small></span><span class="badge ${x.v > 0 ? 'rosso' : 'verde'}">${x.v > 0 ? '+' : ''}${n2(x.v, 1)}%</span></a>`).join('') : '<p class="tenue">Nessun cambio di prezzo. Compariranno qui quando registri le fatture.</p>'}</div>
@@ -447,6 +457,7 @@
       titolo: 'Prodotti', azione: '<a class="btn-top" href="#/modifica-prodotto/nuovo">＋ Nuovo</a>', html: `
       ${nuoviDaCompletare() ? `<a class="btn primario largo" href="#/controllo">Controllo rapido dei prodotti nuovi (${nuoviDaCompletare()})</a>` : ''}
       ${M.gruppiDoppioni().length ? `<a class="btn largo" href="#/doppioni">Doppioni da unire (${M.gruppiDoppioni().length})</a>` : ''}
+      ${(() => { const n = S.prodotti.filter(p => M.daFoglio(p) && !(S.foglioTenuti || []).includes(p.id)).length; return n ? `<a class="btn largo" href="#/foglio" data-az="fg-apri">Prodotti del tuo foglio da collegare alle fatture (${n})</a>` : ''; })()}
       ${ui.prodVista === 'fornitori'
         ? (ui.fornProd && M.fornitore(ui.fornProd) ? `<a class="btn primario largo" href="#/formati" data-az="fmt-fornitore" data-id="${ui.fornProd}">Metti a posto tutti i prodotti di ${esc(M.fornitore(ui.fornProd).nome)}, uno dopo l'altro</a>` : '<p class="tenue">Scegli un fornitore: vedi tutta la sua roba e la sistemi in un colpo con la fattura sotto mano.</p>')
         : `<a class="btn largo" href="#/formati" data-az="fmt-categoria">${ui.categoria && ui.categoria !== 'Tutte' && ui.categoria !== '__nuovi' ? `Ricontrolla i formati: solo ${esc(ui.categoria)}` : ui.reparto ? `Ricontrolla i formati: tutto ${esc(ui.reparto)}` : 'Ricontrolla i formati, uno dopo l\'altro'}</a>`}
@@ -1020,7 +1031,7 @@
       ['fornitori', 'Fornitori', 'contatti, spesa, prodotti'], ['magazzino', 'Magazzino', 'inventario ogni sei mesi'],
 ['vendite', 'Vendite', 'pezzi venduti per periodo'], ['mappa', 'Mappa del menu', 'cosa vende e cosa rende'],
       ['simulatore', 'Simulatore', 'e se cambia un prezzo?'], ['eventi', 'Eventi', 'listini per le serate'], ['olio', 'Costo olio', 'quanto costa friggere'],
-      ['pulizia', 'Pulizia dei prodotti', 'collega il foglio alle fatture'],
+      ['foglio', 'Prodotti del foglio', 'collegali a quelli delle fatture, uno per uno'],
       ['importa', 'Importa dalla cassa', 'listino e vendite da Cassa in Cloud'],
       ['impostazioni', 'Impostazioni', 'soglie, IVA, esportazione']
     ];
@@ -1307,7 +1318,7 @@
         <p class="tenue piccolo">${CLOUD ? 'Salvati online su Firebase.' : 'In questa prova i dati sono salvati su questo dispositivo.'}</p>
         <div class="bottoni colonna">
           <button class="btn" data-az="esporta-excel">Esporta in Excel</button>
-          <a class="btn" href="#/pulizia">Pulizia: collega i prodotti del foglio a quelli delle fatture</a>
+          <a class="btn" href="#/foglio">Prodotti del foglio: collegali a quelli delle fatture</a>
           <button class="btn" data-az="scarica-copia">Scarica una copia dei dati</button>
           <label class="btn">Carica una copia dei dati<input type="file" accept=".json" hidden data-carica="copia"></label>
           <button class="btn pericolo" data-az="ripristina">Ricomincia con i dati della prova</button>
@@ -1316,9 +1327,9 @@
   };
 
   // ---------- Disegno ----------
-  const ALTRE = [['fornitori', 'Fornitori'], ['magazzino', 'Magazzino'], ['vendite', 'Vendite'], ['mappa', 'Mappa del menu'], ['simulatore', 'Simulatore'], ['eventi', 'Eventi'], ['olio', 'Costo olio'], ['pulizia', 'Pulizia'], ['importa', 'Importa dalla cassa'], ['impostazioni', 'Impostazioni']];
+  const ALTRE = [['fornitori', 'Fornitori'], ['magazzino', 'Magazzino'], ['vendite', 'Vendite'], ['mappa', 'Mappa del menu'], ['simulatore', 'Simulatore'], ['eventi', 'Eventi'], ['olio', 'Costo olio'], ['foglio', 'Prodotti del foglio'], ['importa', 'Importa dalla cassa'], ['impostazioni', 'Impostazioni']];
   const TAB = [['pannello', 'Pannello', 'M3 12l9-8 9 8v8a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z'], ['prodotti', 'Prodotti', 'M4 7l8-4 8 4v10l-8 4-8-4zM4 7l8 4 8-4M12 11v10'], ['ricette', 'Ricette', 'M6 3h12M8 3v6l-4 12h16L16 9V3'], ['fatture', 'Fatture', 'M6 2h9l5 5v15H6zM14 2v6h6M9 13h8M9 17h8'], ['altro', 'Altro', 'M5 12h.01M12 12h.01M19 12h.01']];
-  const SEZIONE = { doppioni: 'prodotti', importa: 'altro', 'controllo-fatture': 'fatture', controllo: 'prodotti', pulizia: 'altro', formati: 'prodotti', prodotto: 'prodotti', 'modifica-prodotto': 'prodotti', ricetta: 'ricette', 'modifica-ricetta': 'ricette', 'rivedi-ricette': 'ricette', fattura: 'fatture' };
+  const SEZIONE = { foglio: 'prodotti', doppioni: 'prodotti', importa: 'altro', 'controllo-fatture': 'fatture', controllo: 'prodotti', pulizia: 'altro', formati: 'prodotti', prodotto: 'prodotti', 'modifica-prodotto': 'prodotti', ricetta: 'ricette', 'modifica-ricetta': 'ricette', 'rivedi-ricette': 'ricette', fattura: 'fatture' };
   function disegna() {
     if (!S) return;
     const [, nome, arg] = (location.hash || '#/pannello').split('/');
@@ -2037,6 +2048,77 @@
     el.dataset.ids.split(',').map(M.prodotto).filter(Boolean).forEach((p, k) => { if (k > 0) { const f = M.fornitore(p.fornitoreId); p.nomeBreve = p.nomeBreve + ' ' + (f ? f.nome.split(' ')[0].toLowerCase() : k + 1); } });
     salva(); ridisegnaMantenendo();
   };
+  // ---------- Prodotti del foglio: uno per uno, decidi cosa diventano ----------
+  function listaFoglio() {
+    const tenuti = new Set(S.foglioTenuti || []), filtro = ui.fgFiltro || 'dafare';
+    const usi = (p) => M.usatoIn('p:' + p.id).dirette.length;
+    let l = S.prodotti.filter(p => M.daFoglio(p) && (filtro === 'tutti' || p.id === ui.fgFisso || !tenuti.has(p.id)));
+    if (filtro === 'usati') l = l.filter(usi);
+    if (filtro === 'nonusati') l = l.filter(p => !usi(p));
+    if (ui.fgForn) l = l.filter(p => p.fornitoreId === ui.fgForn || (ui.fgForn === '__nessuno' && !p.fornitoreId));
+    return l.sort((a, b) => usi(b) - usi(a) || a.nomeBreve.localeCompare(b.nomeBreve));
+  }
+  PAGINE.foglio = function () {
+    const l = listaFoglio(), filtro = ui.fgFiltro || 'dafare';
+    const tutti = S.prodotti.filter(p => M.daFoglio(p)), fatti = (S.foglioTenuti || []).filter(id => M.prodotto(id) && M.daFoglio(M.prodotto(id))).length;
+    const fornF = {}; tutti.forEach(p => { const k = p.fornitoreId || '__nessuno'; fornF[k] = (fornF[k] || 0) + 1; });
+    const chips = `<div class="chips">${[['dafare', 'Da decidere'], ['usati', 'Usati nelle ricette'], ['nonusati', 'Non usati'], ['tutti', 'Tutti (' + tutti.length + ')']].map(([k, v]) => `<button class="chip ${filtro === k ? 'on' : ''}" data-az="fg-filtro" data-v="${k}">${v}</button>`).join('')}</div>
+      <div class="chips sotto"><button class="chip ${!ui.fgForn ? 'on' : ''}" data-az="fg-forn" data-v="">Tutti i fornitori</button>${Object.entries(fornF).sort((a, b) => b[1] - a[1]).map(([k, n]) => `<button class="chip ${ui.fgForn === k ? 'on' : ''}" data-az="fg-forn" data-v="${k}">${esc(k === '__nessuno' ? 'Fatti da noi / senza fornitore' : (M.fornitore(k) || {}).nome || '?')} (${n})</button>`).join('')}</div>`;
+    if (!l.length) { return { titolo: 'Prodotti del foglio', indietro: '#/prodotti', html: chips + `<div class="card evidenza"><h3>Finito</h3><p>Nessun prodotto del foglio in questo elenco. Restano ${tutti.length} prodotti del foglio, di cui ${fatti} li hai tenuti apposta.</p></div>` }; }
+    if (ui.fgIdx == null || ui.fgIdx >= l.length) ui.fgIdx = 0;
+    const p = l[ui.fgIdx];
+    const uso = M.usatoIn('p:' + p.id).dirette;
+    const fatt = S.prodotti.filter(x => M.daFattura(x));
+    const sim = M.somiglianti(p, fatt).slice(0, 3);
+    const forn = M.fornitore(p.fornitoreId);
+    return {
+      titolo: `Prodotti del foglio · ${ui.fgIdx + 1} di ${l.length}`, indietro: '#/prodotti', html: chips + `
+      <div class="ctrl">
+      <div class="card"><h3 class="grande-t">${esc(p.nomeBreve)}</h3>
+        <div class="sottotitolo">Dal tuo foglio${forn ? ' · ' + esc(forn.nome) : ' · senza fornitore'} · ${esc(p.confezione)} da ${qta(p.contenuto)} ${esc(p.unita)}</div>
+        <p>${descrPrezzo(p)}</p>
+        <p class="piccolo">${uso.length ? `<b>Usato in ${uso.length} ${uso.length === 1 ? 'ricetta' : 'ricette'}:</b> ${uso.slice(0, 8).map(r => esc(r.nome)).join(', ')}${uso.length > 8 ? '…' : ''}` : '<b>Non è usato in nessuna ricetta.</b>'}</p>
+        ${(S.foglioTenuti || []).includes(p.id) ? '<p class="msg grigio">L\'avevi già tenuto così.</p>' : ''}</div>
+      <div class="bottoni colonna ctrl-scelte">
+        <p class="piccolo"><b>È uno di questi delle fatture?</b> Le ricette passano a quello e il prezzo lo faranno le fatture.</p>
+        ${sim.map(s => `<button class="btn scelta-lunga" data-az="fg-collega" data-da="${p.id}" data-a="${s.p.id}"><b>È ${esc(s.p.nomeBreve)}</b><small>${esc((M.fornitore(s.p.fornitoreId) || {}).nome || '')} · ${esc(s.p.nomeCompleto)} · ${descrPrezzo(s.p)}</small></button>`).join('')}
+        <div class="scegli-rif"><input class="cerca-rif" data-fg-cerca="${p.id}" autocomplete="off" placeholder="Cerca tra i prodotti delle fatture: es. campari"><div class="sugg" id="sugg-fg"></div></div>
+        <p class="piccolo" style="margin-top:14px"><b>Oppure:</b></p>
+        <button class="btn scelta-lunga" data-az="fg-prep" data-id="${p.id}"><b>È fatto da noi: diventa una preparazione</b><small>blend, cordial, sciroppi, salse… poi gli metti gli ingredienti. Finché non li metti tiene il costo del foglio.</small></button>
+        <button class="btn scelta-lunga" data-az="fg-tieni" data-id="${p.id}"><b>Non c'è nelle fatture: tienilo col prezzo del foglio</b><small>es. fatture che mancano o merce pagata al banco. Se più avanti arriva la fattura, lo ritrovi in «Tutti».</small></button>
+        ${uso.length ? '' : `<button class="btn pericolo scelta-lunga" data-az="fg-elimina" data-id="${p.id}"><b>Non serve: eliminalo</b><small>non è in nessuna ricetta</small></button>`}
+        <div class="bottoni"><button class="btn piccolo" data-az="fg-indietro" ${ui.fgIdx === 0 && !(ui.st_fg || []).length ? 'disabled' : ''}>‹ Precedente</button><button class="btn piccolo" data-az="fg-salta">Salta ›</button></div>
+      </div></div>
+      <p class="tenue piccolo">Controlla che il prezzo al litro, al chilo o al pezzo sia simile a quello della fattura: se è molto diverso, il formato di uno dei due è sbagliato (te lo segno da ricontrollare).</p>`
+    };
+  };
+  const fgDopo = (prima) => { const ora = listaFoglio(); if (ora.length >= prima.length) ui.fgIdx = (ui.fgIdx || 0) + 1; ui.fgFisso = null; M.svuota(); salva(); ridisegnaMantenendo(); window.scrollTo(0, 0); };
+  AZ['fg-apri'] = () => { ui.fgIdx = 0; ui.st_fg = []; ui.fgFisso = null; };
+  AZ['fg-filtro'] = (el) => { ui.fgFiltro = el.dataset.v; ui.fgIdx = 0; ui.st_fg = []; ui.fgFisso = null; ridisegnaMantenendo(); };
+  AZ['fg-forn'] = (el) => { ui.fgForn = el.dataset.v || null; ui.fgIdx = 0; ui.st_fg = []; ui.fgFisso = null; ridisegnaMantenendo(); };
+  AZ['fg-salta'] = () => { ricordaPosto('fg', 'fgIdx'); ui.fgIdx = (ui.fgIdx || 0) + 1; ui.fgFisso = null; ridisegnaMantenendo(); window.scrollTo(0, 0); };
+  AZ['fg-indietro'] = () => tornaIndietro('fg', 'fgIdx');
+  AZ['fg-collega'] = (el) => {
+    const prima = listaFoglio(); ricorda('fg', 'fgIdx', true);
+    const ve = M.prodotto(el.dataset.a), fo = M.prodotto(el.dataset.da);
+    const err = M.collegaAlFoglio(el.dataset.da, el.dataset.a); if (err) { ui.st_fg.pop(); alert(err); return; }
+    avviso(`Collegato: «${fo.nomeBreve}» ora è ${ve.nomeBreve} delle fatture${ve.dubbio ? ' (prezzo molto diverso: ricontrolla il formato)' : ''}.`);
+    fgDopo(prima);
+  };
+  AZ['fg-tieni'] = (el) => { const prima = listaFoglio(); ricorda('fg', 'fgIdx'); S.foglioTenuti = Array.from(new Set((S.foglioTenuti || []).concat(el.dataset.id))); fgDopo(prima); };
+  AZ['fg-elimina'] = (el) => { const p = M.prodotto(el.dataset.id); if (!confirm(`Elimino «${p.nomeBreve}»?`)) return; const prima = listaFoglio(); ricorda('fg', 'fgIdx'); S.prodotti = S.prodotti.filter(x => x !== p); fgDopo(prima); };
+  AZ['fg-prep'] = (el) => {
+    const p = M.prodotto(el.dataset.id), prima = listaFoglio(); ricorda('fg', 'fgIdx');
+    const costo = M.prezzo(p);
+    const r = { id: M.uid('r'), nome: p.nomeBreve, tipo: 'semilavorato', prezzo: null, righe: [], resa: p.contenuto || 1000, unita: p.unita === 'pz' ? 'pz' : p.unita, asporto: [], vendite: {},
+      costiExtra: costo != null ? [{ nome: 'Costo dal foglio (provvisorio: toglilo quando metti gli ingredienti)', costo }] : [],
+      note: 'Ricetta da completare: mancano gli ingredienti. Era nel foglio come «' + p.nomeBreve + '» (' + p.confezione + ' da ' + qta(p.contenuto) + ' ' + p.unita + ').' };
+    S.ricette.push(r);
+    S.ricette.forEach(x => { (x.righe || []).forEach(rg => { if (rg.rif === 'p:' + p.id) rg.rif = 'r:' + r.id; }); (x.asporto || []).forEach(a => { if (a.rif === 'p:' + p.id) a.rif = 'r:' + r.id; }); });
+    S.prodotti = S.prodotti.filter(x => x !== p);
+    avviso(`«${r.nome}» ora è una preparazione: la trovi in Ricette › Preparazioni.`);
+    fgDopo(prima);
+  };
   AZ['ordine-ricette'] = (el) => { ui.ordineRicette = el.dataset.v; ridisegnaMantenendo(); };
   AZ['riv-inizia'] = () => { ui.rivIdx = 0; ui.rivStorico = []; ui.rivFisso = null; ui.rivFiltro = ui.rivFiltro || 'darivedere'; ui.bozza = null; vai('#/rivedi-ricette'); };
   AZ['riv-tipo'] = (el) => { ui.tipoRicette = el.dataset.v; ui.rivIdx = 0; ui.rivFisso = null; ui.rivStorico = []; ui.bozza = null; ridisegnaMantenendo(); };
@@ -2207,6 +2289,12 @@
     if (d.b != null && ui.bozza) { ui.bozza[d.b] = el.value; if (d.ridisegna) ridisegnaMantenendo(); return; }
     if (d.vd != null && ui.bozza) { ui.bozza.venditaDiretta[d.vd] = el.value; return; }
     if (d.cr != null) { mostraSuggerimenti(el); return; }
+    if (d.fgCerca) {
+      const box = $('#sugg-fg'), t = normCassa(el.value).split(' ').filter(Boolean);
+      const l = t.length ? S.prodotti.filter(x => M.daFattura(x) && t.every(w => normCassa(x.nomeBreve + ' ' + x.nomeCompleto + ' ' + ((M.fornitore(x.fornitoreId) || {}).nome || '')).includes(w))).slice(0, 12) : [];
+      box.innerHTML = l.map(x => `<button type="button" class="sugg-voce" data-az="fg-collega" data-da="${d.fgCerca}" data-a="${x.id}"><b>${esc(x.nomeBreve)}</b><small>${esc((M.fornitore(x.fornitoreId) || {}).nome || '')} · ${esc(x.nomeCompleto)} · ${descrPrezzo(x)}</small></button>`).join('') || (t.length ? '<p class="tenue piccolo">Nessun prodotto delle fatture con questo nome.</p>' : '');
+      return;
+    }
     if (d.cercaForn) {
       const t = normCassa(el.value).split(' ').filter(Boolean), box = $('#sugg-forn');
       const l = t.length ? S.fornitori.filter(x => x.id !== d.cercaForn && t.every(w => normCassa(x.nome).includes(w))).slice(0, 10) : [];
