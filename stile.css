@@ -245,3 +245,6 @@ body.trascina::after { content: 'Lascia qui i file'; position: fixed; inset: 12p
 
 label.spunta { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; margin: 4px 0 12px; }
 label.spunta input { width: auto; margin-top: 3px; }
+
+.pz-riga { padding: 10px 0; border-top: 1px solid var(--linea); }
+.pz-riga small { display: block; color: var(--tenue); font-size: 12px; margin-top: 2px; }

@@ -572,6 +572,7 @@
         </div>
         ${campo('Resa % (scarto, calo in cottura)', 'resa', 'number', 'step="any" inputmode="decimal"')}
       </div>
+      ${pezziInFattura(b)}
       <div class="card form"><h3>Allergeni</h3><div class="chips">${M.ALLERGENI.map(a => `<button class="chip ${(b.allergeni || []).includes(a) ? 'on' : ''}" data-az="allergene" data-v="${esc(a)}">${esc(a)}</button>`).join('')}</div></div>
       <div class="card form"><h3>Vendita diretta</h3>
         <label class="interruttore"><input type="checkbox" data-az="vd-attiva" ${b.venditaDiretta ? 'checked' : ''}> Lo vendo anche così com'è (al calice, liscio…)</label>
@@ -2264,6 +2265,28 @@
     ui.lfProd = ui.lfVoci = null; M.svuota(); salva(); ridisegnaMantenendo(); window.scrollTo(0, 0);
     avviso(`Prezzi di ${forn.nome} messi a ${n} prodotti.`);
   };
+  // ---------- Come arriva in fattura: «1 cartone = 12 pezzi», per ogni articolo del fornitore ----------
+  function righeFatturaDi(pId) {
+    // l'ultima riga di fattura per ogni articolo (fornitore + codice o descrizione)
+    const per = {};
+    S.fatture.slice().sort((a, b) => (a.data || '') < (b.data || '') ? -1 : 1).forEach(f => f.righe.forEach(rg => {
+      if (rg.prodottoId !== pId || rg.ignora || !(rg.totale > 0)) return;
+      per[f.fornitoreId + '|' + (rg.codice || normCassa(rg.descrizione))] = { f, rg };
+    }));
+    return Object.values(per);
+  }
+  function pezziInFattura(b) {
+    if (!b || !b.id || b._per === 'p:nuovo') return '';
+    const l = righeFatturaDi(b.id); if (!l.length) return '';
+    return `<div class="card form"><h3>Come arriva in fattura</h3>
+      <p class="tenue piccolo">Se in fattura c'è un cartone (o una cassa, un fardello) scrivi quanti pezzi ci sono dentro: il prezzo diventa quello di un pezzo. Il pezzo è quello qui sopra: ${esc(b.confezione)} da ${qta(b.contenuto)} ${esc(b.unita)}.</p>
+      ${l.map(({ f, rg }) => { const n = Number(rg.confezioniPerUnita) || 1; const pu = rg.totale / (rg.quantita || 1);
+        return `<div class="pz-riga"><div><b>${esc(rg.descrizione)}</b><small>${esc((M.fornitore(f.fornitoreId) || {}).nome || f.fornitoreNome)} · ${dataIt(f.data)} · ${qta(rg.quantita)} ${esc(rg.um || 'pz')} a ${euro(pu)}</small></div>
+          <label>1 ${esc(rg.um || 'pezzo')} di fattura = quanti pezzi?<input type="number" step="any" inputmode="decimal" data-pzr="${f.id}" value="${n}"></label>
+          ${(() => { const m = String(rg.descrizione).match(/\bx\s*(\d{1,3})\b/i); return n === 1 && m && +m[1] > 1 ? `<button class="btn piccolo" data-az="pz-suggerito" data-f="${f.id}" data-n="${m[1]}">In descrizione c'è «x ${m[1]}»: metti ${m[1]} pezzi</button>` : ''; })()}
+          <p class="piccolo">= <b>${euro(pu / n)}</b> a ${esc(b.confezione)}${b.contenuto ? ` · ${euro(pu / n / b.contenuto * (b.unita === 'pz' ? 1 : 1000))}${b.unita === 'g' ? ' al kg' : b.unita === 'ml' ? ' al litro' : ' al pezzo'}` : ''}</p></div>`; }).join('')}</div>`;
+  }
+  AZ['pz-suggerito'] = (el) => { const i = document.querySelector(`[data-pzr="${el.dataset.f}"]`); if (!i) return; i.value = el.dataset.n; i.dispatchEvent(new Event('change', { bubbles: true })); };
   AZ['ordine-ricette'] = (el) => { ui.ordineRicette = el.dataset.v; ridisegnaMantenendo(); };
   AZ['riv-inizia'] = () => { ui.rivIdx = 0; ui.rivStorico = []; ui.rivFisso = null; ui.rivFiltro = ui.rivFiltro || 'darivedere'; ui.bozza = null; vai('#/rivedi-ricette'); };
   AZ['riv-tipo'] = (el) => { ui.tipoRicette = el.dataset.v; ui.rivIdx = 0; ui.rivFisso = null; ui.rivStorico = []; ui.bozza = null; ridisegnaMantenendo(); };
@@ -2494,6 +2517,13 @@
     if (d.carica === 'foto') { if (el.files[0]) caricaFoto(el.files[0]); el.value = ''; return; }
     if (d.carica === 'listino-fornitore') { if (el.files[0]) caricaListinoFornitore(el.files[0]); el.value = ''; return; }
     if (d.lf) { if (d.lf === 'forn') ui.lfForn = el.value; if (d.lf === 'data') ui.lfData = el.value; if (d.lf === 'sconto') ui.lfSconto = el.value; ridisegnaMantenendo(); return; }
+    if (d.pzr && ui.bozza) {
+      const n = numDa(el.value); if (!n || n <= 0) return;
+      M.cambiaPezziPerRiga(ui.bozza.id, d.pzr, n);
+      // la scheda in modifica prende subito i prezzi e gli articoli aggiornati
+      const p = M.prodotto(ui.bozza.id); ui.bozza.prezzi = JSON.parse(JSON.stringify(p.prezzi || [])); ui.bozza.articoli = JSON.parse(JSON.stringify(p.articoli || []));
+      delete p.dubbio; delete ui.bozza.dubbio; M.svuota(); salva(); ridisegnaMantenendo(); avviso('Fatto: prezzo per pezzo aggiornato, anche nelle ricette.'); return;
+    }
     if (d.lfScelta != null) { ui.lfProd[+d.lfScelta].scelta = +el.value; ridisegnaMantenendo(); return; }
     if (d.carica === 'cassa-listino' || d.carica === 'cassa-vendite') { if (el.files[0]) caricaCassa(el.files[0], d.carica === 'cassa-listino' ? 'listino' : 'vendite'); el.value = ''; return; }
     if (d.ccG != null) { ui.ccAperto = +d.ccG; ui.ccListino.gruppi[+d.ccG].tipo = el.value; ui.ccListino.gruppi[+d.ccG].voci.forEach(v => { if (el.value !== 'salta' && v.scelta === '__salta' && v.prezzo > 0 && v.prezzo <= 100) v.scelta = ''; }); ridisegnaMantenendo(); return; }
