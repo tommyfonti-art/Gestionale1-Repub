@@ -2057,6 +2057,24 @@
     const pr = numDa(b.prezzo);
     el.innerHTML = `Costo: <b>${euro(c, 3)}</b>${b.tipo !== 'semilavorato' && pr && c ? ` · moltiplicatore × ${n2(pr / c)}` : ''}`;
   }
+  // trascinare i file sulla finestra: fatture (.xml, .p7m, .zip) ovunque, file Excel nella pagina «Importa dalla cassa»
+  document.addEventListener('dragover', (e) => { if (e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files')) { e.preventDefault(); document.body.classList.add('trascina'); } });
+  document.addEventListener('dragleave', (e) => { if (!e.relatedTarget) document.body.classList.remove('trascina'); });
+  document.addEventListener('drop', (e) => {
+    if (!e.dataTransfer || !e.dataTransfer.files.length) return;
+    e.preventDefault(); document.body.classList.remove('trascina');
+    if (!S) return;
+    const file = Array.from(e.dataTransfer.files);
+    const fatture = file.filter(f => /\.(xml|p7m|zip)$/i.test(f.name));
+    const excel = file.filter(f => /\.xlsx$/i.test(f.name));
+    if (fatture.length) { if (!(location.hash || '').startsWith('#/fatture')) vai('#/fatture'); caricaXML(fatture); return; }
+    if (excel.length) {
+      if (!(location.hash || '').startsWith('#/importa')) { vai('#/importa'); }
+      const tipo = /venduto/i.test(excel[0].name) ? 'vendite' : 'listino';
+      caricaCassa(excel[0], tipo); return;
+    }
+    alert('Posso leggere fatture elettroniche (.xml, .p7m, .zip) o i file Excel della cassa (.xlsx).');
+  });
   document.addEventListener('change', (e) => {
     const el = e.target; const d = el.dataset;
     if (d.carica === 'xml') { caricaXML(Array.from(el.files)); el.value = ''; return; }
