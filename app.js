@@ -830,7 +830,7 @@
         <label>Note<textarea data-b="note" rows="2">${esc(b.note)}</textarea></label>
       </div>
       <div class="bottoni">
-        <button class="btn" data-az="riv-indietro" ${ui.rivIdx === 0 && !ui.rivUltima ? 'disabled' : ''}>◀ Precedente</button>
+        <button class="btn" data-az="riv-indietro" ${ui.rivIdx === 0 && !(ui.rivStorico || []).length ? 'disabled' : ''}>◀ Precedente</button>
         <button class="btn primario" data-az="riv-salva">Salva e avanti ▶</button>
         <button class="btn" data-az="riv-salta">Salta</button>
         <a class="btn" href="#/modifica-ricetta/${r.id}">Scheda completa</a>
@@ -1482,18 +1482,34 @@
     else { M.fornitore(el.dataset.id).servizi = false; salva(); avviso('Salvato. Le prossime fatture creeranno i prodotti.'); }
     setTimeout(ridisegnaMantenendo, 150);
   };
+  // «Precedente» in tutti gli strumenti passo per passo: annulla l'ultima scelta e torna su quella voce
+  function ricorda(chiave, idxKey, conFatture) {
+    const st = ui['st_' + chiave] = ui['st_' + chiave] || [];
+    st.push({ idx: ui[idxKey] || 0, dati: JSON.stringify({ p: S.prodotti, r: S.ricette, fo: S.fornitori, ig: S.ignorati || [], f: conFatture ? S.fatture : null }) });
+    if (st.length > 10) st.shift();
+  }
+  function ricordaPosto(chiave, idxKey) { (ui['st_' + chiave] = ui['st_' + chiave] || []).push({ idx: ui[idxKey] || 0, dati: null }); }
+  function tornaIndietro(chiave, idxKey) {
+    const u = (ui['st_' + chiave] || []).pop();
+    if (!u) ui[idxKey] = Math.max(0, (ui[idxKey] || 0) - 1);
+    else {
+      if (u.dati) { const d = JSON.parse(u.dati); S.prodotti = d.p; S.ricette = d.r; S.fornitori = d.fo; S.ignorati = d.ig; if (d.f) S.fatture = d.f; M.svuota(); salva(); avviso('Ho annullato l\'ultima scelta: puoi rifarla.'); }
+      ui[idxKey] = u.idx;
+    }
+    ridisegnaMantenendo(); window.scrollTo(0, 0);
+  }
   const ctrlFAvanti = () => { salva(); ridisegnaMantenendo(); };
-  AZ['ctrlf-ok'] = (el) => { const f = M.fornitore(el.dataset.id); f.controllato = true; const n = confermaProdottiDi(f); if (n) avviso(`${n} prodotti di ${f.nome} confermati.`); ctrlFAvanti(); };
-  AZ['ctrlf-servizi'] = (el) => { const f = M.fornitore(el.dataset.id); const n = M.segnaServizi(f.id, true); f.controllato = true; ctrlFAvanti(); avviso(`${f.nome}: solo fatture, ${n} prodotti tolti.`); };
-  AZ['ctrlf-merce'] = (el) => { const f = M.fornitore(el.dataset.id); const n = M.togliServizi(f.id); f.controllato = true; ctrlFAvanti(); avviso(`${f.nome}: creati ${n} prodotti.`); };
-  AZ['ctrlf-salta'] = () => { ui.ctrlFIdx = (ui.ctrlFIdx || 0) + 1; ridisegnaMantenendo(); };
-  AZ['ctrlf-indietro'] = () => { ui.ctrlFIdx = Math.max(0, (ui.ctrlFIdx || 0) - 1); ridisegnaMantenendo(); };
+  AZ['ctrlf-ok'] = (el) => { ricorda('ctrlf', 'ctrlFIdx', true); const f = M.fornitore(el.dataset.id); f.controllato = true; const n = confermaProdottiDi(f); if (n) avviso(`${n} prodotti di ${f.nome} confermati.`); ctrlFAvanti(); };
+  AZ['ctrlf-servizi'] = (el) => { ricorda('ctrlf', 'ctrlFIdx', true); const f = M.fornitore(el.dataset.id); const n = M.segnaServizi(f.id, true); f.controllato = true; ctrlFAvanti(); avviso(`${f.nome}: solo fatture, ${n} prodotti tolti.`); };
+  AZ['ctrlf-merce'] = (el) => { ricorda('ctrlf', 'ctrlFIdx', true); const f = M.fornitore(el.dataset.id); const n = M.togliServizi(f.id); f.controllato = true; ctrlFAvanti(); avviso(`${f.nome}: creati ${n} prodotti.`); };
+  AZ['ctrlf-salta'] = () => { ricordaPosto('ctrlf', 'ctrlFIdx'); ui.ctrlFIdx = (ui.ctrlFIdx || 0) + 1; ridisegnaMantenendo(); };
+  AZ['ctrlf-indietro'] = () => tornaIndietro('ctrlf', 'ctrlFIdx');
   AZ['fmt-categoria'] = () => { ui.fmtCat = ui.categoria && ui.categoria !== 'Tutte' && ui.categoria !== '__nuovi' ? ui.categoria : ''; ui.fmtRep = ui.categoria !== '__nuovi' ? (ui.reparto || '') : ''; ui.fmtForn = ''; ui.fmtFiltro = ui.fmtCat || ui.fmtRep ? 'tutti' : 'ricette'; ui.fmtIdx = 0; vai('#/formati'); };
   AZ['fmt-fornitore'] = (el) => { ui.fmtForn = el.dataset.id; ui.fmtCat = ''; ui.fmtRep = ''; ui.fmtFiltro = 'tutti'; ui.fmtIdx = 0; vai('#/formati'); };
-  AZ['fmt-filtro'] = (el) => { ui.fmtFiltro = el.dataset.v; ui.fmtIdx = 0; ridisegnaMantenendo(); };
-  AZ['fmt-giusto'] = (el) => { const p = M.prodotto(el.dataset.id); p.formatoOk = true; p.daCompletare = false; delete p.dubbio; if (!['dacontrollare', 'cartoni'].includes(ui.fmtFiltro || 'ricette')) ui.fmtIdx = (ui.fmtIdx || 0) + 1; salva(); ridisegnaMantenendo(); window.scrollTo(0, 0); };
-  AZ['fmt-salta'] = () => { ui.fmtIdx = (ui.fmtIdx || 0) + 1; ridisegnaMantenendo(); window.scrollTo(0, 0); };
-  AZ['fmt-indietro'] = () => { ui.fmtIdx = Math.max(0, (ui.fmtIdx || 0) - 1); ridisegnaMantenendo(); window.scrollTo(0, 0); };
+  AZ['fmt-filtro'] = (el) => { ui.fmtFiltro = el.dataset.v; ui.fmtIdx = 0; ui.st_fmt = []; ridisegnaMantenendo(); };
+  AZ['fmt-giusto'] = (el) => { ricorda('fmt', 'fmtIdx'); const p = M.prodotto(el.dataset.id); p.formatoOk = true; p.daCompletare = false; delete p.dubbio; if (!['dacontrollare', 'cartoni'].includes(ui.fmtFiltro || 'ricette')) ui.fmtIdx = (ui.fmtIdx || 0) + 1; salva(); ridisegnaMantenendo(); window.scrollTo(0, 0); };
+  AZ['fmt-salta'] = () => { ricordaPosto('fmt', 'fmtIdx'); ui.fmtIdx = (ui.fmtIdx || 0) + 1; ridisegnaMantenendo(); window.scrollTo(0, 0); };
+  AZ['fmt-indietro'] = () => tornaIndietro('fmt', 'fmtIdx');
   function pulMemoria(conDati) {
     (ui.pulStorico = ui.pulStorico || []).push({ idx: ui.pulIdx || 0, dati: conDati ? JSON.stringify({ p: S.prodotti, r: S.ricette, f: S.fatture, e: S.eventi || [], s: S.puliziaSaltati || [] }) : null });
     if (ui.pulStorico.length > 15) ui.pulStorico.shift();
@@ -1532,12 +1548,12 @@
     S.puliziaFatta = true; M.svuota(); salva(); ridisegnaMantenendo(); avviso('Pulizia fatta.');
   };
   const ctrlAvanti = (rimosso) => { if (!rimosso) ui.ctrlIdx = (ui.ctrlIdx || 0) + 1; salva(); ridisegnaMantenendo(); };
-  AZ['ctrl-giusto'] = (el) => { const p = M.prodotto(el.dataset.id); p.daCompletare = false; delete p.dubbio; delete p.forseDoppioneDi; ctrlAvanti(true); };
-  AZ['ctrl-materiale'] = (el) => { const p = M.prodotto(el.dataset.id); p.categoria = 'Non alimentare'; p.daCompletare = false; ctrlAvanti(true); avviso('Segnato come materiale.'); };
-  AZ['ctrl-togli'] = (el) => { const p = M.prodotto(el.dataset.id); M.togliProdotto(p.id); ctrlAvanti(true); avviso(`Tolto «${p.nomeBreve}»: le prossime fatture lo salteranno.`); };
-  AZ['ctrl-servizi'] = (el) => { const forn = M.fornitore(el.dataset.id); if (!confirm(`${forn.nome} non vende merce? Tolgo tutti i prodotti creati dalle sue fatture.`)) return; const n = M.segnaServizi(forn.id, true); ctrlAvanti(true); avviso(`Tolti ${n} prodotti di ${forn.nome}.`); };
-  AZ['ctrl-salta'] = () => ctrlAvanti(false);
-  AZ['ctrl-indietro'] = () => { ui.ctrlIdx = Math.max(0, (ui.ctrlIdx || 0) - 1); ridisegnaMantenendo(); };
+  AZ['ctrl-giusto'] = (el) => { ricorda('ctrl', 'ctrlIdx'); const p = M.prodotto(el.dataset.id); p.daCompletare = false; delete p.dubbio; delete p.forseDoppioneDi; ctrlAvanti(true); };
+  AZ['ctrl-materiale'] = (el) => { ricorda('ctrl', 'ctrlIdx'); const p = M.prodotto(el.dataset.id); p.categoria = 'Non alimentare'; p.daCompletare = false; ctrlAvanti(true); avviso('Segnato come materiale.'); };
+  AZ['ctrl-togli'] = (el) => { ricorda('ctrl', 'ctrlIdx', true); const p = M.prodotto(el.dataset.id); M.togliProdotto(p.id); ctrlAvanti(true); avviso(`Tolto «${p.nomeBreve}»: le prossime fatture lo salteranno.`); };
+  AZ['ctrl-servizi'] = (el) => { const forn = M.fornitore(el.dataset.id); if (!confirm(`${forn.nome} non vende merce? Tolgo tutti i prodotti creati dalle sue fatture.`)) return; ricorda('ctrl', 'ctrlIdx', true); const n = M.segnaServizi(forn.id, true); ctrlAvanti(true); avviso(`Tolti ${n} prodotti di ${forn.nome}.`); };
+  AZ['ctrl-salta'] = () => { ricordaPosto('ctrl', 'ctrlIdx'); ctrlAvanti(false); };
+  AZ['ctrl-indietro'] = () => tornaIndietro('ctrl', 'ctrlIdx');
   AZ['unisci-fornitore'] = (el) => {
     const sel = $('#unisci-forn'); if (!sel || !sel.value) { alert('Scegli il fornitore in cui unirlo.'); return; }
     const da = M.fornitore(el.dataset.id), a = M.fornitore(sel.value);
@@ -1792,27 +1808,30 @@
     ui.ccVendite = null; ui.vendPer = nome; salva(); avviso(`Vendite salvate: ${n} voci nel periodo «${nome}».`); vai('#/vendite');
   };
   AZ['ordine-ricette'] = (el) => { ui.ordineRicette = el.dataset.v; ridisegnaMantenendo(); };
-  AZ['riv-inizia'] = () => { ui.rivIdx = 0; ui.rivFiltro = ui.rivFiltro || 'darivedere'; ui.bozza = null; vai('#/rivedi-ricette'); };
-  AZ['riv-tipo'] = (el) => { ui.tipoRicette = el.dataset.v; ui.rivIdx = 0; ui.rivFisso = ui.rivUltima = null; ui.bozza = null; ridisegnaMantenendo(); };
-  AZ['riv-filtro'] = (el) => { ui.rivFiltro = el.dataset.v; ui.rivIdx = 0; ui.rivFisso = ui.rivUltima = null; ui.bozza = null; ridisegnaMantenendo(); };
-  AZ['riv-ordine'] = (el) => { ui.rivOrdine = el.dataset.v; ui.rivIdx = 0; ui.rivFisso = ui.rivUltima = null; ui.bozza = null; ridisegnaMantenendo(); };
-  AZ['riv-per'] = (el) => { ui.rivPer = el.dataset.v; ui.rivIdx = 0; ui.rivFisso = ui.rivUltima = null; ui.bozza = null; ridisegnaMantenendo(); };
+  AZ['riv-inizia'] = () => { ui.rivIdx = 0; ui.rivStorico = []; ui.rivFisso = null; ui.rivFiltro = ui.rivFiltro || 'darivedere'; ui.bozza = null; vai('#/rivedi-ricette'); };
+  AZ['riv-tipo'] = (el) => { ui.tipoRicette = el.dataset.v; ui.rivIdx = 0; ui.rivFisso = null; ui.rivStorico = []; ui.bozza = null; ridisegnaMantenendo(); };
+  AZ['riv-filtro'] = (el) => { ui.rivFiltro = el.dataset.v; ui.rivIdx = 0; ui.rivFisso = null; ui.rivStorico = []; ui.bozza = null; ridisegnaMantenendo(); };
+  AZ['riv-ordine'] = (el) => { ui.rivOrdine = el.dataset.v; ui.rivIdx = 0; ui.rivFisso = null; ui.rivStorico = []; ui.bozza = null; ridisegnaMantenendo(); };
+  AZ['riv-per'] = (el) => { ui.rivPer = el.dataset.v; ui.rivIdx = 0; ui.rivFisso = null; ui.rivStorico = []; ui.bozza = null; ridisegnaMantenendo(); };
   AZ['riv-salta'] = () => {
     const l = listaRivedi(), cor = l[ui.rivIdx || 0];
+    if (cor) (ui.rivStorico = ui.rivStorico || []).push({ id: cor.id });
     if (cor && cor.id === ui.rivFisso) { ui.rivFisso = null; const n = listaRivedi(); ui.rivIdx = n.length < l.length ? (ui.rivIdx || 0) : (ui.rivIdx || 0) + 1; }
     else ui.rivIdx = (ui.rivIdx || 0) + 1;
     ui.bozza = null; ridisegnaMantenendo(); window.scrollTo(0, 0); };
   AZ['riv-indietro'] = () => {
-    // se la ricetta di prima era «da rivedere» ed è stata appena salvata, non è più nell'elenco: la ritrovo
-    const prec = ui.rivUltima && M.ricetta(ui.rivUltima);
-    if (prec && !listaRivedi().includes(prec)) { ui.rivFisso = prec.id; ui.rivUltima = null; ui.rivIdx = listaRivedi().indexOf(prec); }
+    // torno alla ricetta di prima così com'è salvata (anche se è già uscita dall'elenco «da rivedere») e la puoi correggere
+    const u = (ui.rivStorico || []).pop();
+    const prec = u && M.ricetta(u.id);
+    if (prec) { ui.rivFisso = prec.id; const i = listaRivedi().indexOf(prec); ui.rivIdx = i >= 0 ? i : 0; }
     else ui.rivIdx = Math.max(0, (ui.rivIdx || 0) - 1);
     ui.bozza = null; ridisegnaMantenendo(); window.scrollTo(0, 0);
   };
   AZ['riv-salva'] = () => {
     const prima = listaRivedi(); const pos = ui.rivIdx || 0;
     const b = salvaBozzaRicetta(); if (!b) return;
-    const r = M.ricetta(b.id); r.rivista = true; salva(); ui.rivUltima = r.id;
+    const r = M.ricetta(b.id); r.rivista = true; salva();
+    (ui.rivStorico = ui.rivStorico || []).push({ id: r.id });
     if (ui.rivFisso === r.id) ui.rivFisso = null;
     // se la ricetta è uscita dall'elenco (era «da rivedere») resto allo stesso posto, sennò vado avanti
     ui.rivIdx = listaRivedi().length < prima.length ? pos : pos + 1;
