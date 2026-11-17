@@ -701,7 +701,9 @@
         return `<a class="riga" href="#/ricetta/${r.id}"><span>${esc(r.nome)}<small>resa ${qta(r.resa)} ${esc(r.unita)}</small></span><span class="destra">${euro(c)}<small>${c != null && r.resa ? euro(c / r.resa * 1000) + ' al ' + (r.unita === 'g' ? 'kg' : 'litro') : ''}</small></span></a>`;
       }
       const i = M.indicatori(r);
-      return `<a class="riga" href="#/ricetta/${r.id}"><span>${esc(r.nome)}<small>costo ${euro(i.costo)} · prezzo ${euro(i.prezzo)}</small></span><span class="destra">${badgeMolt(i)}<small>incidenza ${perc(i.incidenza)}</small></span></a>`;
+      // ricette con solo una parte degli ingredienti: i numeri sono troppo belli, lo dico chiaro
+      const parziale = /^Ricetta da completare/.test(r.note || '');
+      return `<a class="riga" href="#/ricetta/${r.id}"><span>${esc(r.nome)}<small>costo ${euro(i.costo)} · prezzo ${euro(i.prezzo)} con IVA</small></span><span class="destra">${parziale ? '<span class="badge giallo">ingredienti incompleti</span>' : badgeMolt(i)}<small>incidenza ${perc(i.incidenza)}</small></span></a>`;
     }).join('');
   }
   PAGINE.ricette = function () {
@@ -734,9 +736,9 @@
       titolo: r.nome, indietro: '#/ricette', azione: `<a class="btn-top" href="#/modifica-ricetta/${r.id}">Modifica</a>`, html: `
       ${semi ? `<div class="kpi-griglia">${kpi('Costo della preparazione', euro(cr.totale))}${kpi('Resa', qta(r.resa) + ' ' + esc(r.unita))}${kpi(r.unita === 'g' ? 'Costo al kg' : 'Costo al litro', euro(cr.totale != null && r.resa ? cr.totale / r.resa * 1000 : null))}${kpi('Costo per 10 ' + esc(r.unita), euro(cr.totale != null && r.resa ? cr.totale / r.resa * 10 : null, 3))}</div>` : `
       <div class="kpi-griglia">
-        ${kpi('Costo', euro(i.costo))}
+        ${kpi('Costo', euro(i.costo), 'senza IVA')}
         ${kpi('Prezzo di vendita', euro(i.prezzo), 'senza IVA ' + euro(i.netto))}
-        ${kpi('Moltiplicatore', i.molt == null ? '—' : '× ' + n2(i.molt), i.soglia ? 'soglia × ' + n2(i.soglia) : '', i.sotto ? 'rosso' : 'verde')}
+        ${kpi('Moltiplicatore', i.molt == null ? '—' : '× ' + n2(i.molt), 'prezzo con IVA ÷ costo' + (i.soglia ? ' · soglia × ' + n2(i.soglia) : ''), i.sotto ? 'rosso' : 'verde')}
         ${kpi('Incidenza', perc(i.incidenza), 'margine ' + euro(i.margine) + ' a pezzo')}
       </div>`}
       ${cr.mancanti.length ? `<p class="msg rosso">Mancano i prezzi di: ${esc(cr.mancanti.join(', '))}.</p>` : ''}
@@ -1490,6 +1492,9 @@
     b.asporto = (b.asporto || []).filter(a => a.rif).map(a => Object.assign(a, { quantita: numDa(a.quantita) || 1 }));
     b.prezzo = numDa(b.prezzo); b.resa = numDa(b.resa);
     const nuovo = b._per === 'r:nuovo'; delete b._per;
+    // se ha aggiunto ingredienti a una ricetta segnata come incompleta, tolgo l'avviso
+    const prima = nuovo ? null : M.ricetta(b.id);
+    if (prima && /^Ricetta da completare/.test(b.note || '') && b.righe.length > (prima.righe || []).length) b.note = String(b.note).replace(/^Ricetta da completare[^.]*\.\s*/, '');
     if (nuovo) S.ricette.push(b); else S.ricette[S.ricette.findIndex(r => r.id === b.id)] = b;
     ui.bozza = null; ui.tipoRicette = b.tipo; salva(); vai('#/ricetta/' + b.id);
   };
