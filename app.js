@@ -2182,10 +2182,11 @@
       const cand = S.prodotti.filter(p => M.daFoglio(p)).sort((a, b) => a.nomeBreve.localeCompare(b.nomeBreve));
       ui.lfVoci = voci; ui.lfFile = file.name;
       // scelgo da solo solo se la prima proposta è chiaramente la migliore (non per «Prosecco», dove ce ne sono tante uguali)
-      ui.lfProd = cand.map(p => { const pr = proposteListino(p, voci); const sicura = pr.length && pr[0].s >= 1.4 && (!pr[1] || pr[0].s - pr[1].s >= 0.015); return { id: p.id, proposte: pr.map(x => x.i), scelta: sicura ? pr[0].i : -1 }; });
+      ui.lfProd = cand.map(p => { const pr = proposteListino(p, voci); const sicura = pr.length && pr[0].s >= 1.4 && (!pr[1] || pr[0].s - pr[1].s >= 0.015); return { id: p.id, proposte: pr.map(x => x.i), auto: sicura ? pr[0].i : -1, scelta: null }; });
       ridisegnaMantenendo();
     } catch (e) { alert('Non riesco a leggere il listino: ' + e.message); }
   }
+  const sceltaLf = (x) => { if (x.scelta != null) return x.scelta; const p = M.prodotto(x.id); return p && ui.lfForn && p.fornitoreId === ui.lfForn ? x.auto : -1; };
   function sezioneListino() {
     const fid = ui.lfForn || '', forn = M.fornitore(fid);
     let h = `<div class="card form"><h3>4. Listino di un fornitore</h3>
@@ -2195,12 +2196,15 @@
       <label class="btn">Scegli il file del listino (Excel)<input type="file" accept=".xlsx" data-carica="listino-fornitore" hidden></label></div>`;
     if (!ui.lfProd) return h;
     const voci = ui.lfVoci, sc = numDa(ui.lfSconto) || 0;
-    const scelti = ui.lfProd.filter(x => x.scelta >= 0).length;
+    const scelti = ui.lfProd.filter(x => sceltaLf(x) >= 0).length;
+    // prima quelli che nel foglio erano di questo fornitore
+    const ordine = ui.lfProd.map((x, k) => k).sort((a, b) => { const pa = M.prodotto(ui.lfProd[a].id), pb = M.prodotto(ui.lfProd[b].id); return ((pb && pb.fornitoreId === fid) - (pa && pa.fornitoreId === fid)) || (sceltaLf(ui.lfProd[b]) >= 0) - (sceltaLf(ui.lfProd[a]) >= 0); });
     h += `<div class="card evidenza"><h3>${esc(ui.lfFile)}: ${voci.length} righe</h3><p>Su ${ui.lfProd.length} prodotti del tuo foglio, <b>${scelti}</b> collegati a una riga del listino. Controlla quelli proposti e cerca gli altri. Il prezzo a destra è già portato al formato del tuo prodotto${sc ? `, con il ${n2(sc)}% di sconto` : ''}.</p>
       <div class="bottoni"><button class="btn primario" data-az="lf-ok" ${forn ? '' : 'disabled'}>Metti i prezzi${forn ? ' di ' + esc(forn.nome) : ' (scegli il fornitore)'}</button><button class="btn" data-az="lf-annulla">Annulla</button></div></div>`;
-    h += `<div class="card">${ui.lfProd.map((x, k) => { const p = M.prodotto(x.id); if (!p) return ''; const v = x.scelta >= 0 ? voci[x.scelta] : null;
-      return `<div class="lf-riga"><div class="lf-nome"><b>${esc(p.nomeBreve)}</b><small>${esc(p.confezione)} da ${qta(p.contenuto)} ${esc(p.unita)} · foglio ${euro(M.prezzo(p))}</small></div>
-        <div class="lf-scelta"><select data-lf-scelta="${k}"><option value="-1">Non c'è nel listino</option>${x.proposte.concat(x.scelta >= 0 && !x.proposte.includes(x.scelta) ? [x.scelta] : []).map(i => `<option value="${i}" ${x.scelta === i ? 'selected' : ''}>${esc(voci[i].descrizione)} · ${euro(voci[i].prezzo)}</option>`).join('')}</select>
+    h += `<p class="tenue piccolo">In cima i prodotti che nel tuo foglio erano di ${esc(forn ? forn.nome : 'questo fornitore')}: solo per quelli scelgo da solo la riga del listino. Per gli altri, se li comprate da ${esc(forn ? forn.nome : 'lui')}, sceglila tu.</p>
+      <div class="card">${ordine.map(k => { const x = ui.lfProd[k]; const p = M.prodotto(x.id); if (!p) return ''; const sel = sceltaLf(x); const v = sel >= 0 ? voci[sel] : null; const fp = M.fornitore(p.fornitoreId);
+      return `<div class="lf-riga"><div class="lf-nome"><b>${esc(p.nomeBreve)}</b><small>${esc(p.confezione)} da ${qta(p.contenuto)} ${esc(p.unita)} · foglio ${euro(M.prezzo(p))}${fp ? ' · ' + esc(fp.nome) : ''}</small></div>
+        <div class="lf-scelta"><select data-lf-scelta="${k}"><option value="-1">Non c'è nel listino</option>${x.proposte.concat(sel >= 0 && !x.proposte.includes(sel) ? [sel] : []).map(i => `<option value="${i}" ${sel === i ? 'selected' : ''}>${esc(voci[i].descrizione)} · ${euro(voci[i].prezzo)}</option>`).join('')}</select>
         <div class="scegli-rif"><input class="cerca-rif" data-lf-cerca="${k}" autocomplete="off" placeholder="Cerca nel listino…"><div class="sugg" id="sugg-lf-${k}"></div></div></div>
         <div class="lf-prezzo">${v ? `<b>${euro(prezzoPerProdotto(p, v, sc))}</b><small>a ${esc(p.confezione)}</small>` : '<span class="tenue">—</span>'}</div></div>`; }).join('')}</div>`;
     return h;
@@ -2211,7 +2215,7 @@
     const forn = M.fornitore(ui.lfForn); if (!forn) { alert('Scegli il fornitore.'); return; }
     const data = ui.lfData || M.oggi(), sc = numDa(ui.lfSconto) || 0; let n = 0;
     ui.lfProd.forEach(x => {
-      if (x.scelta < 0) return; const p = M.prodotto(x.id), v = ui.lfVoci[x.scelta]; if (!p) return;
+      const sel = sceltaLf(x); if (sel < 0) return; const p = M.prodotto(x.id), v = ui.lfVoci[sel]; if (!p) return;
       // il prezzo del foglio (pagato al banco) lascia il posto a quello del listino
       p.prezzi = (p.prezzi || []).filter(e => !/^Foglio/.test(e.origine || ''));
       p.prezzi.push({ data, prezzo: prezzoPerProdotto(p, v, sc), fornitoreId: forn.id, origine: 'Listino ' + forn.nome });
