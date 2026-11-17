@@ -724,7 +724,7 @@
       <input class="cerca" type="search" placeholder="Cerca una ricetta" value="${esc(ui.filtroRicette)}" data-filtro="ricette">
       <div class="chips">${Object.entries(M.TIPI).map(([k, v]) => `<button class="chip ${ui.tipoRicette === k ? 'on' : ''}" data-az="tipo-ricette" data-v="${k}">${esc(v)}</button>`).join('')}</div>
       ${ui.tipoRicette !== 'semilavorato' ? `<div class="chips sotto"><span class="tenue piccolo">Ordina per:</span>${[['nome', 'Nome'], ['guadagno', 'Guadagno più basso'], ['molt', 'Moltiplicatore più basso']].map(([k, v]) => `<button class="chip ${(ui.ordineRicette || 'nome') === k ? 'on' : ''}" data-az="ordine-ricette" data-v="${k}">${v}</button>`).join('')}</div>` : ''}
-      <div class="bottoni"><button class="btn" data-az="riv-inizia">Rivedi le ${esc((M.TIPI[ui.tipoRicette] || 'ricette').toLowerCase())} una per una</button></div>
+      <div class="bottoni"><button class="btn" data-az="riv-inizia">Rivedi ${ui.filtroRicette ? 'quelle con «' + esc(ui.filtroRicette) + '»' : 'le ' + esc((M.TIPI[ui.tipoRicette] || 'ricette').toLowerCase())} una per una</button></div>
       <div class="card lista" id="lista">${listaRicette()}</div>`
     };
   };
@@ -776,7 +776,8 @@
   // Rivedere le ricette una per una: ingredienti, dosi e prezzo, poi «Salva e avanti»
   function listaRivedi() {
     const filtro = ui.rivFiltro || 'darivedere';
-    return S.ricette.filter(r => r.tipo === ui.tipoRicette && (filtro === 'tutte' || r.id === ui.rivFisso || (filtro === 'incomplete' ? /^Ricetta da completare/.test(r.note || '') || !(r.righe || []).length : !r.rivista)))
+    const cerca = (ui.filtroRicette || '').toLowerCase();
+    return S.ricette.filter(r => r.tipo === ui.tipoRicette && (!cerca || r.nome.toLowerCase().includes(cerca)) && (filtro === 'tutte' || r.id === ui.rivFisso || (filtro === 'incomplete' ? /^Ricetta da completare/.test(r.note || '') || !(r.righe || []).length : !r.rivista)))
       .sort((a, b) => a.nome.localeCompare(b.nome));
   }
   PAGINE['rivedi-ricette'] = function () {
@@ -784,7 +785,7 @@
     const filtro = ui.rivFiltro || 'darivedere';
     const tutte = S.ricette.filter(r => r.tipo === ui.tipoRicette);
     const fatte = tutte.filter(r => r.rivista).length;
-    const titolo = 'Rivedi ' + (M.TIPI[ui.tipoRicette] || 'ricette').toLowerCase();
+    const titolo = 'Rivedi ' + (M.TIPI[ui.tipoRicette] || 'ricette').toLowerCase() + (ui.filtroRicette ? ' «' + ui.filtroRicette + '»' : '');
     const chips = `<div class="chips">${Object.entries(M.TIPI).map(([k, v]) => `<button class="chip ${ui.tipoRicette === k ? 'on' : ''}" data-az="riv-tipo" data-v="${k}">${esc(v)}</button>`).join('')}</div>
       <div class="chips sotto">${[['darivedere', 'Da rivedere (' + (tutte.length - fatte) + ')'], ['incomplete', 'Con ingredienti incompleti'], ['tutte', 'Tutte (' + tutte.length + ')']].map(([k, v]) => `<button class="chip ${filtro === k ? 'on' : ''}" data-az="riv-filtro" data-v="${k}">${v}</button>`).join('')}</div>`;
     if (!lista.length) { ui.bozza = null; return { titolo, indietro: '#/ricette', html: chips + `<div class="card evidenza"><h3>Finito</h3><p>Non ci sono ricette in questo elenco. Rivedute ${fatte} su ${tutte.length}.</p><a class="btn primario" href="#/ricette">Torna alle ricette</a></div>` }; }
@@ -1925,7 +1926,11 @@
     const el = e.target; const d = el.dataset;
     if (d.filtro === 'vendFiltro') { ui.vendFiltro = el.value; const f = el.value.toLowerCase(); document.querySelectorAll('.vend-riga').forEach(x => { x.style.display = !f || x.textContent.toLowerCase().includes(f) ? '' : 'none'; }); document.querySelectorAll('.griglia-vend > .card').forEach(c => { c.style.display = [...c.querySelectorAll('.vend-riga')].some(x => x.style.display !== 'none') ? '' : 'none'; }); return; }
     if (d.filtro === 'prodotti') { ui.filtroProdotti = el.value; $('#lista').innerHTML = listaProdotti(); return; }
-    if (d.filtro === 'ricette') { ui.filtroRicette = el.value; $('#lista').innerHTML = listaRicette(); return; }
+    if (d.filtro === 'ricette') {
+      ui.filtroRicette = el.value; $('#lista').innerHTML = listaRicette();
+      const bt = $('[data-az="riv-inizia"]'); if (bt) bt.textContent = 'Rivedi ' + (el.value ? 'quelle con «' + el.value + '»' : 'le ' + (M.TIPI[ui.tipoRicette] || 'ricette').toLowerCase()) + ' una per una';
+      return;
+    }
     if (d.b != null && ui.bozza) { ui.bozza[d.b] = el.value; if (d.ridisegna) ridisegnaMantenendo(); return; }
     if (d.vd != null && ui.bozza) { ui.bozza.venditaDiretta[d.vd] = el.value; return; }
     if (d.r != null && ui.bozza) { ui.bozza.righe[+d.r][d.k] = el.value; aggiornaAnteprima(); return; }
