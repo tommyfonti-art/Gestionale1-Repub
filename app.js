@@ -125,6 +125,8 @@
       });
       S.correzioneOmaggi = true; M.svuota();
     }
+    // una volta: le scorte minime erano numeri d'esempio della prova, non del Repub: le azzero
+    if (!S.scortePulite) { S.prodotti.forEach(p => { p.scortaMinima = 0; }); S.scortePulite = true; }
     // una volta: «bianco» e «rosso» da soli facevano finire nel vino anche aceto e altro
     if (!S.correzioneVino) {
       S.prodotti.forEach(p => { if (p.creatoDa && p.categoria === 'Vino' && !p.reparto) { const c = M.categoriaDa(p.nomeCompleto); if (c !== 'Vino') p.categoria = c; } });
@@ -347,7 +349,7 @@
       ${daFare.length ? `<div class="card"><h3>Fatture da completare</h3>${daFare.map(f => `<a class="riga" href="#/fattura/${f.id}"><span>${esc(f.fornitoreNome)} · n. ${esc(f.numero)}</span><span class="badge giallo">${M.daAbbinare(f)} righe da collegare</span></a>`).join('')}</div>` : ''}
       <div class="card"><h3>Prezzi cambiati</h3>${aumenti.length ? aumenti.slice(0, 8).map(x => `<a class="riga" href="#/prodotto/${x.p.id}"><span>${esc(x.p.nomeBreve)}<small>${dataIt(x.data)}</small></span><span class="badge ${x.v > 0 ? 'rosso' : 'verde'}">${x.v > 0 ? '+' : ''}${n2(x.v, 1)}%</span></a>`).join('') : '<p class="tenue">Nessun cambio di prezzo. Compariranno qui quando registri le fatture.</p>'}</div>
       <div class="card"><h3>Sotto la soglia del moltiplicatore</h3>${sotto.length ? sotto.map(r => { const i = M.indicatori(r); return `<a class="riga" href="#/ricetta/${r.id}"><span>${esc(r.nome)}<small>${M.TIPI_SINGOLARE[r.tipo]} · soglia × ${n2(i.soglia)}</small></span>${badgeMolt(i)}</a>`; }).join('') : '<p class="tenue">Tutte le ricette sono sopra la soglia.</p>'}</div>
-      <div class="card"><h3>Sotto la scorta minima</h3>${scorta.length ? scorta.map(p => `<a class="riga" href="#/prodotto/${p.id}"><span>${esc(p.nomeBreve)}<small>${esc((M.fornitore(p.fornitoreId) || {}).nome || '')}</small></span><span>${qta(p.giacenza)} / ${qta(p.scortaMinima)} ${esc(p.confezione)}</span></a>`).join('') + '<a class="link" href="#/ordini">Prepara gli ordini ›</a>' : '<p class="tenue">Niente sotto scorta.</p>'}</div>
+      ${scorta.length ? `<div class="card"><h3>Sotto la scorta minima</h3>${scorta.map(p => `<a class="riga" href="#/prodotto/${p.id}"><span>${esc(p.nomeBreve)}</span><span>${qta(p.giacenza)} / ${qta(p.scortaMinima)} ${esc(p.confezione)}</span></a>`).join('')}</div>` : ''}
 `
     };
   };
@@ -937,7 +939,7 @@
   // ----- Altro -----
   PAGINE.altro = function () {
     const voci = [
-      ['fornitori', 'Fornitori', 'contatti, spesa, prodotti'], ['magazzino', 'Magazzino', 'inventario ogni sei mesi'], ['ordini', 'Ordini', 'cosa ordinare a chi'],
+      ['fornitori', 'Fornitori', 'contatti, spesa, prodotti'], ['magazzino', 'Magazzino', 'inventario ogni sei mesi'],
 ['vendite', 'Vendite', 'pezzi venduti per periodo'], ['mappa', 'Mappa del menu', 'cosa vende e cosa rende'],
       ['simulatore', 'Simulatore', 'e se cambia un prezzo?'], ['eventi', 'Eventi', 'listini per le serate'], ['olio', 'Costo olio', 'quanto costa friggere'],
       ['pulizia', 'Pulizia dei prodotti', 'collega il foglio alle fatture'],
@@ -1003,7 +1005,7 @@
     const ultima = S.conte[S.conte.length - 1];
     return {
       titolo: 'Magazzino', indietro: '#/altro', html: `
-      <div class="kpi-griglia">${kpi('Valore totale', euro(M.valoreMagazzino(), 0))}${kpi('Sotto scorta', M.sottoScorta().length, '<a href="#/ordini">ordini ›</a>')}</div>
+      <div class="kpi-griglia">${kpi('Valore totale', euro(M.valoreMagazzino(), 0))}</div>
       <p class="tenue">Il magazzino lo fa solo l'inventario: le fatture aggiornano i prezzi, non le quantità. Quando fai l'inventario scrivi quanto c'è e da lì vedi il valore.</p>
       <button class="btn primario largo" data-az="inizia-conta">Fai l'inventario</button>
       <div class="card"><h3>Per categoria</h3>${perCat.map(x => `<div class="riga"><span>${esc(x.c)}</span><span>${euro(x.v, 0)}</span></div>`).join('')}</div>
@@ -1234,7 +1236,7 @@
   };
 
   // ---------- Disegno ----------
-  const ALTRE = [['fornitori', 'Fornitori'], ['magazzino', 'Magazzino'], ['ordini', 'Ordini'], ['vendite', 'Vendite'], ['mappa', 'Mappa del menu'], ['simulatore', 'Simulatore'], ['eventi', 'Eventi'], ['olio', 'Costo olio'], ['pulizia', 'Pulizia'], ['importa', 'Importa dalla cassa'], ['impostazioni', 'Impostazioni']];
+  const ALTRE = [['fornitori', 'Fornitori'], ['magazzino', 'Magazzino'], ['vendite', 'Vendite'], ['mappa', 'Mappa del menu'], ['simulatore', 'Simulatore'], ['eventi', 'Eventi'], ['olio', 'Costo olio'], ['pulizia', 'Pulizia'], ['importa', 'Importa dalla cassa'], ['impostazioni', 'Impostazioni']];
   const TAB = [['pannello', 'Pannello', 'M3 12l9-8 9 8v8a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z'], ['prodotti', 'Prodotti', 'M4 7l8-4 8 4v10l-8 4-8-4zM4 7l8 4 8-4M12 11v10'], ['ricette', 'Ricette', 'M6 3h12M8 3v6l-4 12h16L16 9V3'], ['fatture', 'Fatture', 'M6 2h9l5 5v15H6zM14 2v6h6M9 13h8M9 17h8'], ['altro', 'Altro', 'M5 12h.01M12 12h.01M19 12h.01']];
   const SEZIONE = { importa: 'altro', 'controllo-fatture': 'fatture', controllo: 'prodotti', pulizia: 'altro', formati: 'prodotti', prodotto: 'prodotti', 'modifica-prodotto': 'prodotti', ricetta: 'ricette', 'modifica-ricetta': 'ricette', 'rivedi-ricette': 'ricette', fattura: 'fatture' };
   function disegna() {
