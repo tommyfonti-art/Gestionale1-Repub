@@ -1037,7 +1037,7 @@
 ['vendite', 'Vendite', 'pezzi venduti per periodo'], ['mappa', 'Mappa del menu', 'cosa vende e cosa rende'],
       ['simulatore', 'Simulatore', 'e se cambia un prezzo?'], ['eventi', 'Eventi', 'listini per le serate'], ['olio', 'Costo olio', 'quanto costa friggere'],
       ['foglio', 'Prodotti del foglio', 'collegali a quelli delle fatture, uno per uno'],
-      ['importa', 'Importa dalla cassa', 'listino e vendite da Cassa in Cloud'],
+      ['importa', 'Importa dati', 'cassa, liste di ricette, listini dei fornitori'],
       ['impostazioni', 'Impostazioni', 'soglie, IVA, esportazione']
     ];
     return { titolo: 'Altro', html: `<div class="griglia-voci">${voci.map(v => `<a class="voce" href="#/${v[0]}"><b>${v[1]}</b><span>${v[2]}</span></a>`).join('')}</div>` };
@@ -1872,7 +1872,7 @@
         ui.lsAnte.map((x, i) => `<div class="card"><h3>${esc(x.nome)}${x.gia ? ' <span class="badge giallo">esiste già: la salto</span>' : ''}</h3>
           ${x.ingr.map((g, j) => `<div class="riga-ed cc-riga"><span>${esc(g.testo)}${g.q ? `<small>${qta(g.q)} ${esc(g.u || '')}</small>` : ''}</span><select data-ls="${i},${j}"><option value="">Non trovato: lo metto nelle note</option>${opzioniRif(g.rif)}</select></div>`).join('')}</div>`).join('');
     }
-    return { titolo: 'Importa dalla cassa', indietro: '#/impostazioni', html: listino + vendite + lista };
+    return { titolo: 'Importa dati', indietro: '#/impostazioni', html: listino + vendite + lista + sezioneListino() };
   };
   AZ['ls-leggi'] = () => { ui.lsTesto = $('#ls-testo').value; ui.lsAnte = leggiListaRicette(ui.lsTesto); if (!ui.lsAnte.length) { alert('Non trovo righe del tipo «Nome: ingrediente, ingrediente».'); ui.lsAnte = null; } ridisegnaMantenendo(); };
   AZ['ls-annulla'] = () => { ui.lsAnte = null; ridisegnaMantenendo(); };
@@ -2124,6 +2124,106 @@
     avviso(`«${r.nome}» ora è una preparazione: la trovi in Ricette › Preparazioni.`);
     fgDopo(prima);
   };
+  // ---------- Listino di un fornitore: prezzi per i prodotti che hai già (senza IVA) ----------
+  const numIt = (x) => { if (typeof x === 'number') return x; const t = String(x == null ? '' : x).replace(/[€\s]/g, ''); if (!/\d/.test(t)) return NaN; return parseFloat(t.includes(',') ? t.replace(/\./g, '').replace(',', '.') : t); };
+  function formatoListino(desc) {
+    // «SCHWEPPES Ginger Beer cl.18x24» → 24 pezzi da 180 ml; «CAMPARI cl.100» → 1 pezzo da 1000 ml
+    const d = String(desc || '');
+    let pezzi = 1; const px = d.match(/(?:\d\s*|\b)x\s*(\d{1,3})\b/i); if (px && +px[1] > 1) pezzi = +px[1];
+    let m = d.match(/\b(cl|ml|lt|l|kg|gr|g)\s*\.?\s*(\d+(?:[.,]\d+)?)/i) || null, q = null, u = '';
+    if (m) { q = parseFloat(m[2].replace(',', '.')); u = m[1].toLowerCase(); }
+    else { m = d.match(/(\d+(?:[.,]\d+)?)\s*(cl|ml|lt|l|kg|gr|g)\b/i); if (m) { q = parseFloat(m[1].replace(',', '.')); u = m[2].toLowerCase(); } }
+    let unita = null, misura = null;
+    if (q != null) { if (u === 'cl') { unita = 'ml'; misura = q * 10; } else if (u === 'ml') { unita = 'ml'; misura = q; } else if (u === 'lt' || u === 'l') { unita = 'ml'; misura = q * 1000; } else if (u === 'kg') { unita = 'g'; misura = q * 1000; } else { unita = 'g'; misura = q; } }
+    return { pezzi, unita, misura };
+  }
+  function leggiListino(fogli) {
+    const righe = fogli[Object.keys(fogli)[0]] || [];
+    const nCol = Math.max(...righe.slice(0, 200).map(r => (r || []).length));
+    let cDesc = -1, cPrezzo = -1, cCat = -1, best = 0, bestP = 0;
+    for (let c = 0; c < nCol; c++) {
+      const v = righe.slice(0, 300).map(r => (r || [])[c]).filter(x => x != null && String(x).trim() !== '');
+      const num = v.filter(x => !isNaN(numIt(x))).length, testo = v.filter(x => /[a-z]{3,}/i.test(String(x)));
+      const lung = testo.reduce((s, x) => s + String(x).length, 0) / (testo.length || 1);
+      if (num > bestP && num >= v.length * 0.7) { bestP = num; cPrezzo = c; }
+      if (testo.length >= v.length * 0.7 && lung > best) { if (best) cCat = cDesc; best = lung; cDesc = c; } else if (testo.length >= v.length * 0.7) cCat = c;
+    }
+    if (cDesc < 0 || cPrezzo < 0) throw new Error('Non trovo le colonne con la descrizione e il prezzo.');
+    return righe.map(r => ({ cat: cCat >= 0 ? String((r || [])[cCat] || '').trim() : '', descrizione: String((r || [])[cDesc] || '').replace(/\s+/g, ' ').trim(), prezzo: numIt((r || [])[cPrezzo]) }))
+      .filter(x => x.descrizione && x.prezzo > 0).map(x => Object.assign(x, { f: formatoListino(x.descrizione) }));
+  }
+  const PAROLE_VUOTE_LIS = new Set(['lt', 'cl', 'ml', 'bott', 'bt', 'vp', 'vap', 'vr', 'vetro', 'pet', 'kg', 'gr', 'con', 'de', 'la', 'il', 'di', 'the', 'fusto', 'fustino', 'bottiglia', 'lattina', 'cartone', 'gin', 'rum', 'rhum', 'vodka', 'whisky', 'liquore', 'amaro', 'bitter', 'sciroppo']);
+  const tokLis = (t) => normCassa(t).split(' ').filter(w => w.length > 1 && !PAROLE_VUOTE_LIS.has(w) && !/^\d/.test(w));
+  // prezzo del listino portato al formato del prodotto (es. cartone da 24 → una bottiglietta; litro → 70 cl)
+  function prezzoPerProdotto(p, v, sconto) {
+    let pr = v.prezzo / v.f.pezzi;
+    if (v.f.misura && v.f.unita === p.unita && p.contenuto && Math.abs(v.f.misura - p.contenuto) / p.contenuto > 0.05) pr = pr / v.f.misura * p.contenuto;
+    return Math.round(pr * (1 - (sconto || 0) / 100) * 10000) / 10000;
+  }
+  function proposteListino(p, voci) {
+    const A = tokLis(p.nomeBreve); if (!A.length) return [];
+    // parole in più dal nome completo del foglio (es. «Vermouth Carpano Classico»): aiutano a scegliere tra le varianti
+    const extra = normCassa(p.nomeCompleto).split(' ').filter(w => w.length > 3 && !/^\d/.test(w) && !A.includes(w) && !['litro', 'litri', 'bottiglia'].includes(w));
+    const zero = (t) => /senza alc|analcol|alcohol free|\b0[,.]0|\b0 ?%|\bzero\b/i.test(t);
+    const pZero = zero(p.nomeBreve + ' ' + p.nomeCompleto);
+    return voci.map((v, i) => {
+      const B = tokLis(v.descrizione), nb = normCassa(v.descrizione);
+      const com = A.filter(w => B.some(b => b === w || (w.length >= 5 && b.startsWith(w.slice(0, 5))))).length;
+      if (com < A.length) return null;
+      const fmt = v.f.unita === p.unita && v.f.misura && Math.abs(v.f.misura - p.contenuto) / p.contenuto < 0.15;
+      let s = 1 + (fmt ? 0.5 : 0) - B.length * 0.02 + extra.filter(w => nb.includes(w)).length * 0.1;
+      if (pZero !== zero(v.descrizione)) s -= 0.6;
+      return { i, s };
+    }).filter(Boolean).sort((a, b) => b.s - a.s).slice(0, 4);
+  }
+  async function caricaListinoFornitore(file) {
+    try {
+      const voci = leggiListino(await leggiXlsx(file));
+      const cand = S.prodotti.filter(p => M.daFoglio(p)).sort((a, b) => a.nomeBreve.localeCompare(b.nomeBreve));
+      ui.lfVoci = voci; ui.lfFile = file.name;
+      // scelgo da solo solo se la prima proposta è chiaramente la migliore (non per «Prosecco», dove ce ne sono tante uguali)
+      ui.lfProd = cand.map(p => { const pr = proposteListino(p, voci); const sicura = pr.length && pr[0].s >= 1.4 && (!pr[1] || pr[0].s - pr[1].s >= 0.015); return { id: p.id, proposte: pr.map(x => x.i), scelta: sicura ? pr[0].i : -1 }; });
+      ridisegnaMantenendo();
+    } catch (e) { alert('Non riesco a leggere il listino: ' + e.message); }
+  }
+  function sezioneListino() {
+    const fid = ui.lfForn || '', forn = M.fornitore(fid);
+    let h = `<div class="card form"><h3>4. Listino di un fornitore</h3>
+      <p class="tenue piccolo">Per i prodotti del tuo foglio che non hanno ancora una fattura: prendo i prezzi dal listino (senza IVA). Solo quelli che hai già, gli altri del listino restano fuori. Quando arriverà una fattura, il suo prezzo prenderà il posto di questo.</p>
+      <label>Fornitore<select data-lf="forn"><option value="">scegli…</option>${S.fornitori.slice().sort((a, b) => a.nome.localeCompare(b.nome)).map(f => `<option value="${f.id}" ${fid === f.id ? 'selected' : ''}>${esc(f.nome)}</option>`).join('')}</select></label>
+      <div class="due"><label>Data del listino<input type="date" data-lf="data" value="${esc(ui.lfData || M.oggi())}"></label><label>Vostro sconto (%)<input type="number" step="any" inputmode="decimal" data-lf="sconto" value="${esc(ui.lfSconto || '')}" placeholder="0"></label></div>
+      <label class="btn">Scegli il file del listino (Excel)<input type="file" accept=".xlsx" data-carica="listino-fornitore" hidden></label></div>`;
+    if (!ui.lfProd) return h;
+    const voci = ui.lfVoci, sc = numDa(ui.lfSconto) || 0;
+    const scelti = ui.lfProd.filter(x => x.scelta >= 0).length;
+    h += `<div class="card evidenza"><h3>${esc(ui.lfFile)}: ${voci.length} righe</h3><p>Su ${ui.lfProd.length} prodotti del tuo foglio, <b>${scelti}</b> collegati a una riga del listino. Controlla quelli proposti e cerca gli altri. Il prezzo a destra è già portato al formato del tuo prodotto${sc ? `, con il ${n2(sc)}% di sconto` : ''}.</p>
+      <div class="bottoni"><button class="btn primario" data-az="lf-ok" ${forn ? '' : 'disabled'}>Metti i prezzi${forn ? ' di ' + esc(forn.nome) : ' (scegli il fornitore)'}</button><button class="btn" data-az="lf-annulla">Annulla</button></div></div>`;
+    h += `<div class="card">${ui.lfProd.map((x, k) => { const p = M.prodotto(x.id); if (!p) return ''; const v = x.scelta >= 0 ? voci[x.scelta] : null;
+      return `<div class="lf-riga"><div class="lf-nome"><b>${esc(p.nomeBreve)}</b><small>${esc(p.confezione)} da ${qta(p.contenuto)} ${esc(p.unita)} · foglio ${euro(M.prezzo(p))}</small></div>
+        <div class="lf-scelta"><select data-lf-scelta="${k}"><option value="-1">Non c'è nel listino</option>${x.proposte.concat(x.scelta >= 0 && !x.proposte.includes(x.scelta) ? [x.scelta] : []).map(i => `<option value="${i}" ${x.scelta === i ? 'selected' : ''}>${esc(voci[i].descrizione)} · ${euro(voci[i].prezzo)}</option>`).join('')}</select>
+        <div class="scegli-rif"><input class="cerca-rif" data-lf-cerca="${k}" autocomplete="off" placeholder="Cerca nel listino…"><div class="sugg" id="sugg-lf-${k}"></div></div></div>
+        <div class="lf-prezzo">${v ? `<b>${euro(prezzoPerProdotto(p, v, sc))}</b><small>a ${esc(p.confezione)}</small>` : '<span class="tenue">—</span>'}</div></div>`; }).join('')}</div>`;
+    return h;
+  }
+  AZ['lf-annulla'] = () => { ui.lfProd = ui.lfVoci = null; ridisegnaMantenendo(); };
+  AZ['lf-scegli'] = (el) => { const x = ui.lfProd[+el.dataset.k]; x.scelta = +el.dataset.i; if (!x.proposte.includes(x.scelta)) x.proposte.unshift(x.scelta); ridisegnaMantenendo(); };
+  AZ['lf-ok'] = () => {
+    const forn = M.fornitore(ui.lfForn); if (!forn) { alert('Scegli il fornitore.'); return; }
+    const data = ui.lfData || M.oggi(), sc = numDa(ui.lfSconto) || 0; let n = 0;
+    ui.lfProd.forEach(x => {
+      if (x.scelta < 0) return; const p = M.prodotto(x.id), v = ui.lfVoci[x.scelta]; if (!p) return;
+      // il prezzo del foglio (pagato al banco) lascia il posto a quello del listino
+      p.prezzi = (p.prezzi || []).filter(e => !/^Foglio/.test(e.origine || ''));
+      p.prezzi.push({ data, prezzo: prezzoPerProdotto(p, v, sc), fornitoreId: forn.id, origine: 'Listino ' + forn.nome });
+      p.fornitoreId = forn.id;
+      // la descrizione del listino di solito è la stessa delle fatture: così la prossima fattura lo riconosce da sola
+      const stesso = v.f.misura && v.f.unita === p.unita && Math.abs(v.f.misura - p.contenuto) / p.contenuto < 0.05;
+      if (!(p.articoli || []).some(a => a.fornitoreId === forn.id && normCassa(a.descrizione) === normCassa(v.descrizione))) (p.articoli = p.articoli || []).push({ fornitoreId: forn.id, descrizione: v.descrizione, codice: '', confezioniPerUnita: stesso ? v.f.pezzi : 1 });
+      n++;
+    });
+    ui.lfProd = ui.lfVoci = null; M.svuota(); salva(); ridisegnaMantenendo(); window.scrollTo(0, 0);
+    avviso(`Prezzi di ${forn.nome} messi a ${n} prodotti.`);
+  };
   AZ['ordine-ricette'] = (el) => { ui.ordineRicette = el.dataset.v; ridisegnaMantenendo(); };
   AZ['riv-inizia'] = () => { ui.rivIdx = 0; ui.rivStorico = []; ui.rivFisso = null; ui.rivFiltro = ui.rivFiltro || 'darivedere'; ui.bozza = null; vai('#/rivedi-ricette'); };
   AZ['riv-tipo'] = (el) => { ui.tipoRicette = el.dataset.v; ui.rivIdx = 0; ui.rivFisso = null; ui.rivStorico = []; ui.bozza = null; ridisegnaMantenendo(); };
@@ -2294,6 +2394,12 @@
     if (d.b != null && ui.bozza) { ui.bozza[d.b] = el.value; if (d.ridisegna) ridisegnaMantenendo(); return; }
     if (d.vd != null && ui.bozza) { ui.bozza.venditaDiretta[d.vd] = el.value; return; }
     if (d.cr != null) { mostraSuggerimenti(el); return; }
+    if (d.lfCerca != null) {
+      const box = document.getElementById('sugg-lf-' + d.lfCerca), t = tokLis(el.value).length ? normCassa(el.value).split(' ').filter(Boolean) : normCassa(el.value).split(' ').filter(Boolean);
+      const l = t.length ? ui.lfVoci.map((v, i) => ({ v, i })).filter(({ v }) => t.every(w => normCassa(v.descrizione).includes(w))).slice(0, 12) : [];
+      box.innerHTML = l.map(({ v, i }) => `<button type="button" class="sugg-voce" data-az="lf-scegli" data-k="${d.lfCerca}" data-i="${i}"><b>${esc(v.descrizione)}</b><small>${esc(v.cat)} · ${euro(v.prezzo)}</small></button>`).join('') || (t.length ? '<p class="tenue piccolo">Niente nel listino con queste parole.</p>' : '');
+      return;
+    }
     if (d.fgCerca) {
       const box = $('#sugg-fg'), t = normCassa(el.value).split(' ').filter(Boolean);
       const l = t.length ? S.prodotti.filter(x => M.daFattura(x) && t.every(w => normCassa(x.nomeBreve + ' ' + x.nomeCompleto + ' ' + ((M.fornitore(x.fornitoreId) || {}).nome || '')).includes(w))).slice(0, 12) : [];
@@ -2345,6 +2451,9 @@
     const el = e.target; const d = el.dataset;
     if (d.carica === 'xml') { caricaXML(Array.from(el.files)); el.value = ''; return; }
     if (d.carica === 'foto') { if (el.files[0]) caricaFoto(el.files[0]); el.value = ''; return; }
+    if (d.carica === 'listino-fornitore') { if (el.files[0]) caricaListinoFornitore(el.files[0]); el.value = ''; return; }
+    if (d.lf) { if (d.lf === 'forn') ui.lfForn = el.value; if (d.lf === 'data') ui.lfData = el.value; if (d.lf === 'sconto') ui.lfSconto = el.value; ridisegnaMantenendo(); return; }
+    if (d.lfScelta != null) { ui.lfProd[+d.lfScelta].scelta = +el.value; ridisegnaMantenendo(); return; }
     if (d.carica === 'cassa-listino' || d.carica === 'cassa-vendite') { if (el.files[0]) caricaCassa(el.files[0], d.carica === 'cassa-listino' ? 'listino' : 'vendite'); el.value = ''; return; }
     if (d.ccG != null) { ui.ccAperto = +d.ccG; ui.ccListino.gruppi[+d.ccG].tipo = el.value; ui.ccListino.gruppi[+d.ccG].voci.forEach(v => { if (el.value !== 'salta' && v.scelta === '__salta' && v.prezzo > 0 && v.prezzo <= 100) v.scelta = ''; }); ridisegnaMantenendo(); return; }
     if (d.ccV != null) { const [gi, vi] = d.ccV.split(',').map(Number); ui.ccAperto = gi; ui.ccListino.gruppi[gi].voci[vi].scelta = el.value; ridisegnaMantenendo(); return; }

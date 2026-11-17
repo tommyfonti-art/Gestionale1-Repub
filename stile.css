@@ -232,3 +232,10 @@ body.trascina::after { content: 'Lascia qui i file'; position: fixed; inset: 12p
 .sugg-voce { display: block; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--linea); padding: 9px 12px; font: inherit; cursor: pointer; color: var(--testo); }
 .sugg-voce small { display: block; color: var(--tenue); font-size: 12px; margin-top: 2px; }
 .sugg-voce:hover, .sugg-voce.primo { background: var(--accento-chiaro); }
+
+/* listino di un fornitore */
+.lf-riga { display: grid; grid-template-columns: 1fr 1.6fr 90px; gap: 10px; align-items: start; padding: 10px 0; border-bottom: 1px solid var(--linea); }
+.lf-nome small, .lf-prezzo small { display: block; color: var(--tenue); font-size: 12px; }
+.lf-scelta select { width: 100%; margin-bottom: 6px; }
+.lf-prezzo { text-align: right; }
+@media (max-width: 700px) { .lf-riga { grid-template-columns: 1fr 80px; } .lf-scelta { grid-column: 1 / -1; grid-row: 2; } }
