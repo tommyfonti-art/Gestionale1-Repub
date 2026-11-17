@@ -837,7 +837,7 @@
         ${kpi('Incidenza', perc(i.incidenza), 'margine ' + euro(i.margine) + ' a pezzo')}
       </div>`}
       ${cr.mancanti.length ? `<p class="msg rosso">Mancano i prezzi di: ${esc(cr.mancanti.join(', '))}.</p>` : ''}
-      <div class="card"><h3>Ingredienti</h3><table class="tab"><tr><th>Ingrediente</th><th class="n">Dose</th><th class="n">Costo</th><th class="n">Peso</th></tr>${righe}
+      <div class="card"><h3>Ingredienti</h3>${r.media ? '<p class="msg grigio">Il cliente ne sceglie uno: il costo è la media di questi.</p>' : ''}<table class="tab"><tr><th>Ingrediente</th><th class="n">Dose</th><th class="n">Costo</th><th class="n">Peso</th></tr>${righe}
         <tr class="totale"><td>Totale</td><td></td><td class="n">${euro(cr.totale, 3)}</td><td></td></tr></table></div>
       ${asp && (r.asporto || []).length ? `<div class="card"><h3>Da asporto</h3><div class="dati">
         ${(r.asporto || []).map(a => `<div><span>${esc(M.nomeRif(a.rif))} × ${qta(a.quantita)}</span><b>${euro(M.costoRiga(a.rif, a.quantita).costo, 3)}</b></div>`).join('')}
@@ -900,6 +900,7 @@
         ${semi ? `<div class="due"><label>Quanto ne viene<input type="number" step="any" inputmode="decimal" data-b="resa" value="${esc(b.resa)}"></label><label>Unità<select data-b="unita">${['ml', 'g', 'pz'].map(u => `<option ${b.unita === u ? 'selected' : ''}>${u}</option>`).join('')}</select></label></div>`
           : `<label>Prezzo di vendita (con IVA)<input type="number" step="any" inputmode="decimal" data-b="prezzo" value="${esc(b.prezzo)}"></label>`}
         <h3>Ingredienti</h3>
+        ${!semi ? `<label class="spunta"><input type="checkbox" data-media="1" ${b.media ? 'checked' : ''}> Il cliente ne sceglie uno (amari, rum, grappe…): il costo è la <b>media</b> degli ingredienti, non la somma</label>` : ''}
         ${b.righe.map((rg, k) => `<div class="riga-ed">${campoIngrediente(rg, k)}
           <input type="number" step="any" inputmode="decimal" data-r="${k}" data-k="quantita" value="${esc(rg.quantita)}" placeholder="dose"><span class="u">${esc(M.unitaRif(rg.rif))}</span>
           <button class="x" data-az="togli-riga" data-k="${k}" aria-label="Togli">✕</button></div>`).join('')}
@@ -933,6 +934,7 @@
         ${semi ? `<label>Unità della preparazione<select data-b="unita">${['ml', 'g', 'pz'].map(u => `<option ${b.unita === u ? 'selected' : ''}>${u}</option>`).join('')}</select></label>` : ''}
       </div>
       <div class="card form"><h3>Ingredienti</h3>
+        ${b.tipo !== 'semilavorato' ? `<label class="spunta"><input type="checkbox" data-media="1" ${b.media ? 'checked' : ''}> Il cliente ne sceglie uno (amari, rum, grappe…): il costo è la <b>media</b> degli ingredienti, non la somma</label>` : ''}
         ${b.righe.map((rg, k) => `<div class="riga-ed">${campoIngrediente(rg, k)}
           <input type="number" step="any" inputmode="decimal" data-r="${k}" data-k="quantita" value="${esc(rg.quantita)}" placeholder="dose"><span class="u">${esc(M.unitaRif(rg.rif))}</span>
           <button class="x" data-az="togli-riga" data-k="${k}" aria-label="Togli">✕</button></div>`).join('')}
@@ -2429,6 +2431,7 @@
       const bt = $('[data-az="riv-inizia"]'); if (bt) bt.textContent = 'Rivedi ' + (el.value ? 'quelle con «' + el.value + '»' : 'le ' + (M.TIPI[ui.tipoRicette] || 'ricette').toLowerCase()) + ' una per una';
       return;
     }
+    if (d.media && ui.bozza) { ui.bozza.media = el.checked; ridisegnaMantenendo(); return; }
     if (d.b != null && ui.bozza) { ui.bozza[d.b] = el.value; if (d.ridisegna) ridisegnaMantenendo(); return; }
     if (d.vd != null && ui.bozza) { ui.bozza.venditaDiretta[d.vd] = el.value; return; }
     if (d.cr != null) { mostraSuggerimenti(el); return; }

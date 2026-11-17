@@ -114,6 +114,8 @@
       if (c.costo == null) mancanti.push(c.mancante); else tot += c.costo;
       if (c.mancanti) c.mancanti.forEach(m => mancanti.includes(m) || mancanti.push(m));
     });
+    // «il cliente ne sceglie uno» (amari, rum, grappe…): il costo degli ingredienti è la media, non la somma
+    if (r.media) { const conCosto = righe.filter(x => x.costo != null).length; if (conCosto) tot = tot / conCosto; }
     (r.costiExtra || []).forEach(e => { tot += Number(e.costo) || 0; });
     const ris = { totale: righe.length || (r.costiExtra || []).length ? tot : null, righe, mancanti };
     if (pila.length === 1) cache.set(chiave, ris);
