@@ -602,9 +602,18 @@
   // due prodotti sono probabili doppioni se hanno lo stesso nome breve, la stessa unità e lo stesso formato
   M.chiaveDoppione = (p) => norm(p.nomeBreve) + '|' + p.unita + '|' + Math.round(Number(p.contenuto) || 0);
   M.gruppiDoppioni = function () {
-    const g = {};
-    S.prodotti.filter(p => !p.speciale && norm(p.nomeBreve)).forEach(p => { (g[M.chiaveDoppione(p)] = g[M.chiaveDoppione(p)] || []).push(p); });
-    return Object.values(g).filter(l => l.length > 1);
+    // stesso nome breve e formato, oppure stessa descrizione di fattura e formato (es. «Coca alla spina» e «Coca cola premix», tutti e due «COCA COLA PREMIX 18 L»)
+    const l = S.prodotti.filter(p => !p.speciale && norm(p.nomeBreve));
+    const capo = new Map(l.map(p => [p, p]));
+    const trova = (p) => { while (capo.get(p) !== p) p = capo.get(p); return p; };
+    const lega = (a, b) => { const x = trova(a), y = trova(b); if (x !== y) capo.set(x, y); };
+    const k1 = {}, k2 = {};
+    l.forEach(p => {
+      const a = M.chiaveDoppione(p); if (k1[a]) lega(p, k1[a]); else k1[a] = p;
+      const c = norm(p.nomeCompleto); if (c.length > 5) { const b = c + '|' + p.unita + '|' + Math.round(Number(p.contenuto) || 0); if (k2[b]) lega(p, k2[b]); else k2[b] = p; }
+    });
+    const g = new Map(); l.forEach(p => { const r = trova(p); if (!g.has(r)) g.set(r, []); g.get(r).push(p); });
+    return Array.from(g.values()).filter(x => x.length > 1);
   };
   M.unisciProdotti = function (daId, aId) {
     const da = M.prodotto(daId), a = M.prodotto(aId);

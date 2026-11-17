@@ -533,6 +533,8 @@
         return `<a class="riga" href="#/ricetta/${r.id}"><span>${esc(r.nome)}<small>${diretta ? qta(diretta.quantita) + ' ' + esc(p.unita) + ' · ' + euro(M.costoUnita(p) * diretta.quantita, 3) : 'dentro una preparazione'}</small></span><span class="destra">${euro(M.costo(r))}<small>${M.TIPI_SINGOLARE[r.tipo]}</small></span></a>`;
       }).join('') : '<p class="tenue">Non è usato in nessuna ricetta.</p>'}</div>
       ${!p.speciale ? collegaARicette(p) : ''}
+      ${!p.speciale ? `<div class="card form"><h3>È lo stesso di un altro prodotto?</h3><p class="tenue piccolo">Uniscilo: resta l'altro, con i prezzi, le fatture e le ricette di tutti e due.</p>
+        <label>Unisci dentro<select data-az-change="ctrl-unisci" data-id="${p.id}"><option value="">scegli il prodotto…</option>${S.prodotti.filter(x => x.id !== p.id && !x.speciale).sort((a, b) => a.nomeBreve.localeCompare(b.nomeBreve)).map(x => `<option value="${x.id}">${esc(x.nomeBreve)} · ${esc(x.nomeCompleto)} · ${esc((M.fornitore(x.fornitoreId) || {}).nome || '')}</option>`).join('')}</select></label></div>` : ''}
       ${(p.articoli || []).length ? `<div class="card"><h3>Come compare nelle fatture</h3>${p.articoli.map(a => `<div class="riga"><span>${esc(a.descrizione)}<small>${esc((M.fornitore(a.fornitoreId) || {}).nome || '')}${a.codice ? ' · codice ' + esc(a.codice) : ''}</small></span><span>${a.confezioniPerUnita > 1 ? a.confezioniPerUnita + ' ' + esc(p.confezione) + ' per unità' : ''}</span></div>`).join('')}</div>` : ''}
       ${p.note ? `<div class="card"><h3>Note</h3><p>${esc(p.note)}</p></div>` : ''}
       <button class="btn piccolo" data-az="simula-prodotto" data-id="${p.id}">Simula un cambio di prezzo</button>`
@@ -2531,7 +2533,7 @@
       const da = M.prodotto(d.id), a = M.prodotto(el.value);
       if (!confirm(`Unisco «${da.nomeBreve}» dentro «${a.nomeBreve}»? Prezzi, fatture e ricette passano a ${a.nomeBreve}.`)) { el.value = ''; return; }
       const err = M.unisciProdotti(da.id, a.id); if (err) { alert(err); el.value = ''; return; }
-      salva(); ridisegnaMantenendo(); avviso('Uniti.'); return;
+      salva(); if ((location.hash || '').startsWith('#/prodotto/')) vai('#/prodotto/' + a.id); else ridisegnaMantenendo(); avviso('Uniti.'); return;
     }
     if (d.forn) { const f = M.fornitore(d.forn); f[d.k] = el.value.trim(); salva(); return; }
     if (d.vend) { const r = M.ricetta(d.vend); r.vendite = r.vendite || {}; const x = numDa(el.value); if (x) r.vendite[d.p] = x; else delete r.vendite[d.p]; salva(); return; }
