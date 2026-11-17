@@ -404,6 +404,7 @@
       ${!S.puliziaFatta && S.fatture.length && S.prodotti.some(p => M.daFoglio(p)) ? `<div class="card evidenza"><h3>Collega il foglio alle fatture</h3><p class="tenue">Ci sono prodotti del foglio che hanno un doppione arrivato dalle fatture: collegali, così le ricette prendono i prezzi veri.</p><a class="btn primario" href="#/pulizia">Inizia la pulizia</a></div>` : ''}
       ${fornitoriDaControllare().length ? `<div class="card"><h3>Fornitori nuovi da controllare</h3><p class="tenue">Dimmi chi vende merce e chi manda solo bollette o servizi: vale per tutte le loro fatture.</p><a class="btn primario" href="#/controllo-fatture">Controllo rapido (${fornitoriDaControllare().length})</a></div>` : ''}
       ${nuoviDaCompletare() ? `<div class="card"><h3>Prodotti nuovi da completare</h3><p class="tenue">Creati in automatico dalle fatture: controlla nome breve e formato.</p>${S.prodotti.filter(p => p.daCompletare).slice(0, 6).map(p => `<a class="riga" href="#/prodotto/${p.id}"><span>${esc(p.nomeBreve)}<small>${esc(p.nomeCompleto)}</small></span><span class="badge giallo">da completare</span></a>`).join('')}<div class="bottoni"><a class="btn primario" href="#/controllo">Controllo rapido (${nuoviDaCompletare()})</a><a class="btn" href="#/prodotti" data-az="vai-nuovi">Vedi l'elenco</a></div></div>` : ''}
+      ${M.gruppiDoppioni().length ? `<div class="card"><h3>Prodotti doppi</h3><p class="tenue">${M.gruppiDoppioni().length} prodotti compaiono più volte con lo stesso nome e formato (es. da due fornitori): uniscili, così nelle ricette ne trovi uno solo.</p><a class="btn primario" href="#/doppioni">Vedi e unisci</a></div>` : ''}
       ${daFare.length ? `<div class="card"><h3>Fatture da completare</h3>${daFare.map(f => `<a class="riga" href="#/fattura/${f.id}"><span>${esc(f.fornitoreNome)} · n. ${esc(f.numero)}</span><span class="badge giallo">${M.daAbbinare(f)} righe da collegare</span></a>`).join('')}</div>` : ''}
       <div class="card"><h3>Prezzi cambiati</h3>${aumenti.length ? aumenti.slice(0, 8).map(x => `<a class="riga" href="#/prodotto/${x.p.id}"><span>${esc(x.p.nomeBreve)}<small>${dataIt(x.data)}</small></span><span class="badge ${x.v > 0 ? 'rosso' : 'verde'}">${x.v > 0 ? '+' : ''}${n2(x.v, 1)}%</span></a>`).join('') : '<p class="tenue">Nessun cambio di prezzo. Compariranno qui quando registri le fatture.</p>'}</div>
       <div class="card"><h3>Sotto la soglia del moltiplicatore</h3>${sotto.length ? sotto.map(r => { const i = M.indicatori(r); return `<a class="riga" href="#/ricetta/${r.id}"><span>${esc(r.nome)}<small>${M.TIPI_SINGOLARE[r.tipo]} · soglia × ${n2(i.soglia)}</small></span>${badgeMolt(i)}</a>`; }).join('') : '<p class="tenue">Tutte le ricette complete sono sopra la soglia.</p>'}</div>
@@ -445,6 +446,7 @@
     return {
       titolo: 'Prodotti', azione: '<a class="btn-top" href="#/modifica-prodotto/nuovo">＋ Nuovo</a>', html: `
       ${nuoviDaCompletare() ? `<a class="btn primario largo" href="#/controllo">Controllo rapido dei prodotti nuovi (${nuoviDaCompletare()})</a>` : ''}
+      ${M.gruppiDoppioni().length ? `<a class="btn largo" href="#/doppioni">Doppioni da unire (${M.gruppiDoppioni().length})</a>` : ''}
       ${ui.prodVista === 'fornitori'
         ? (ui.fornProd && M.fornitore(ui.fornProd) ? `<a class="btn primario largo" href="#/formati" data-az="fmt-fornitore" data-id="${ui.fornProd}">Metti a posto tutti i prodotti di ${esc(M.fornitore(ui.fornProd).nome)}, uno dopo l'altro</a>` : '<p class="tenue">Scegli un fornitore: vedi tutta la sua roba e la sistemi in un colpo con la fattura sotto mano.</p>')
         : `<a class="btn largo" href="#/formati" data-az="fmt-categoria">${ui.categoria && ui.categoria !== 'Tutte' && ui.categoria !== '__nuovi' ? `Ricontrolla i formati: solo ${esc(ui.categoria)}` : ui.reparto ? `Ricontrolla i formati: tutto ${esc(ui.reparto)}` : 'Ricontrolla i formati, uno dopo l\'altro'}</a>`}
@@ -1314,7 +1316,7 @@
   // ---------- Disegno ----------
   const ALTRE = [['fornitori', 'Fornitori'], ['magazzino', 'Magazzino'], ['vendite', 'Vendite'], ['mappa', 'Mappa del menu'], ['simulatore', 'Simulatore'], ['eventi', 'Eventi'], ['olio', 'Costo olio'], ['pulizia', 'Pulizia'], ['importa', 'Importa dalla cassa'], ['impostazioni', 'Impostazioni']];
   const TAB = [['pannello', 'Pannello', 'M3 12l9-8 9 8v8a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z'], ['prodotti', 'Prodotti', 'M4 7l8-4 8 4v10l-8 4-8-4zM4 7l8 4 8-4M12 11v10'], ['ricette', 'Ricette', 'M6 3h12M8 3v6l-4 12h16L16 9V3'], ['fatture', 'Fatture', 'M6 2h9l5 5v15H6zM14 2v6h6M9 13h8M9 17h8'], ['altro', 'Altro', 'M5 12h.01M12 12h.01M19 12h.01']];
-  const SEZIONE = { importa: 'altro', 'controllo-fatture': 'fatture', controllo: 'prodotti', pulizia: 'altro', formati: 'prodotti', prodotto: 'prodotti', 'modifica-prodotto': 'prodotti', ricetta: 'ricette', 'modifica-ricetta': 'ricette', 'rivedi-ricette': 'ricette', fattura: 'fatture' };
+  const SEZIONE = { doppioni: 'prodotti', importa: 'altro', 'controllo-fatture': 'fatture', controllo: 'prodotti', pulizia: 'altro', formati: 'prodotti', prodotto: 'prodotti', 'modifica-prodotto': 'prodotti', ricetta: 'ricette', 'modifica-ricetta': 'ricette', 'rivedi-ricette': 'ricette', fattura: 'fatture' };
   function disegna() {
     if (!S) return;
     const [, nome, arg] = (location.hash || '#/pannello').split('/');
@@ -1943,7 +1945,7 @@
     const prod = S.prodotti.filter(p => trova(p.nomeBreve + ' ' + p.nomeCompleto + ' ' + ((M.fornitore(p.fornitoreId) || {}).nome || '')))
       .map(p => { const f = M.fornitore(p.fornitoreId), pr = M.prezzo(p), rf = M.prezzoRiferimento(p);
         return { rif: 'p:' + p.id, nome: p.nomeBreve, inizia: normCassa(p.nomeBreve).startsWith(t),
-          info: [f ? f.nome : '', `${p.confezione} da ${qta(p.contenuto)} ${p.unita}`, pr != null ? euro(pr) : 'senza prezzo', rf ? n2(rf.valore) + ' ' + rf.etichetta : ''].filter(Boolean).join(' · ') }; });
+          info: [f ? f.nome : '', p.nomeCompleto && normCassa(p.nomeCompleto) !== normCassa(p.nomeBreve) ? p.nomeCompleto : '', `${p.confezione} da ${qta(p.contenuto)} ${p.unita}`, pr != null ? euro(pr) : 'senza prezzo', rf ? n2(rf.valore) + ' ' + rf.etichetta : ''].filter(Boolean).join(' · ') }; });
     const ric = S.ricette.filter(r => r.id !== escludiId && trova(r.nome)).map(r => { const c = M.costo(r);
       return { rif: 'r:' + r.id, nome: r.nome, inizia: normCassa(r.nome).startsWith(t), info: (r.tipo === 'semilavorato' ? 'preparazione' : M.TIPI_SINGOLARE[r.tipo]) + (c != null && r.resa ? ' · ' + euro(c / r.resa * 1000) + (r.unita === 'g' ? ' al kg' : ' al litro') : c != null ? ' · ' + euro(c) : '') }; });
     return prod.concat(ric).sort((a, b) => (b.inizia - a.inizia) || a.nome.localeCompare(b.nome)).slice(0, 12);
@@ -1989,6 +1991,34 @@
     if (vuota && r.tipo === 'bevanda' && /^Ricetta da completare/.test(r.note || '')) r.note = String(r.note).replace(/^Ricetta da completare[^.]*\.\s*/, '');
     M.svuota(); salva(); ridisegnaMantenendo();
     const i = M.indicatori(r); avviso(`${r.nome}: costo ${euro(i.costo)}${i.molt ? ' · × ' + n2(i.molt) : ''}`);
+  };
+  // ---------- Doppioni: lo stesso prodotto arrivato più volte (da fornitori diversi o scritto in modi diversi) ----------
+  function principaleDi(l) {
+    const usi = (p) => M.usatoIn('p:' + p.id).dirette.length;
+    const ultima = (p) => (p.prezzi || []).reduce((m, e) => e.data > m ? e.data : m, '');
+    return l.slice().sort((a, b) => usi(b) - usi(a) || (ultima(b) > ultima(a) ? 1 : -1))[0];
+  }
+  PAGINE.doppioni = function () {
+    const gruppi = M.gruppiDoppioni().sort((a, b) => a[0].nomeBreve.localeCompare(b[0].nomeBreve));
+    if (!gruppi.length) return { titolo: 'Doppioni', indietro: '#/prodotti', html: '<div class="card evidenza"><h3>Nessun doppione</h3><p>Non ci sono prodotti con lo stesso nome e lo stesso formato.</p></div>' };
+    return { titolo: `Doppioni (${gruppi.length})`, indietro: '#/prodotti', html: `
+      <div class="card"><p>Questi prodotti hanno lo stesso nome e lo stesso formato: quasi sempre sono la stessa cosa arrivata da fornitori diversi (es. Doreca Italia e Emilia Romagna Doreca) o scritta in modi diversi in fattura. Uniscili: resta un prodotto solo, con i prezzi di tutti, e le fatture future di ognuno finiscono lì.</p>
+        <div class="bottoni"><button class="btn primario" data-az="dop-tutti">Unisci tutti i ${gruppi.length} gruppi</button></div></div>
+      ${gruppi.map((l, i) => { const pr = principaleDi(l); return `<div class="card"><h3>${esc(pr.nomeBreve)} <small class="tenue">${esc(pr.confezione)} da ${qta(pr.contenuto)} ${esc(pr.unita)}</small></h3>
+        ${l.map(p => { const f = M.fornitore(p.fornitoreId); const u = M.usatoIn('p:' + p.id).dirette.length; return `<a class="riga" href="#/prodotto/${p.id}"><span>${esc(f ? f.nome : 'senza fornitore')}<small>${esc(p.nomeCompleto)}${u ? ' · in ' + u + ' ricette' : ''}</small></span><span class="destra">${euro(M.prezzo(p))}${p === pr ? '<small>resta questo</small>' : ''}</span></a>`; }).join('')}
+        <div class="bottoni"><button class="btn piccolo" data-az="dop-unisci" data-i="${i}">Unisci in uno</button><button class="btn piccolo" data-az="dop-no" data-ids="${l.map(p => p.id).join(',')}">Sono diversi</button></div></div>`; }).join('')}` };
+  };
+  function unisciGruppo(l) {
+    const pr = principaleDi(l); let n = 0;
+    l.forEach(p => { if (p !== pr && !M.unisciProdotti(p.id, pr.id)) n++; });
+    delete pr.forseDoppioneDi; return n;
+  }
+  AZ['dop-unisci'] = (el) => { const g = M.gruppiDoppioni().sort((a, b) => a[0].nomeBreve.localeCompare(b[0].nomeBreve))[+el.dataset.i]; if (!g) return; unisciGruppo(g); salva(); ridisegnaMantenendo(); avviso('Uniti in un prodotto solo.'); };
+  AZ['dop-tutti'] = () => { const gg = M.gruppiDoppioni(); if (!confirm(`Unisco ${gg.length} gruppi di doppioni?`)) return; let n = 0; gg.forEach(g => { n += unisciGruppo(g); }); salva(); ridisegnaMantenendo(); avviso(`Uniti ${n} doppioni.`); };
+  AZ['dop-no'] = (el) => {
+    // prodotti diversi con lo stesso nome: aggiungo il fornitore al nome breve, così non risultano più doppioni
+    el.dataset.ids.split(',').map(M.prodotto).filter(Boolean).forEach((p, k) => { if (k > 0) { const f = M.fornitore(p.fornitoreId); p.nomeBreve = p.nomeBreve + ' ' + (f ? f.nome.split(' ')[0].toLowerCase() : k + 1); } });
+    salva(); ridisegnaMantenendo();
   };
   AZ['ordine-ricette'] = (el) => { ui.ordineRicette = el.dataset.v; ridisegnaMantenendo(); };
   AZ['riv-inizia'] = () => { ui.rivIdx = 0; ui.rivStorico = []; ui.rivFisso = null; ui.rivFiltro = ui.rivFiltro || 'darivedere'; ui.bozza = null; vai('#/rivedi-ricette'); };

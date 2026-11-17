@@ -531,6 +531,8 @@
       const foglio = S.prodotti.filter(x => M.daFoglio(x) || (!M.daFattura(x) && !x.speciale && (x.prezzi || []).length));
       const sim = foglio.length ? M.somiglianti(p, foglio)[0] : null;
       if (sim && sim.punti >= 0.8) { p.forseDoppioneDi = sim.p.id; p.daCompletare = true; }
+      // stesso nome e stesso formato di un prodotto già arrivato da un'altra fattura (anche di un altro fornitore): quasi certo è lo stesso
+      if (!p.forseDoppioneDi) { const ug = S.prodotti.find(x => x !== p && !x.speciale && M.chiaveDoppione(x) === M.chiaveDoppione(p)); if (ug) { p.forseDoppioneDi = ug.id; p.daCompletare = true; } }
       // ricordo subito come compare in fattura, così le fatture successive lo riconoscono
       p.articoli.push({ fornitoreId: f.fornitoreId, codice: rg.codice, descrizione: rg.descrizione, confezioniPerUnita: g.perUnita });
       S.prodotti.push(p); creati.push(p.id);
@@ -597,6 +599,13 @@
     M.svuota();
   };
   // Unisce un doppione nel prodotto giusto: prezzi, magazzino, righe delle fatture e ricette passano al prodotto giusto
+  // due prodotti sono probabili doppioni se hanno lo stesso nome breve, la stessa unità e lo stesso formato
+  M.chiaveDoppione = (p) => norm(p.nomeBreve) + '|' + p.unita + '|' + Math.round(Number(p.contenuto) || 0);
+  M.gruppiDoppioni = function () {
+    const g = {};
+    S.prodotti.filter(p => !p.speciale && norm(p.nomeBreve)).forEach(p => { (g[M.chiaveDoppione(p)] = g[M.chiaveDoppione(p)] || []).push(p); });
+    return Object.values(g).filter(l => l.length > 1);
+  };
   M.unisciProdotti = function (daId, aId) {
     const da = M.prodotto(daId), a = M.prodotto(aId);
     if (!da || !a || da === a) return 'Scegli un prodotto diverso.';
