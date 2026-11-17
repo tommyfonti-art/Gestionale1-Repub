@@ -1357,6 +1357,38 @@
     document.title = pag.titolo + ' · Gestionale Repub';
   }
   function ridisegnaMantenendo() { const y = window.scrollY; disegna(); window.scrollTo(0, y); }
+
+  // ---------- Tendine lunghe: si cerca scrivendo (vale per tutte le tendine con tante voci, in ogni pagina) ----------
+  function rendiCercabile(sel) {
+    if (sel.dataset.cercabile || sel.dataset.noCerca || sel.options.length <= 12) return;
+    sel.dataset.cercabile = '1';
+    const box = document.createElement('div'); box.className = 'scegli-rif tendina-cerca';
+    const inp = document.createElement('input'); inp.className = 'cerca-rif'; inp.type = 'search'; inp.autocomplete = 'off';
+    const vuota = (o) => !o || o.value === '' || /^(scegli|—|-)/i.test(o.text.trim());
+    const cur = sel.options[sel.selectedIndex];
+    inp.value = vuota(cur) ? '' : cur.text.trim();
+    inp.placeholder = (vuota(cur) && cur ? cur.text.trim() + ' · ' : '') + 'scrivi per cercare';
+    const sugg = document.createElement('div'); sugg.className = 'sugg';
+    box.appendChild(inp); box.appendChild(sugg);
+    sel.parentNode.insertBefore(box, sel); sel.style.display = 'none';
+    const voci = () => Array.from(sel.options).map(o => ({ o, gruppo: o.parentNode && o.parentNode.tagName === 'OPTGROUP' ? o.parentNode.label : '' }));
+    const mostra = (tutte) => {
+      const t = normCassa(inp.value).split(' ').filter(Boolean);
+      const l = voci().filter(({ o, gruppo }) => tutte || !t.length || t.every(w => normCassa(o.text + ' ' + gruppo).includes(w))).slice(0, 40);
+      sugg.innerHTML = '';
+      l.forEach(({ o, gruppo }, i) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'sugg-voce' + (i === 0 && t.length ? ' primo' : ''); b.innerHTML = `<b>${esc(o.text)}</b>${gruppo ? `<small>${esc(gruppo)}</small>` : ''}`;
+        b.addEventListener('mousedown', (e) => e.preventDefault());
+        b.addEventListener('click', () => { sel.value = o.value; inp.value = vuota(o) ? '' : o.text.trim(); sugg.innerHTML = ''; sel.dispatchEvent(new Event('input', { bubbles: true })); sel.dispatchEvent(new Event('change', { bubbles: true })); });
+        sugg.appendChild(b); });
+      if (!l.length) sugg.innerHTML = '<p class="tenue piccolo">Niente con queste parole.</p>';
+    };
+    inp.addEventListener('input', (e) => { e.stopPropagation(); mostra(false); });
+    inp.addEventListener('focus', () => { inp.select(); mostra(!inp.value || inp.value === (sel.options[sel.selectedIndex] || {}).text); });
+    inp.addEventListener('blur', () => setTimeout(() => { sugg.innerHTML = ''; const o = sel.options[sel.selectedIndex]; inp.value = vuota(o) ? '' : o.text.trim(); }, 150));
+    inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); const b = sugg.querySelector('.sugg-voce'); if (b) b.click(); } if (e.key === 'Escape') inp.blur(); });
+    inp.addEventListener('change', (e) => e.stopPropagation());
+  }
+  new MutationObserver(() => document.querySelectorAll('#contenuto select').forEach(rendiCercabile)).observe(document.getElementById('contenuto') || document.body, { childList: true, subtree: true });
   window.addEventListener('hashchange', () => { disegna(); window.scrollTo(0, 0); });
 
   // ---------- Fatture: caricamento ----------

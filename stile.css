@@ -239,3 +239,6 @@ body.trascina::after { content: 'Lascia qui i file'; position: fixed; inset: 12p
 .lf-scelta select { width: 100%; margin-bottom: 6px; }
 .lf-prezzo { text-align: right; }
 @media (max-width: 700px) { .lf-riga { grid-template-columns: 1fr 80px; } .lf-scelta { grid-column: 1 / -1; grid-row: 2; } }
+
+.tendina-cerca { width: 100%; }
+.tendina-cerca .sugg { max-height: 320px; }
