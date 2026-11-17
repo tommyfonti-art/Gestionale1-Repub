@@ -1675,10 +1675,12 @@
     const cQ = chiavi.find(k => qRe.test(k)), cInc = chiavi.find(k => /^(incasso|totale|importo|venduto)/i.test(k));
     if (!cNome) throw new Error('Non trovo la colonna con il nome dei prodotti (colonne trovate: ' + chiavi.join(', ') + ').');
     ui.ccPerProdotto = cNome !== 'Sku';
-    return righe.map(r => {
+    const out = righe.map(r => {
       const sku = String(r[cNome] || '').trim(); const ric = ricettaDiSku(sku);
       return { sku, q: Number(r[cQ]) || 0, incasso: Number(cInc ? r[cInc] : 0) || 0, scelta: ric ? ric.id : '' };
     }).filter(r => r.sku && !/^tot(ale)?$/i.test(r.sku));
+    if (!out.length) throw new Error('nel file non trovo righe con un nome e una quantità (colonne trovate: ' + chiavi.join(', ') + '). Mandalo a Claude così lo sistemo.');
+    return out;
   }
   async function caricaCassa(file, tipo) {
     try {
