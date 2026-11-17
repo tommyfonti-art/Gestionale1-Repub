@@ -55,6 +55,9 @@
     // una volta: le ricette in più (drink, panini, fritti, dolci) entrano anche nei dati già salvati
     S.impostazioni = S.impostazioni || {}; S.impostazioni.soglie = S.impostazioni.soglie || {};
     if (S.impostazioni.soglie.dolce == null) S.impostazioni.soglie.dolce = 3.5;
+    if (S.impostazioni.soglie.bevanda == null) S.impostazioni.soglie.bevanda = 3;
+    if (S.impostazioni.soglie.altro == null) S.impostazioni.soglie.altro = 3;
+    S.periodiCassa = S.periodiCassa || {};
     const AG = window.AGGIUNTE_RICETTE;
     if (AG && (S.versioneRicette || 1) < AG.versione) {
       const nn = (x) => String(x || '').toLowerCase().normalize('NFD').replace(/[^a-z0-9]+/g, ' ').trim();
@@ -312,7 +315,7 @@
   const PAGINE = {};
 
   PAGINE.pannello = function () {
-    const bar = S.ricette.filter(r => ['drink', 'premium'].includes(r.tipo)).map(r => M.indicatori(r)).filter(i => i.incidenza != null);
+    const bar = S.ricette.filter(r => ['drink', 'premium', 'bevanda'].includes(r.tipo)).map(r => M.indicatori(r)).filter(i => i.incidenza != null);
     const cucina = S.ricette.filter(r => ['panino', 'fritto', 'dolce'].includes(r.tipo)).map(r => M.indicatori(r)).filter(i => i.incidenza != null);
     const media = (l) => l.length ? l.reduce((s, i) => s + i.incidenza, 0) / l.length : null;
     const oggi = M.oggi(); const tra30 = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10);
@@ -938,6 +941,7 @@
 ['vendite', 'Vendite', 'pezzi venduti per periodo'], ['mappa', 'Mappa del menu', 'cosa vende e cosa rende'],
       ['simulatore', 'Simulatore', 'e se cambia un prezzo?'], ['eventi', 'Eventi', 'listini per le serate'], ['olio', 'Costo olio', 'quanto costa friggere'],
       ['pulizia', 'Pulizia dei prodotti', 'collega il foglio alle fatture'],
+      ['importa', 'Importa dalla cassa', 'listino e vendite da Cassa in Cloud'],
       ['impostazioni', 'Impostazioni', 'soglie, IVA, esportazione']
     ];
     return { titolo: 'Altro', html: `<div class="griglia-voci">${voci.map(v => `<a class="voce" href="#/${v[0]}"><b>${v[1]}</b><span>${v[2]}</span></a>`).join('')}</div>` };
@@ -1040,8 +1044,8 @@
         <div class="bottoni"><button class="btn primario" data-az="vend-crea">Crea e inizia a scrivere</button><button class="btn" data-az="vend-annulla">Annulla</button></div></div>` : '';
     if (!per) return { titolo: 'Vendite', indietro: '#/altro', html: scelta + nuovo + '<p class="tenue centro">Crea il primo periodo.</p>' };
     const f = (ui.vendFiltro || '').toLowerCase();
-    const gruppi = [['drink', 'premium'], ['panino', 'combo'], ['fritto'], ['dolce']];
-    const nomiG = ['Bar', 'Panini', 'Fritti', 'Dolci'];
+    const gruppi = [['drink', 'premium'], ['bevanda'], ['panino', 'combo'], ['fritto'], ['dolce'], ['altro']];
+    const nomiG = ['Drink', 'Birre, vini e bibite', 'Panini', 'Fritti', 'Dolci', 'Salse e altro'];
     let tot = 0, incasso = 0;
     S.ricette.forEach(r => { const q = (r.vendite || {})[per]; if (q && r.tipo !== 'semilavorato') { tot += q; incasso += q * (r.prezzo || 0); } });
     const blocchi = gruppi.map((g, k) => {
@@ -1052,7 +1056,7 @@
     const scaricato = S.periodiScaricati.includes(per);
     return {
       titolo: 'Vendite', indietro: '#/altro', html: `${scelta}${nuovo}
-      <div class="card"><h3>${esc(per)}</h3><p class="tenue">${date ? `dal ${dataIt(date.dal)} al ${dataIt(date.al)} · ` : ''}${qta(tot)} pezzi · incasso ${euro(incasso, 0)}</p>
+      <div class="card"><h3>${esc(per)}</h3><p class="tenue">${date ? `dal ${dataIt(date.dal)} al ${dataIt(date.al)} · ` : ''}${qta(tot)} pezzi · incasso ${euro(incasso, 0)}${S.periodiCassa[per] ? ` · <b>dalla cassa: ${euro(S.periodiCassa[per].incasso, 0)}</b> (${qta(S.periodiCassa[per].pezzi)} pezzi, anche coperti e voci senza ricetta)` : ''}</p>
         <div class="bottoni"><button class="btn piccolo" data-az="vend-rinomina">Rinomina</button><button class="btn piccolo" data-az="vend-elimina">Elimina il periodo</button></div></div>
       <input class="cerca" placeholder="Cerca una ricetta" value="${esc(ui.vendFiltro || '')}" data-filtro="vendFiltro">
       <div class="griglia-vend">${blocchi}</div>
@@ -1064,7 +1068,7 @@
   PAGINE.mappa = function () {
     const periodi = S.periodiVendita;
     const per = ui.mappaPeriodo || (periodi.includes('2025') ? '2025' : periodi[periodi.length - 1]);
-    const gruppi = { cucina: ['panino', 'fritto', 'combo', 'dolce'], bar: ['drink', 'premium'] };
+    const gruppi = { cucina: ['panino', 'fritto', 'combo', 'dolce', 'altro'], bar: ['drink', 'premium', 'bevanda'] };
     const voci = S.ricette.filter(r => gruppi[ui.mappaGruppo].includes(r.tipo)).map(r => ({ r, q: (r.vendite || {})[per] || 0, i: M.indicatori(r) })).filter(x => x.q > 0 && x.i.margine != null);
     let html = `<div class="chips">${Object.keys(gruppi).map(g => `<button class="chip ${ui.mappaGruppo === g ? 'on' : ''}" data-az="mappa-gruppo" data-v="${g}">${g === 'bar' ? 'Bar' : 'Cucina'}</button>`).join('')}</div>
       <div class="chips">${periodi.map(pp => `<button class="chip ${per === pp ? 'on' : ''}" data-az="mappa-periodo" data-v="${esc(pp)}">${esc(pp)}</button>`).join('')}</div>`;
@@ -1197,6 +1201,7 @@
       titolo: 'Impostazioni', indietro: '#/altro', html: `
       <div class="card form"><h3>Soglie del moltiplicatore</h3><p class="tenue piccolo">Sotto questo numero la ricetta diventa rossa.</p>
         <div class="due">${Object.keys(M.TIPI).filter(t => t !== 'semilavorato').map(t => `<label>${esc(M.TIPI[t])}<input type="number" step="any" inputmode="decimal" data-soglia="${t}" value="${esc((im.soglie || {})[t])}"></label>`).join('')}</div></div>
+      <div class="card"><h3>Dati dalla cassa</h3><p class="tenue piccolo">Listino dei prodotti in vendita e venduto di un periodo, dai file esportati da Cassa in Cloud.</p><a class="btn" href="#/importa">Importa dalla cassa</a></div>
       <div class="card form"><h3>Prezzi</h3>
         <label>IVA sul prezzo di vendita (%)<input type="number" step="any" data-imp="ivaVendita" value="${esc(im.ivaVendita)}"></label>
         <label>Quando un prodotto arriva da più fornitori, usa<select data-imp="metodoPrezzo">${[['ultimo', 'l\'ultimo prezzo pagato'], ['minimo', 'il prezzo più basso'], ['media', 'la media tra i fornitori']].map(([k, v]) => `<option value="${k}" ${im.metodoPrezzo === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
@@ -1229,9 +1234,9 @@
   };
 
   // ---------- Disegno ----------
-  const ALTRE = [['fornitori', 'Fornitori'], ['magazzino', 'Magazzino'], ['ordini', 'Ordini'], ['vendite', 'Vendite'], ['mappa', 'Mappa del menu'], ['simulatore', 'Simulatore'], ['eventi', 'Eventi'], ['olio', 'Costo olio'], ['pulizia', 'Pulizia'], ['impostazioni', 'Impostazioni']];
+  const ALTRE = [['fornitori', 'Fornitori'], ['magazzino', 'Magazzino'], ['ordini', 'Ordini'], ['vendite', 'Vendite'], ['mappa', 'Mappa del menu'], ['simulatore', 'Simulatore'], ['eventi', 'Eventi'], ['olio', 'Costo olio'], ['pulizia', 'Pulizia'], ['importa', 'Importa dalla cassa'], ['impostazioni', 'Impostazioni']];
   const TAB = [['pannello', 'Pannello', 'M3 12l9-8 9 8v8a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z'], ['prodotti', 'Prodotti', 'M4 7l8-4 8 4v10l-8 4-8-4zM4 7l8 4 8-4M12 11v10'], ['ricette', 'Ricette', 'M6 3h12M8 3v6l-4 12h16L16 9V3'], ['fatture', 'Fatture', 'M6 2h9l5 5v15H6zM14 2v6h6M9 13h8M9 17h8'], ['altro', 'Altro', 'M5 12h.01M12 12h.01M19 12h.01']];
-  const SEZIONE = { 'controllo-fatture': 'fatture', controllo: 'prodotti', pulizia: 'altro', formati: 'prodotti', prodotto: 'prodotti', 'modifica-prodotto': 'prodotti', ricetta: 'ricette', 'modifica-ricetta': 'ricette', 'rivedi-ricette': 'ricette', fattura: 'fatture' };
+  const SEZIONE = { importa: 'altro', 'controllo-fatture': 'fatture', controllo: 'prodotti', pulizia: 'altro', formati: 'prodotti', prodotto: 'prodotti', 'modifica-prodotto': 'prodotti', ricetta: 'ricette', 'modifica-ricetta': 'ricette', 'rivedi-ricette': 'ricette', fattura: 'fatture' };
   function disegna() {
     if (!S) return;
     const [, nome, arg] = (location.hash || '#/pannello').split('/');
@@ -1555,6 +1560,201 @@
     if (nuovo) S.ricette.push(b); else S.ricette[S.ricette.findIndex(r => r.id === b.id)] = b;
     ui.bozza = null; ui.tipoRicette = b.tipo; salva(); return b;
   }
+  // ---------- Importa dalla cassa (Cassa in Cloud) ----------
+  // Legge un file Excel (.xlsx) senza librerie esterne oltre a quella per gli zip: restituisce { nomeFoglio: righe[][] }
+  async function leggiXlsx(file) {
+    if (!window.JSZip) await caricaScript('jszip.min.js');
+    const zip = await window.JSZip.loadAsync(file);
+    const dp = new DOMParser();
+    const xml = async (p) => { const f = zip.file(p); return f ? dp.parseFromString(await f.async('string'), 'application/xml') : null; };
+    const tag = (n, t) => Array.from(n.getElementsByTagName(t));
+    const ss = await xml('xl/sharedStrings.xml');
+    const stringhe = ss ? tag(ss, 'si').map(si => tag(si, 't').map(t => t.textContent).join('')) : [];
+    const wb = await xml('xl/workbook.xml'), rel = await xml('xl/_rels/workbook.xml.rels');
+    if (!wb || !rel) throw new Error('Non sembra un file Excel (.xlsx).');
+    const dest = {}; tag(rel, 'Relationship').forEach(r => { dest[r.getAttribute('Id')] = r.getAttribute('Target'); });
+    const colonna = (ref) => { let n = 0; for (const ch of ref.replace(/[0-9]/g, '')) n = n * 26 + ch.charCodeAt(0) - 64; return n - 1; };
+    const fogli = {};
+    for (const s of tag(wb, 'sheet')) {
+      const t = dest[s.getAttribute('r:id')] || ''; const doc = await xml(t.startsWith('/') ? t.slice(1) : 'xl/' + t);
+      if (!doc) continue;
+      fogli[s.getAttribute('name').trim()] = tag(doc, 'row').map(r => {
+        const riga = [];
+        tag(r, 'c').forEach(c => {
+          const tipo = c.getAttribute('t'), v = c.getElementsByTagName('v')[0];
+          let val = v ? v.textContent : null;
+          if (tipo === 's') val = stringhe[+val];
+          else if (tipo === 'inlineStr') val = tag(c, 't').map(x => x.textContent).join('');
+          else if (tipo === 'b') val = val === '1';
+          else if (tipo !== 'str' && val != null && val !== '' && !isNaN(val)) val = Number(val);
+          riga[colonna(c.getAttribute('r') || 'A')] = val;
+        });
+        return riga;
+      });
+    }
+    return fogli;
+  }
+  const tabellaDa = (righe) => { if (!righe || !righe.length) return []; const h = righe[0].map(x => String(x == null ? '' : x).trim()); return righe.slice(1).filter(r => r.some(x => x != null && x !== '')).map(r => { const o = {}; h.forEach((k, i) => { o[k] = r[i]; }); return o; }); };
+  const colDa = (o, inizio) => { const k = Object.keys(o).find(x => x.startsWith(inizio)); return k ? o[k] : undefined; };
+  const normCassa = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[’']/g, '').replace(/&/g, ' e ').replace(/\bpata\b/g, 'patatine').replace(/[^a-z0-9]+/g, ' ').trim();
+  const bello = (t) => { const x = String(t || '').trim().toLowerCase(); return x.charAt(0).toUpperCase() + x.slice(1); };
+  const ricettaDiSku = (sku) => { const n = normCassa(sku); return S.ricette.find(r => r.tipo !== 'semilavorato' && ((r.nomeCassa && normCassa(r.nomeCassa) === n) || (r.aliasCassa || []).some(a => normCassa(a) === n))); };
+  function somiglianzaNomi(a, b) {
+    const A = normCassa(a).replace(/\b(base|drink)\b/g, ' ').split(' ').filter(x => x.length > 1), B = normCassa(b).replace(/\b(base|drink)\b/g, ' ').split(' ').filter(x => x.length > 1);
+    if (!A.length || !B.length) return 0;
+    if (A.join(' ') === B.join(' ')) return 1;
+    const comuni = A.filter(x => B.includes(x)).length;
+    // tutto il nome più corto sta dentro l'altro (es. «Centauro» e «Centauro (analcolico)»): quasi certo
+    if (comuni === Math.min(A.length, B.length)) return Math.max(0.65, comuni / Math.max(A.length, B.length));
+    return comuni / Math.max(A.length, B.length);
+  }
+  // che tipo di ricetta è una categoria della cassa (dal nome, o dai prodotti che contiene se il nome manca)
+  function tipoCategoria(nome, voci) {
+    const n = String(nome || '').toUpperCase(), tutti = voci.map(v => v.sku.toUpperCase()).join(' | ');
+    if (voci.filter(v => /\+ ?PATA/i.test(v.sku)).length >= voci.length / 2) return 'combo';
+    if (/COCKTAIL/.test(n)) return 'drink';
+    if (/BURGER/.test(n)) return 'panino';
+    if (/SPIZZICARE|FRITT/.test(n)) return 'fritto';
+    if (/DESSERT|DOLC/.test(n)) return 'dolce';
+    if (/SALSE|INSALAT/.test(n)) return 'altro';
+    if (/BIBITE|BEVANDE|BIRR|VINI|CAFFETTERIA|TISANA|ACQUA/.test(n)) return 'bevanda';
+    if (/ - (PICCOLA|MEDIA|PINTA|MEZZA PINTA|CARAFFA|BOCCALE)/.test(tutti)) return 'bevanda';
+    if (/\bACQUA\b|MEZZA (NAT|GAS)/.test(tutti)) return 'bevanda';
+    if (/\bZERO\b/.test(tutti)) return 'drink';
+    if (/\b(RUM|WHISKE?Y|AMARI|TEQUILA|VERMOUTH)\b/.test(tutti)) return 'drink';
+    return 'salta';
+  }
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-/i;
+  function preparaListino(fogli) {
+    const P = tabellaDa(fogli['Prodotti']), V = tabellaDa(fogli['Varianti']);
+    if (!P.length) throw new Error('Nel file non trovo il foglio «Prodotti»: serve l\'esportazione del listino di Cassa in Cloud.');
+    const varDi = {}; V.forEach(v => { (varDi[v['Prodotto']] = varDi[v['Prodotto']] || []).push(v); });
+    const perCat = {};
+    P.forEach(p => {
+      const desc = String(p['Descrizione'] || '').trim(); if (!desc) return;
+      const cat = String(p['Categoria'] || 'Senza categoria');
+      const vv = varDi[p['ID']] || [];
+      // varianti che sono solo «quanti bicchieri» (vino, acqua): stessa ricetta del prodotto
+      const soloBicchieri = (et) => /^(NO )?BICC\.?\s*\d*$|^\d+$/i.test(et);
+      const voci = [], alias = [];
+      vv.forEach(v => {
+        const sku = String(colDa(v, 'Descrizione (default') || desc).trim();
+        const k = sku.lastIndexOf(' - ');
+        const variante = k > 0 ? sku.slice(k + 3).trim() : '', base = k > 0 ? sku.slice(0, k).trim() : sku;
+        if (soloBicchieri(variante)) { alias.push(sku); return; }
+        voci.push({ sku, prodotto: base, variante, prezzo: Number(v['Prezzo Base']) || 0, alias: [] });
+      });
+      if (!vv.length || alias.length) voci.unshift({ sku: desc, prodotto: desc, variante: '', prezzo: Number(p['Prezzo Base']) || 0, alias });
+      (perCat[cat] = perCat[cat] || []).push(...voci);
+    });
+    const gruppi = Object.entries(perCat).map(([cat, voci]) => {
+      const tipo = tipoCategoria(UUID.test(cat) ? '' : cat, voci);
+      return { cat, nome: UUID.test(cat) ? 'Categoria senza nome: ' + voci.slice(0, 3).map(v => bello(v.sku)).join(', ') + '…' : bello(cat), tipo, voci };
+    }).sort((a, b) => (a.tipo === 'salta') - (b.tipo === 'salta') || a.nome.localeCompare(b.nome));
+    // proposta di collegamento: stesso nome di cassa già salvato, oppure nome simile (una ricetta per una voce sola)
+    const usate = new Set(), proposte = [];
+    gruppi.forEach((g, gi) => g.voci.forEach((v, vi) => {
+      v.scelta = g.tipo === 'salta' || v.prezzo <= 0 || v.prezzo > 100 ? '__salta' : '';
+      const gia = ricettaDiSku(v.sku) || v.alias.map(ricettaDiSku).find(Boolean); if (gia) { v.scelta = v.scelta === '__salta' && g.tipo === 'salta' ? '__salta' : gia.id; usate.add(gia.id); return; }
+      const nomeBase = v.variante && !/^BASE$/i.test(v.variante) ? v.sku : v.prodotto;
+      S.ricette.filter(r => r.tipo !== 'semilavorato').forEach(r => { const sc = somiglianzaNomi(nomeBase, r.nome); if (sc >= 0.6) proposte.push({ v, r, sc: sc + (r.tipo === g.tipo ? 0.2 : 0) }); });
+    }));
+    proposte.sort((a, b) => b.sc - a.sc).forEach(({ v, r }) => { if (v.scelta === '' && !usate.has(r.id)) { v.scelta = r.id; usate.add(r.id); } });
+    return { gruppi };
+  }
+  function preparaVendite(fogli) {
+    const nome = Object.keys(fogli).find(k => /venduto/i.test(k)) || Object.keys(fogli)[0];
+    const righe = tabellaDa(fogli[nome]);
+    if (!righe.length || !('Sku' in righe[0] || 'Quantità' in righe[0])) throw new Error('Non trovo le colonne «Sku» e «Quantità»: serve il resoconto «Venduto per sku» di Cassa in Cloud.');
+    return righe.map(r => {
+      const sku = String(r['Sku'] || '').trim(); const ric = ricettaDiSku(sku);
+      return { sku, q: Number(r['Quantità']) || 0, incasso: Number(r['Incasso']) || 0, scelta: ric ? ric.id : '' };
+    }).filter(r => r.sku);
+  }
+  async function caricaCassa(file, tipo) {
+    try {
+      const fogli = await leggiXlsx(file);
+      if (tipo === 'listino') ui.ccListino = preparaListino(fogli);
+      else { ui.ccVendite = preparaVendite(fogli); ui.ccFileVendite = file.name; }
+      ridisegnaMantenendo();
+    } catch (e) { alert('Non riesco a leggere il file: ' + e.message); }
+  }
+  const opzioniRicette = (sel, tipo) => {
+    const l = S.ricette.filter(r => r.tipo !== 'semilavorato').sort((a, b) => (b.tipo === tipo) - (a.tipo === tipo) || a.nome.localeCompare(b.nome));
+    return l.map(r => `<option value="${r.id}" ${sel === r.id ? 'selected' : ''}>${esc(r.nome)} · ${esc(M.TIPI_SINGOLARE[r.tipo] || r.tipo)}</option>`).join('');
+  };
+  PAGINE.importa = function () {
+    const L = ui.ccListino, Vd = ui.ccVendite;
+    let listino = `<div class="card form"><h3>1. Listino dei prodotti in vendita</h3>
+      <p class="tenue piccolo">In Cassa in Cloud: esporta il listino (il file Excel con i fogli «Prodotti» e «Varianti»). Ogni prodotto e ogni variante (piccola, media, doppio…) diventa una ricetta: se esiste già le aggiorno il prezzo, se no la creo vuota e gli ingredienti li metti tu.</p>
+      <label class="btn">Scegli il file del listino<input type="file" accept=".xlsx" data-carica="cassa-listino" hidden></label></div>`;
+    if (L) {
+      let nuove = 0, agg = 0, salta = 0;
+      L.gruppi.forEach(g => g.voci.forEach(v => { if (g.tipo === 'salta' || v.scelta === '__salta') salta++; else if (v.scelta) agg++; else nuove++; }));
+      listino += `<div class="card evidenza"><h3>Anteprima del listino</h3><p>Creo <b>${nuove}</b> ricette nuove, collego <b>${agg}</b> a ricette che ci sono già (aggiornando il prezzo), salto <b>${salta}</b> voci.</p>
+        <p class="tenue piccolo">Per ogni categoria scegli che tipo di ricetta diventa, oppure «Non importare». Riga per riga puoi cambiare il collegamento.</p>
+        <div class="bottoni"><button class="btn primario" data-az="cc-listino-ok">Importa il listino</button><button class="btn" data-az="cc-listino-annulla">Annulla</button></div></div>` +
+        L.gruppi.map((g, gi) => `<details class="card" ${ui.ccAperto === gi ? 'open' : ''}><summary><b>${esc(g.nome)}</b> · ${g.voci.length} voci · <span class="${g.tipo === 'salta' ? 'tenue' : ''}">${g.tipo === 'salta' ? 'non importata' : esc(M.TIPI[g.tipo])}</span></summary>
+          <label>Diventano<select data-cc-g="${gi}"><option value="salta" ${g.tipo === 'salta' ? 'selected' : ''}>Non importare</option>${Object.entries(M.TIPI).filter(([k]) => k !== 'semilavorato').map(([k, v]) => `<option value="${k}" ${g.tipo === k ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></label>
+          ${g.tipo === 'salta' ? '' : g.voci.map((v, vi) => { const r = v.scelta && v.scelta !== '__salta' ? M.ricetta(v.scelta) : null; return `<div class="riga-ed cc-riga"><span>${esc(v.sku)}<small>${euro(v.prezzo)}${r && r.prezzo && Math.abs(r.prezzo - v.prezzo) > 0.005 ? ` · ora ${euro(r.prezzo)}` : ''}</small></span>
+            <select data-cc-v="${gi},${vi}"><option value="">＋ Ricetta nuova</option><option value="__salta" ${v.scelta === '__salta' ? 'selected' : ''}>Non importare</option><optgroup label="Collega a una ricetta che c'è già">${opzioniRicette(v.scelta, g.tipo)}</optgroup></select></div>`; }).join('')}
+        </details>`).join('');
+    }
+    let vendite = `<div class="card form"><h3>2. Vendite di un periodo</h3>
+      <p class="tenue piccolo">In Cassa in Cloud: resoconto «Venduto per sku» del periodo, esportato in Excel. Scegli prima le date (nel file non ci sono).</p>
+      <div class="due"><label>Dal<input type="date" data-cc-data="dal" value="${esc(ui.ccDal || '')}"></label><label>Al<input type="date" data-cc-data="al" value="${esc(ui.ccAl || '')}"></label></div>
+      <label class="btn">Scegli il file delle vendite<input type="file" accept=".xlsx" data-carica="cassa-vendite" hidden></label></div>`;
+    if (Vd) {
+      const coll = Vd.filter(v => v.scelta && v.scelta !== '__salta'), non = Vd.filter(v => !v.scelta);
+      const pezzi = coll.reduce((s, v) => s + v.q, 0), tot = Vd.reduce((s, v) => s + v.q, 0), inc = Vd.reduce((s, v) => s + v.incasso, 0);
+      const nome = ui.ccDal && ui.ccAl ? nomeDaDate(ui.ccDal, ui.ccAl) : '';
+      vendite += `<div class="card evidenza"><h3>Anteprima delle vendite${ui.ccFileVendite ? ' · ' + esc(ui.ccFileVendite) : ''}</h3>
+        <p>${Vd.length} voci, ${qta(tot)} pezzi, incasso ${euro(inc, 0)}. Collegate a una ricetta: <b>${coll.length}</b> voci (${qta(pezzi)} pezzi). Senza ricetta: <b>${non.length}</b>.</p>
+        ${nome ? `<p>Periodo: <b>${esc(nome)}</b>${S.periodiVendita.includes(nome) ? ' (esiste già: sostituisco i numeri)' : ''}</p>` : '<p class="msg giallo">Metti le date del periodo qui sopra.</p>'}
+        <div class="bottoni"><button class="btn primario" data-az="cc-vendite-ok" ${nome ? '' : 'disabled'}>Salva le vendite</button><button class="btn" data-az="cc-vendite-annulla">Annulla</button></div></div>
+        ${non.length ? `<div class="card"><h3>Voci senza ricetta (${non.length})</h3><p class="tenue piccolo">Se una di queste è una ricetta con un altro nome, collegala: me lo ricordo per le prossime volte. Le altre (coperto, consegne…) restano fuori.</p>
+          ${Vd.map((v, i) => v.scelta ? '' : `<div class="riga-ed cc-riga"><span>${esc(v.sku)}<small>${qta(v.q)} pezzi · ${euro(v.incasso, 0)}</small></span><select data-cc-vv="${i}"><option value="">Lascia fuori</option>${opzioniRicette('', '')}</select></div>`).join('')}</div>` : ''}`;
+    }
+    return { titolo: 'Importa dalla cassa', indietro: '#/impostazioni', html: listino + vendite };
+  };
+  AZ['cc-listino-annulla'] = () => { ui.ccListino = null; ridisegnaMantenendo(); };
+  AZ['cc-vendite-annulla'] = () => { ui.ccVendite = null; ridisegnaMantenendo(); };
+  AZ['cc-listino-ok'] = () => {
+    const L = ui.ccListino; let nuove = 0, agg = 0;
+    L.gruppi.forEach(g => { if (g.tipo === 'salta') return; g.voci.forEach(v => {
+      if (v.scelta === '__salta') return;
+      if (v.scelta) {
+        const r = M.ricetta(v.scelta); if (!r) return;
+        if (!r.nomeCassa) r.nomeCassa = v.sku; else if (normCassa(r.nomeCassa) !== normCassa(v.sku)) r.aliasCassa = Array.from(new Set((r.aliasCassa || []).concat(v.sku)));
+        if (v.alias.length) r.aliasCassa = Array.from(new Set((r.aliasCassa || []).concat(v.alias)));
+        if (v.prezzo > 0) r.prezzo = v.prezzo; agg++;
+      } else {
+        const nome = v.variante && !/^BASE$/i.test(v.variante) ? bello(v.prodotto) + ' (' + v.variante.toLowerCase() + ')' : bello(v.prodotto);
+        S.ricette.push({ id: M.uid('r'), nome, tipo: g.tipo, prezzo: v.prezzo || null, righe: [], resa: null, unita: 'ml', asporto: [], costiExtra: [], vendite: {}, nomeCassa: v.sku, daCassa: true,
+          aliasCassa: v.alias.length ? v.alias.slice() : undefined, note: 'Ricetta da completare: creata dal listino della cassa, mancano gli ingredienti.' });
+        nuove++;
+      }
+    }); });
+    ui.ccListino = null; M.svuota(); salva(); ridisegnaMantenendo(); window.scrollTo(0, 0);
+    avviso(`Fatto: ${nuove} ricette nuove, ${agg} aggiornate. Le trovi in Ricette, con «ingredienti incompleti».`);
+  };
+  AZ['cc-vendite-ok'] = () => {
+    const Vd = ui.ccVendite, nome = nomeDaDate(ui.ccDal, ui.ccAl); if (!nome) return;
+    if (S.periodiVendita.includes(nome) && !confirm(`Il periodo «${nome}» esiste già: sostituisco i suoi numeri con quelli della cassa?`)) return;
+    if (!S.periodiVendita.includes(nome)) S.periodiVendita.push(nome);
+    S.periodiDate = S.periodiDate || {}; S.periodiDate[nome] = { dal: ui.ccDal, al: ui.ccAl };
+    S.ricette.forEach(r => { if (r.vendite) delete r.vendite[nome]; });
+    let n = 0;
+    Vd.forEach(v => {
+      if (!v.scelta || v.scelta === '__salta' || !v.q) return;
+      const r = M.ricetta(v.scelta); if (!r) return;
+      r.vendite = r.vendite || {}; r.vendite[nome] = (r.vendite[nome] || 0) + v.q; n++;
+      // collegamento fatto a mano: me lo ricordo
+      if (!(r.nomeCassa && normCassa(r.nomeCassa) === normCassa(v.sku)) && !(r.aliasCassa || []).some(a => normCassa(a) === normCassa(v.sku))) r.aliasCassa = (r.aliasCassa || []).concat(v.sku);
+    });
+    S.periodiCassa[nome] = { incasso: Math.round(Vd.reduce((s, v) => s + v.incasso, 0) * 100) / 100, pezzi: Vd.reduce((s, v) => s + v.q, 0) };
+    ui.ccVendite = null; ui.vendPer = nome; salva(); avviso(`Vendite salvate: ${n} voci nel periodo «${nome}».`); vai('#/vendite');
+  };
   AZ['ordine-ricette'] = (el) => { ui.ordineRicette = el.dataset.v; ridisegnaMantenendo(); };
   AZ['riv-inizia'] = () => { ui.rivIdx = 0; ui.rivFiltro = ui.rivFiltro || 'darivedere'; ui.bozza = null; vai('#/rivedi-ricette'); };
   AZ['riv-tipo'] = (el) => { ui.tipoRicette = el.dataset.v; ui.rivIdx = 0; ui.rivFisso = ui.rivUltima = null; ui.bozza = null; ridisegnaMantenendo(); };
@@ -1729,6 +1929,11 @@
     const el = e.target; const d = el.dataset;
     if (d.carica === 'xml') { caricaXML(Array.from(el.files)); el.value = ''; return; }
     if (d.carica === 'foto') { if (el.files[0]) caricaFoto(el.files[0]); el.value = ''; return; }
+    if (d.carica === 'cassa-listino' || d.carica === 'cassa-vendite') { if (el.files[0]) caricaCassa(el.files[0], d.carica === 'cassa-listino' ? 'listino' : 'vendite'); el.value = ''; return; }
+    if (d.ccG != null) { ui.ccAperto = +d.ccG; ui.ccListino.gruppi[+d.ccG].tipo = el.value; ui.ccListino.gruppi[+d.ccG].voci.forEach(v => { if (el.value !== 'salta' && v.scelta === '__salta' && v.prezzo > 0 && v.prezzo <= 100) v.scelta = ''; }); ridisegnaMantenendo(); return; }
+    if (d.ccV != null) { const [gi, vi] = d.ccV.split(',').map(Number); ui.ccAperto = gi; ui.ccListino.gruppi[gi].voci[vi].scelta = el.value; ridisegnaMantenendo(); return; }
+    if (d.ccVv != null) { ui.ccVendite[+d.ccVv].scelta = el.value; ridisegnaMantenendo(); return; }
+    if (d.ccData) { ui[d.ccData === 'dal' ? 'ccDal' : 'ccAl'] = el.value; ridisegnaMantenendo(); return; }
     if (d.carica === 'copia') {
       const fr = new FileReader(); fr.onload = () => { try { const x = JSON.parse(fr.result); if (!x.prodotti || !x.ricette) throw 0; if (!confirm('Sostituisco tutti i dati con questa copia?')) return; prepara(x); salva(); disegna(); avviso('Copia caricata.'); } catch (er) { alert('Il file non è una copia valida.'); } }; fr.readAsText(el.files[0]); el.value = ''; return;
     }

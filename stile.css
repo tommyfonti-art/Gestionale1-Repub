@@ -204,3 +204,8 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .chips.sotto .chip { font-size: 14px; padding: 5px 11px; }
 .scelta-lunga { display: flex; flex-direction: column; align-items: flex-start; text-align: left; gap: 2px; height: auto; padding-top: 10px; padding-bottom: 10px; white-space: normal; }
 .scelta-lunga small { font-weight: 400; opacity: .85; }
+
+/* i tasti per scegliere un file: il campo vero resta nascosto anche dentro i moduli */
+input[type=file][hidden] { display: none !important; }
+.form label.btn { display: inline-flex; width: auto; }
+.cc-riga > span { flex: 1; }

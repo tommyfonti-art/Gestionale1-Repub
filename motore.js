@@ -3,8 +3,8 @@
   'use strict';
   const M = {};
   M.ALLERGENI = ['Glutine', 'Crostacei', 'Uova', 'Pesce', 'Arachidi', 'Soia', 'Latte', 'Frutta a guscio', 'Sedano', 'Senape', 'Sesamo', 'Solfiti', 'Lupini', 'Molluschi'];
-  M.TIPI = { drink: 'Drink', premium: 'Gin tonic e premium', panino: 'Panini', fritto: 'Fritti', dolce: 'Dolci', combo: 'Combinazioni', semilavorato: 'Preparazioni' };
-  M.TIPI_SINGOLARE = { drink: 'drink', premium: 'premium', panino: 'panino', fritto: 'fritto', dolce: 'dolce', combo: 'combinazione', semilavorato: 'preparazione' };
+  M.TIPI = { drink: 'Drink', premium: 'Gin tonic e premium', bevanda: 'Birre, vini e bibite', panino: 'Panini', fritto: 'Fritti', dolce: 'Dolci', combo: 'Combinazioni', altro: 'Salse e altro', semilavorato: 'Preparazioni' };
+  M.TIPI_SINGOLARE = { drink: 'drink', premium: 'premium', bevanda: 'bevanda', panino: 'panino', fritto: 'fritto', dolce: 'dolce', combo: 'combinazione', altro: 'altro', semilavorato: 'preparazione' };
   M.UNITA = { ml: 'ml', g: 'g', pz: 'pz' };
 
   let S = null;            // stato
