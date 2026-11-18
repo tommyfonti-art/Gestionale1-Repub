@@ -2236,8 +2236,12 @@
     const scelti = ui.lfProd.filter(x => sceltaLf(x) >= 0).length;
     // prima quelli che nel foglio erano di questo fornitore
     const ordine = ui.lfProd.map((x, k) => k).sort((a, b) => { const pa = M.prodotto(ui.lfProd[a].id), pb = M.prodotto(ui.lfProd[b].id); return ((pb && pb.fornitoreId === fid) - (pa && pa.fornitoreId === fid)) || (sceltaLf(ui.lfProd[b]) >= 0) - (sceltaLf(ui.lfProd[a]) >= 0); });
-    h += `<div class="card evidenza"><h3>${esc(ui.lfFile)}: ${voci.length} righe</h3><p>Su ${ui.lfProd.length} prodotti del tuo foglio, <b>${scelti}</b> collegati a una riga del listino. Controlla quelli proposti e cerca gli altri. Il prezzo a destra è già portato al formato del tuo prodotto${sc ? `, con il ${n2(sc)}% di sconto` : ''}.</p>
+    h += `<div class="card evidenza"><h3>${esc(ui.lfFile)}: ${voci.length} righe</h3><p>Su ${ui.lfProd.length} prodotti del tuo foglio, <b>${scelti}</b> collegati a una riga del listino${(ui.lfNuovi || []).length ? `; in più <b>${ui.lfNuovi.length}</b> prodotti nuovi da creare` : ''}. Controlla quelli proposti e cerca gli altri. Il prezzo a destra è già portato al formato del tuo prodotto${sc ? `, con il ${n2(sc)}% di sconto` : ''}.</p>
       <div class="bottoni"><button class="btn primario" data-az="lf-ok" ${forn ? '' : 'disabled'}>Metti i prezzi${forn ? ' di ' + esc(forn.nome) : ' (scegli il fornitore)'}</button><button class="btn" data-az="lf-annulla">Annulla</button></div></div>`;
+    const nuovi = ui.lfNuovi || [];
+    h += `<div class="card form"><h3>Prodotti nuovi da questo listino</h3><p class="tenue piccolo">Per quelli che non hai ancora (es. gli amari, i rum, i whisky): cercali e aggiungili, diventano prodotti con il prezzo del listino.</p>
+      <div class="scegli-rif"><input class="cerca-rif" data-lf-nuovo="1" autocomplete="off" placeholder="Cerca nel listino: es. montenegro"><div class="sugg" id="sugg-lf-nuovo"></div></div>
+      ${nuovi.map((i, k) => { const v = voci[i]; return `<div class="riga"><span>${esc(v.descrizione)}<small>${v.f.pezzi > 1 ? v.f.pezzi + ' pezzi · ' : ''}${v.f.misura ? qta(v.f.misura) + ' ' + v.f.unita + ' · ' : ''}${euro(v.prezzo / v.f.pezzi * (1 - sc / 100))} a pezzo</small></span><button class="x" data-az="lf-nuovo-togli" data-k="${k}" aria-label="Togli">✕</button></div>`; }).join('')}</div>`;
     h += `<p class="tenue piccolo">In cima i prodotti che nel tuo foglio erano di ${esc(forn ? forn.nome : 'questo fornitore')}: solo per quelli scelgo da solo la riga del listino. Per gli altri, se li comprate da ${esc(forn ? forn.nome : 'lui')}, sceglila tu.</p>
       <div class="card">${ordine.map(k => { const x = ui.lfProd[k]; const p = M.prodotto(x.id); if (!p) return ''; const sel = sceltaLf(x); const v = sel >= 0 ? voci[sel] : null; const fp = M.fornitore(p.fornitoreId);
       return `<div class="lf-riga"><div class="lf-nome"><b>${esc(p.nomeBreve)}</b><small>${esc(p.confezione)} da ${qta(p.contenuto)} ${esc(p.unita)} · foglio ${euro(M.prezzo(p))}${fp ? ' · ' + esc(fp.nome) : ''}</small></div>
@@ -2246,7 +2250,9 @@
         <div class="lf-prezzo">${v ? `<b>${euro(prezzoPerProdotto(p, v, sc))}</b><small>a ${esc(p.confezione)}</small>` : '<span class="tenue">—</span>'}</div></div>`; }).join('')}</div>`;
     return h;
   }
-  AZ['lf-annulla'] = () => { ui.lfProd = ui.lfVoci = null; ridisegnaMantenendo(); };
+  AZ['lf-annulla'] = () => { ui.lfProd = ui.lfVoci = null; ui.lfNuovi = []; ridisegnaMantenendo(); };
+  AZ['lf-nuovo'] = (el) => { ui.lfNuovi = Array.from(new Set((ui.lfNuovi || []).concat(+el.dataset.i))); ridisegnaMantenendo(); setTimeout(() => { const c = document.querySelector('[data-lf-nuovo]'); if (c) c.focus(); }, 30); };
+  AZ['lf-nuovo-togli'] = (el) => { ui.lfNuovi.splice(+el.dataset.k, 1); ridisegnaMantenendo(); };
   AZ['lf-scegli'] = (el) => { const x = ui.lfProd[+el.dataset.k]; x.scelta = +el.dataset.i; if (!x.proposte.includes(x.scelta)) x.proposte.unshift(x.scelta); ridisegnaMantenendo(); };
   AZ['lf-ok'] = () => {
     const forn = M.fornitore(ui.lfForn); if (!forn) { alert('Scegli il fornitore.'); return; }
@@ -2262,8 +2268,21 @@
       if (!(p.articoli || []).some(a => a.fornitoreId === forn.id && normCassa(a.descrizione) === normCassa(v.descrizione))) (p.articoli = p.articoli || []).push({ fornitoreId: forn.id, descrizione: v.descrizione, codice: '', confezioniPerUnita: stesso ? v.f.pezzi : 1 });
       n++;
     });
-    ui.lfProd = ui.lfVoci = null; M.svuota(); salva(); ridisegnaMantenendo(); window.scrollTo(0, 0);
-    avviso(`Prezzi di ${forn.nome} messi a ${n} prodotti.`);
+    let c = 0;
+    (ui.lfNuovi || []).forEach(i => {
+      const v = ui.lfVoci[i]; if (!v) return;
+      const g = M.indovinaProdotto({ descrizione: v.descrizione, um: '', quantita: 1, prezzoUnitario: v.prezzo, totale: v.prezzo });
+      const unita = v.f.unita || g.unita || 'pz', contenuto = v.f.misura || g.contenuto || 1;
+      const nome = String(g.nomeBreve || v.descrizione).replace(/\s*\b(cl|lt|ml|kg|gr|l)\.?\s*$/i, '').trim();
+      const p = { id: M.uid('p'), nomeBreve: nome, nomeCompleto: v.descrizione, categoria: M.categoriaDa(v.descrizione + ' ' + String(v.cat).replace(/amari/i, 'amaro')), unita, contenuto,
+        confezione: unita === 'ml' ? 'bottiglia' : unita === 'g' ? 'confezione' : 'pezzo', iva: 22, fornitoreId: forn.id, giacenza: 0, scortaMinima: 0, resa: 100, allergeni: [],
+        prezzi: [{ data, prezzo: Math.round(v.prezzo / v.f.pezzi * (1 - sc / 100) * 10000) / 10000, fornitoreId: forn.id, origine: 'Listino ' + forn.nome }],
+        articoli: [{ fornitoreId: forn.id, descrizione: v.descrizione, codice: '', confezioniPerUnita: v.f.pezzi }] };
+      if (p.categoria === 'Da classificare' && v.cat) p.categoria = v.cat.charAt(0) + v.cat.slice(1).toLowerCase();
+      S.prodotti.push(p); c++;
+    });
+    ui.lfProd = ui.lfVoci = null; ui.lfNuovi = []; M.svuota(); salva(); ridisegnaMantenendo(); window.scrollTo(0, 0);
+    avviso(`Prezzi di ${forn.nome} messi a ${n} prodotti${c ? `, e ${c} prodotti nuovi creati` : ''}.`);
   };
   // ---------- Come arriva in fattura: «1 cartone = 12 pezzi», per ogni articolo del fornitore ----------
   function righeFatturaDi(pId) {
@@ -2458,6 +2477,12 @@
     if (d.b != null && ui.bozza) { ui.bozza[d.b] = el.value; if (d.ridisegna) ridisegnaMantenendo(); return; }
     if (d.vd != null && ui.bozza) { ui.bozza.venditaDiretta[d.vd] = el.value; return; }
     if (d.cr != null) { mostraSuggerimenti(el); return; }
+    if (d.lfNuovo) {
+      const box = $('#sugg-lf-nuovo'), t = normCassa(el.value).split(' ').filter(Boolean);
+      const l = t.length ? ui.lfVoci.map((v, i) => ({ v, i })).filter(({ v }) => t.every(w => normCassa(v.descrizione + ' ' + v.cat).includes(w))).slice(0, 15) : [];
+      box.innerHTML = l.map(({ v, i }) => `<button type="button" class="sugg-voce" data-az="lf-nuovo" data-i="${i}"><b>${esc(v.descrizione)}</b><small>${esc(v.cat)} · ${euro(v.prezzo)}</small></button>`).join('') || (t.length ? '<p class="tenue piccolo">Niente nel listino con queste parole.</p>' : '');
+      return;
+    }
     if (d.lfCerca != null) {
       const box = document.getElementById('sugg-lf-' + d.lfCerca), t = tokLis(el.value).length ? normCassa(el.value).split(' ').filter(Boolean) : normCassa(el.value).split(' ').filter(Boolean);
       const l = t.length ? ui.lfVoci.map((v, i) => ({ v, i })).filter(({ v }) => t.every(w => normCassa(v.descrizione).includes(w))).slice(0, 12) : [];
