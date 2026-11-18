@@ -1422,7 +1422,31 @@
   document.addEventListener('input', (e) => { if (e.target.classList && e.target.classList.contains('cerca-rif')) spazioSuggerimenti(e.target); }, true);
   if (window.visualViewport) window.visualViewport.addEventListener('resize', () => { const el = document.activeElement; if (el && el.classList && el.classList.contains('cerca-rif')) spazioSuggerimenti(el); });
   new MutationObserver(() => document.querySelectorAll('#contenuto select').forEach(rendiCercabile)).observe(document.getElementById('contenuto') || document.body, { childList: true, subtree: true });
-  window.addEventListener('hashchange', () => { disegna(); window.scrollTo(0, 0); });
+  // ---------- Storia della navigazione: la freccia ‹ torna alla pagina da cui vieni (e allo stesso punto) ----------
+  const storia = []; let tornando = null;
+  const qui = () => location.hash || '#/pannello';
+  function segnaStoria() {
+    const h = qui();
+    if (tornando) return;
+    if (storia.length && storia[storia.length - 1].h === h) return;
+    storia.push({ h, y: 0 }); if (storia.length > 60) storia.shift();
+  }
+  window.addEventListener('scroll', () => { if (storia.length && storia[storia.length - 1].h === qui()) storia[storia.length - 1].y = window.scrollY; }, { passive: true });
+  function tornaAllaPrecedente(riserva) {
+    const ora = qui();
+    while (storia.length && storia[storia.length - 1].h === ora) storia.pop();
+    // le pagine di modifica già chiuse non si riaprono tornando indietro
+    while (storia.length && (/^#\/modifica-/.test(storia[storia.length - 1].h) || storia[storia.length - 1].h === ora)) storia.pop();
+    const prec = storia[storia.length - 1];
+    if (prec) { tornando = prec; location.hash = prec.h; return; }
+    vai(riserva || '#/pannello');
+  }
+  window.addEventListener('hashchange', () => {
+    const t = tornando;
+    if (!t) segnaStoria();
+    disegna();
+    if (t) { tornando = null; requestAnimationFrame(() => window.scrollTo(0, t.y || 0)); } else window.scrollTo(0, 0);
+  });
 
   // ---------- Fatture: caricamento ----------
   function aggiungiFatture(lista, silenzioso) {
@@ -1584,7 +1608,9 @@
     const dest = el.getAttribute('href');
     // dalla conta del magazzino l'indirizzo non cambia: chiude la conta
     if (dest === location.hash || (location.hash === '' && dest === '#/pannello')) { ui.conta = null; ridisegnaMantenendo(); window.scrollTo(0, 0); return; }
-    vai(dest);
+    // se si stava modificando qualcosa, la bozza non salvata si butta
+    if (/^#\/modifica-/.test(qui())) ui.bozza = null;
+    tornaAllaPrecedente(dest);
   };
   AZ.esempio = (el) => { const x = window.FATTURE_ESEMPIO[+el.dataset.i]; aggiungiFatture(M.leggiFatturaXML(x.xml, x.nome + '.xml')); };
   AZ['vai-nuovi'] = () => { ui.categoria = '__nuovi'; vai('#/prodotti'); };
@@ -2554,7 +2580,11 @@
     if (!el || el.tagName === 'SELECT') return;
     const fn = AZ[el.dataset.az]; if (!fn) return;
     if (el.type !== 'checkbox') e.preventDefault();
+    const prima = location.hash;
     fn(el, e);
+    // un collegamento che prepara qualcosa (filtri, posizione) e poi deve comunque aprire la sua pagina
+    const h = el.tagName === 'A' && el.getAttribute('href');
+    if (h && h.startsWith('#') && el.dataset.az !== 'indietro' && location.hash === prima && h !== prima) vai(h);
   });
 
   // ---------- Campi ----------
@@ -2706,7 +2736,7 @@
   });
 
   function partenza() {
-    disegna();
+    disegna(); segnaStoria();
     if (S.casella.url && (!S.casella.ultimoControllo || Date.now() - new Date(S.casella.ultimoControllo) > 15 * 60e3)) setTimeout(() => controllaCasella(false), 800);
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
