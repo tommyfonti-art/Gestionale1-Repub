@@ -56,6 +56,7 @@
     S.impostazioni = S.impostazioni || {}; S.impostazioni.soglie = S.impostazioni.soglie || {};
     if (S.impostazioni.soglie.dolce == null) S.impostazioni.soglie.dolce = 3.5;
     if (S.impostazioni.soglie.bevanda == null) S.impostazioni.soglie.bevanda = 3;
+    M.aggiornaTipi(); Object.keys(M.TIPI).forEach(k => { if (k !== 'semilavorato' && S.impostazioni.soglie[k] == null) S.impostazioni.soglie[k] = 3.5; });
     if (S.impostazioni.soglie.altro == null) S.impostazioni.soglie.altro = 3;
     S.periodiCassa = S.periodiCassa || {};
     const AG = window.AGGIUNTE_RICETTE;
@@ -322,7 +323,7 @@
   const PAGINE = {};
 
   // Analisi del menu per un periodo: quanto vende e quanto rende ogni ricetta con gli ingredienti completi
-  const GRUPPI_MENU = { tutto: null, bar: ['drink', 'premium', 'bevanda'], cucina: ['panino', 'fritto', 'combo', 'dolce', 'altro'] };
+  const GRUPPI_MENU = { tutto: null, get bar() { return M.tipiDi('bar'); }, get cucina() { return M.tipiDi('cucina'); } };
   const completa = (r) => { const c = M.costoRicetta(r); return c.totale > 0 && !c.mancanti.length && !/^Ricetta da completare/.test(r.note || ''); };
   function analisiMenu(per, gruppo) {
     const tipi = GRUPPI_MENU[gruppo];
@@ -406,6 +407,7 @@
     return {
       titolo: 'Gestionale Repub', html: `${andamento}
       <h2 class="sezione">Da fare</h2>
+      ${(() => { const p = passiOrdine(), n = p.filter(x => x[1]).length; return n ? `<a class="card riga evidenza" href="#/ordine"><span><b>Metti in ordine i dati</b><small>${n} passi da fare: fornitori, prodotti, foglio, cartoni, ricette. Tutti gli strumenti in un posto, nell'ordine giusto.</small></span><span class="badge giallo">${n}</span></a>` : ''; })()}
       ${(() => { const n = S.prodotti.filter(p => M.daFoglio(p) && !(S.foglioTenuti || []).includes(p.id)).length; return n && S.fatture.length ? `<div class="card evidenza"><h3>Prodotti del tuo foglio (${n})</h3><p class="tenue">Uno per uno: collegali a quelli delle fatture, trasformali in preparazioni se li fate voi, tienili o eliminali.</p><a class="btn primario" href="#/foglio" data-az="fg-apri">Inizia</a></div>` : ''; })()}
       ${fornitoriDaControllare().length ? `<div class="card"><h3>Fornitori nuovi da controllare</h3><p class="tenue">Dimmi chi vende merce e chi manda solo bollette o servizi: vale per tutte le loro fatture.</p><a class="btn primario" href="#/controllo-fatture">Controllo rapido (${fornitoriDaControllare().length})</a></div>` : ''}
       ${nuoviDaCompletare() ? `<div class="card"><h3>Prodotti nuovi da completare</h3><p class="tenue">Creati in automatico dalle fatture: controlla nome breve e formato.</p>${S.prodotti.filter(p => p.daCompletare).slice(0, 6).map(p => `<a class="riga" href="#/prodotto/${p.id}"><span>${esc(p.nomeBreve)}<small>${esc(p.nomeCompleto)}</small></span><span class="badge giallo">da completare</span></a>`).join('')}<div class="bottoni"><a class="btn primario" href="#/controllo">Controllo rapido (${nuoviDaCompletare()})</a><a class="btn" href="#/prodotti" data-az="vai-nuovi">Vedi l'elenco</a></div></div>` : ''}
@@ -789,6 +791,7 @@
         l.sort((a, b) => v(a) - v(b));
       }
     }
+    if (ui.spostaModo) { const sel = new Set(ui.spostaSel || []); return l.map(r => `<label class="riga spunta-riga"><input type="checkbox" data-sposta="${r.id}" ${sel.has(r.id) ? 'checked' : ''}><span>${esc(r.nome)}</span></label>`).join(''); }
     return l.map(r => {
       if (r.tipo === 'semilavorato') {
         const c = M.costo(r);
@@ -806,6 +809,10 @@
       <input class="cerca" type="search" placeholder="Cerca una ricetta" value="${esc(ui.filtroRicette)}" data-filtro="ricette">
       <div class="chips">${Object.entries(M.TIPI).map(([k, v]) => `<button class="chip ${ui.tipoRicette === k ? 'on' : ''}" data-az="tipo-ricette" data-v="${k}">${esc(v)}</button>`).join('')}</div>
       ${ui.tipoRicette !== 'semilavorato' ? `<div class="chips sotto"><span class="tenue piccolo">Ordina per:</span>${[['nome', 'Nome'], ['vendute', 'Più vendute'], ['guadagno', 'Guadagno più basso'], ['molt', 'Moltiplicatore più basso']].map(([k, v]) => `<button class="chip ${(ui.ordineRicette || 'nome') === k ? 'on' : ''}" data-az="ordine-ricette" data-v="${k}">${v}</button>`).join('')}</div>` : ''}
+      ${ui.spostaModo ? `<div class="card evidenza sposta-barra"><b>Sposta le ricette spuntate (${(ui.spostaSel || []).length})</b>
+        <label>nel gruppo<select id="sposta-in">${Object.entries(M.TIPI).filter(([k]) => k !== ui.tipoRicette).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('')}</select></label>
+        <div class="bottoni"><button class="btn primario" data-az="sposta-ok">Sposta</button><button class="btn" data-az="sposta-tutte">Spunta tutte quelle visibili</button><button class="btn" data-az="sposta-fine">Annulla</button></div></div>` : ''}
+      <div class="bottoni"><button class="btn piccolo" data-az="sposta-inizia">Sposta ricette in un altro gruppo</button><a class="btn piccolo" href="#/gruppi-ricette">＋ Nuovo gruppo / gestisci i gruppi</a></div>
       <div class="bottoni"><button class="btn" data-az="riv-inizia">Rivedi ${ui.filtroRicette ? 'quelle con «' + esc(ui.filtroRicette) + '»' : 'le ' + esc((M.TIPI[ui.tipoRicette] || 'ricette').toLowerCase())} una per una</button></div>
       <div class="card lista" id="lista">${listaRicette()}</div>`
     };
@@ -1041,6 +1048,7 @@
       ['fornitori', 'Fornitori', 'contatti, spesa, prodotti'], ['magazzino', 'Magazzino', 'inventario ogni sei mesi'],
 ['vendite', 'Vendite', 'pezzi venduti per periodo'], ['mappa', 'Mappa del menu', 'cosa vende e cosa rende'],
       ['simulatore', 'Simulatore', 'e se cambia un prezzo?'], ['eventi', 'Eventi', 'listini per le serate'], ['olio', 'Costo olio', 'quanto costa friggere'],
+      ['ordine', 'Metti in ordine i dati', 'tutti gli strumenti di sistemazione, in ordine'],
       ['foglio', 'Prodotti del foglio', 'collegali a quelli delle fatture, uno per uno'],
       ['importa', 'Importa dati', 'cassa, liste di ricette, listini dei fornitori'],
       ['impostazioni', 'Impostazioni', 'soglie, IVA, esportazione']
@@ -1147,8 +1155,8 @@
         <div class="bottoni"><button class="btn primario" data-az="vend-crea">Crea e inizia a scrivere</button><button class="btn" data-az="vend-annulla">Annulla</button></div></div>` : '';
     if (!per) return { titolo: 'Vendite', indietro: '#/altro', html: scelta + nuovo + '<p class="tenue centro">Crea il primo periodo.</p>' };
     const f = (ui.vendFiltro || '').toLowerCase();
-    const gruppi = [['drink', 'premium'], ['bevanda'], ['panino', 'combo'], ['fritto'], ['dolce'], ['altro']];
-    const nomiG = ['Drink', 'Birre, vini e bibite', 'Panini', 'Fritti', 'Dolci', 'Salse e altro'];
+    const tipiV = Object.keys(M.TIPI).filter(k => k !== 'semilavorato');
+    const gruppi = tipiV.map(k => [k]), nomiG = tipiV.map(k => M.TIPI[k]);
     let tot = 0, incasso = 0;
     S.ricette.forEach(r => { const q = (r.vendite || {})[per]; if (q && r.tipo !== 'semilavorato') { tot += q; incasso += q * (r.prezzo || 0); } });
     const blocchi = gruppi.map((g, k) => {
@@ -1171,7 +1179,7 @@
   PAGINE.mappa = function () {
     const periodi = S.periodiVendita;
     const per = ui.mappaPeriodo || (periodi.includes('2025') ? '2025' : periodi[periodi.length - 1]);
-    const gruppi = { cucina: ['panino', 'fritto', 'combo', 'dolce', 'altro'], bar: ['drink', 'premium', 'bevanda'] };
+    const gruppi = { cucina: M.tipiDi('cucina'), bar: M.tipiDi('bar') };
     const voci = S.ricette.filter(r => gruppi[ui.mappaGruppo].includes(r.tipo)).map(r => ({ r, q: (r.vendite || {})[per] || 0, i: M.indicatori(r) })).filter(x => x.q > 0 && x.i.margine != null);
     let html = `<div class="chips">${Object.keys(gruppi).map(g => `<button class="chip ${ui.mappaGruppo === g ? 'on' : ''}" data-az="mappa-gruppo" data-v="${g}">${g === 'bar' ? 'Bar' : 'Cucina'}</button>`).join('')}</div>
       <div class="chips">${periodi.map(pp => `<button class="chip ${per === pp ? 'on' : ''}" data-az="mappa-periodo" data-v="${esc(pp)}">${esc(pp)}</button>`).join('')}</div>`;
@@ -1339,7 +1347,7 @@
   // ---------- Disegno ----------
   const ALTRE = [['fornitori', 'Fornitori'], ['magazzino', 'Magazzino'], ['vendite', 'Vendite'], ['mappa', 'Mappa del menu'], ['simulatore', 'Simulatore'], ['eventi', 'Eventi'], ['olio', 'Costo olio'], ['foglio', 'Prodotti del foglio'], ['importa', 'Importa dalla cassa'], ['impostazioni', 'Impostazioni']];
   const TAB = [['pannello', 'Pannello', 'M3 12l9-8 9 8v8a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z'], ['prodotti', 'Prodotti', 'M4 7l8-4 8 4v10l-8 4-8-4zM4 7l8 4 8-4M12 11v10'], ['ricette', 'Ricette', 'M6 3h12M8 3v6l-4 12h16L16 9V3'], ['fatture', 'Fatture', 'M6 2h9l5 5v15H6zM14 2v6h6M9 13h8M9 17h8'], ['altro', 'Altro', 'M5 12h.01M12 12h.01M19 12h.01']];
-  const SEZIONE = { foglio: 'prodotti', doppioni: 'prodotti', importa: 'altro', 'controllo-fatture': 'fatture', controllo: 'prodotti', pulizia: 'altro', formati: 'prodotti', prodotto: 'prodotti', 'modifica-prodotto': 'prodotti', ricetta: 'ricette', 'modifica-ricetta': 'ricette', 'rivedi-ricette': 'ricette', fattura: 'fatture' };
+  const SEZIONE = { ordine: 'pannello', 'gruppi-ricette': 'ricette', foglio: 'prodotti', doppioni: 'prodotti', importa: 'altro', 'controllo-fatture': 'fatture', controllo: 'prodotti', pulizia: 'altro', formati: 'prodotti', prodotto: 'prodotti', 'modifica-prodotto': 'prodotti', ricetta: 'ricette', 'modifica-ricetta': 'ricette', 'rivedi-ricette': 'ricette', fattura: 'fatture' };
   function disegna() {
     if (!S) return;
     const [, nome, arg] = (location.hash || '#/pannello').split('/');
@@ -1393,6 +1401,26 @@
     inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); const b = sugg.querySelector('.sugg-voce'); if (b) b.click(); } if (e.key === 'Escape') inp.blur(); });
     inp.addEventListener('change', (e) => e.stopPropagation());
   }
+  // telefono e iPad: quando scrivi in un campo di ricerca, la tastiera non deve coprire l'elenco dei suggerimenti
+  function spazioSuggerimenti(inp) {
+    const box = inp.parentNode && inp.parentNode.querySelector('.sugg'); if (!box) return;
+    const vv = window.visualViewport, alto = vv ? vv.height + vv.offsetTop : window.innerHeight;
+    const r = inp.getBoundingClientRect();
+    box.style.maxHeight = Math.max(140, Math.min(420, alto - r.bottom - 12)) + 'px';
+  }
+  document.addEventListener('focusin', (e) => {
+    const el = e.target; if (!el.classList || !el.classList.contains('cerca-rif')) return;
+    const piccolo = window.matchMedia('(max-width: 900px)').matches || 'ontouchstart' in window;
+    if (piccolo) setTimeout(() => {
+      // porto il campo in alto, sotto la barra del titolo, così sotto c'è posto per l'elenco
+      const testa = (document.querySelector('header') || {}).offsetHeight || 60;
+      const r = el.getBoundingClientRect(); window.scrollBy({ top: r.top - testa - 12, behavior: 'smooth' });
+      setTimeout(() => spazioSuggerimenti(el), 350);
+    }, 250);
+    else spazioSuggerimenti(el);
+  });
+  document.addEventListener('input', (e) => { if (e.target.classList && e.target.classList.contains('cerca-rif')) spazioSuggerimenti(e.target); }, true);
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', () => { const el = document.activeElement; if (el && el.classList && el.classList.contains('cerca-rif')) spazioSuggerimenti(el); });
   new MutationObserver(() => document.querySelectorAll('#contenuto select').forEach(rendiCercabile)).observe(document.getElementById('contenuto') || document.body, { childList: true, subtree: true });
   window.addEventListener('hashchange', () => { disegna(); window.scrollTo(0, 0); });
 
@@ -1670,9 +1698,15 @@
   AZ['ctrl-salta'] = () => { ricordaPosto('ctrl', 'ctrlIdx'); ctrlAvanti(false); };
   AZ['ctrl-indietro'] = () => tornaIndietro('ctrl', 'ctrlIdx');
   // fornitori che sembrano lo stesso: una parola importante del nome in comune (es. «Doreca»)
-  const PAROLE_VUOTE_FORN = new Set(['srl', 'spa', 'snc', 'sas', 'srls', 'societa', 'italia', 'italiana', 'commerciale', 'distribuzione', 'group', 'emilia', 'romagna', 'della', 'delle', 'unipersonale', 'cooperativa', 'coop']);
-  const paroleForn = (n) => normCassa(n).split(' ').filter(w => w.length >= 4 && !PAROLE_VUOTE_FORN.has(w));
-  function fornitoriSimili(f) { const mie = paroleForn(f.nome); return mie.length ? S.fornitori.filter(x => x.id !== f.id && paroleForn(x.nome).some(w => mie.includes(w))) : []; }
+  // fornitori che sono lo stesso: il nome «compatto», senza forme societarie e punti, è uguale o contenuto nell'altro
+  // (Sebar e SE.BA.R S.P.A.; Decafood e DE.CA FOOD S.R.L.; Doreca e Emilia Romagna Doreca S.r.l.)
+  const FORME_FORN = /\b(s ?r ?l ?s?|s ?p ?a|s ?n ?c|s ?a ?s|s ?b|societa|a socio unico|socio unico|unipersonale|italia|italiana|emilia romagna|di [a-z]+( [a-z]+)?$)\b/g;
+  const compattoForn = (n) => normCassa(normCassa(n).replace(FORME_FORN, ' ')).replace(/ /g, '');
+  function fornitoriSimili(f) {
+    const a = compattoForn(f.nome); if (a.length < 3) return [];
+    return S.fornitori.filter(x => { if (x.id === f.id) return false; const b = compattoForn(x.nome); const [c, l] = a.length <= b.length ? [a, b] : [b, a];
+      return c.length >= 3 && (a === b || (c.length >= 5 && l.includes(c)) || (l.startsWith(c) && l.length - c.length <= 3)); });
+  }
   function coppieFornitori() {
     const viste = new Set(), coppie = [];
     S.fornitori.forEach(f => fornitoriSimili(f).forEach(x => { const k = [f.id, x.id].sort().join('|'); if (!viste.has(k)) { viste.add(k); coppie.push([f, x]); } }));
@@ -2306,6 +2340,67 @@
           <p class="piccolo">= <b>${euro(pu / n)}</b> a ${esc(b.confezione)}${b.contenuto ? ` · ${euro(pu / n / b.contenuto * (b.unita === 'pz' ? 1 : 1000))}${b.unita === 'g' ? ' al kg' : b.unita === 'ml' ? ' al litro' : ' al pezzo'}` : ''}</p></div>`; }).join('')}</div>`;
   }
   AZ['pz-suggerito'] = (el) => { const i = document.querySelector(`[data-pzr="${el.dataset.f}"]`); if (!i) return; i.value = el.dataset.n; i.dispatchEvent(new Event('change', { bubbles: true })); };
+  // ---------- Gruppi di ricette: crearli (Amari, Rum…), rinominarli, sceglierne il reparto ----------
+  PAGINE['gruppi-ricette'] = function () {
+    const conta = (k) => S.ricette.filter(r => r.tipo === k).length;
+    const extra = new Set((S.tipiExtra || []).map(t => t.id));
+    return { titolo: 'Gruppi di ricette', indietro: '#/ricette', html: `
+      <div class="card form"><h3>Nuovo gruppo</h3><p class="tenue piccolo">Es. Amari, Rum, Whisky, Grappe, Vini al calice. Poi ci sposti dentro le ricette o ne crei di nuove.</p>
+        <div class="due"><label>Nome<input id="gr-nome" placeholder="es. Amari"></label><label>Reparto<select id="gr-rep"><option value="bar">Bar</option><option value="cucina">Cucina</option></select></label></div>
+        <div class="bottoni"><button class="btn primario" data-az="gr-crea">Crea il gruppo</button></div></div>
+      <div class="card"><h3>I gruppi</h3>
+        ${Object.keys(M.TIPI).filter(k => k !== 'semilavorato').map(k => `<div class="gr-riga">
+          <input data-gr-nome="${k}" value="${esc(M.TIPI[k])}" aria-label="Nome del gruppo">
+          <select data-gr-rep="${k}"><option value="bar" ${M.REPARTO_TIPO[k] === 'bar' ? 'selected' : ''}>Bar</option><option value="cucina" ${M.REPARTO_TIPO[k] === 'cucina' ? 'selected' : ''}>Cucina</option></select>
+          <span class="tenue piccolo">${conta(k)} ricette</span>
+          ${extra.has(k) ? `<button class="x" data-az="gr-elimina" data-id="${k}" aria-label="Elimina il gruppo">✕</button>` : '<span></span>'}</div>`).join('')}
+        <p class="tenue piccolo">Il nome si cambia scrivendo. I gruppi di base non si possono eliminare; quelli creati da te sì (le ricette dentro tornano in «Drink» o «Panini»).</p></div>` };
+  };
+  AZ['gr-crea'] = () => {
+    const nome = ($('#gr-nome').value || '').trim(); if (!nome) { alert('Scrivi il nome del gruppo.'); return; }
+    if (Object.values(M.TIPI).some(v => v.toLowerCase() === nome.toLowerCase())) { alert('C\'è già un gruppo con questo nome.'); return; }
+    const id = 't_' + normCassa(nome).replace(/ /g, '_').slice(0, 20) + '_' + Math.random().toString(36).slice(2, 5);
+    S.tipiExtra = (S.tipiExtra || []).concat({ id, nome, reparto: $('#gr-rep').value });
+    M.aggiornaTipi(); S.impostazioni.soglie[id] = 3.5; ui.tipoRicette = id; salva(); avviso(`Gruppo «${nome}» creato.`); vai('#/ricette');
+  };
+  AZ['gr-elimina'] = (el) => {
+    const t = (S.tipiExtra || []).find(x => x.id === el.dataset.id); if (!t) return;
+    const dentro = S.ricette.filter(r => r.tipo === t.id); const dove = t.reparto === 'cucina' ? 'panino' : 'drink';
+    if (!confirm(`Elimino il gruppo «${t.nome}»?${dentro.length ? ` Le sue ${dentro.length} ricette vanno in «${M.TIPI[dove]}».` : ''}`)) return;
+    dentro.forEach(r => { r.tipo = dove; }); S.tipiExtra = S.tipiExtra.filter(x => x !== t); M.aggiornaTipi(); if (ui.tipoRicette === t.id) ui.tipoRicette = dove; salva(); ridisegnaMantenendo();
+  };
+  AZ['sposta-inizia'] = () => { ui.spostaModo = true; ui.spostaSel = []; ridisegnaMantenendo(); };
+  AZ['sposta-fine'] = () => { ui.spostaModo = false; ui.spostaSel = []; ridisegnaMantenendo(); };
+  AZ['sposta-tutte'] = () => { document.querySelectorAll('[data-sposta]').forEach(c => { c.checked = true; }); ui.spostaSel = Array.from(document.querySelectorAll('[data-sposta]')).map(c => c.dataset.sposta); ridisegnaMantenendo(); };
+  AZ['sposta-ok'] = () => {
+    const dove = $('#sposta-in').value, sel = ui.spostaSel || []; if (!sel.length) { alert('Spunta almeno una ricetta.'); return; }
+    sel.forEach(id => { const r = M.ricetta(id); if (r) r.tipo = dove; });
+    ui.spostaModo = false; ui.spostaSel = []; salva(); avviso(`${sel.length} ${sel.length === 1 ? 'ricetta spostata' : 'ricette spostate'} in «${M.TIPI[dove]}».`); ui.tipoRicette = dove; ridisegnaMantenendo();
+  };
+  // ---------- Metti in ordine i dati: tutti gli strumenti di sistemazione in un posto, nell'ordine giusto ----------
+  function passiOrdine() {
+    const daFoglio = S.prodotti.filter(p => M.daFoglio(p) && !(S.foglioTenuti || []).includes(p.id)).length;
+    const coppieF = (() => { const v = new Set(); let n = 0; S.fornitori.forEach(f => fornitoriSimili(f).forEach(x => { const k = [f.id, x.id].sort().join('|'); if (!v.has(k)) { v.add(k); n++; } })); return n; })();
+    const impossibili = S.ricette.filter(r => r.tipo !== 'semilavorato' && r.prezzo && (() => { const i = M.indicatori(r); return i.costo != null && i.costo > i.netto; })()).length;
+    const cartoni = S.prodotti.filter(p => p.dubbio).length;
+    const incomplete = S.ricette.filter(r => r.tipo !== 'semilavorato' && (!(r.righe || []).length || /^Ricetta da completare/.test(r.note || ''))).length;
+    return [
+      ['Fornitori nuovi: vendono merce o solo servizi?', fornitoriDaControllare().length, '#/controllo-fatture', 'Così i prodotti di bollette e servizi spariscono da soli.'],
+      ['Fornitori che sono lo stesso', coppieF, '#/fornitori', 'Es. Sebar e SE.BA.R: uniscili.'],
+      ['Prodotti nuovi da controllare', nuoviDaCompletare(), '#/controllo', 'Nome breve, categoria e formato dei prodotti arrivati dalle fatture.'],
+      ['Prodotti doppi', M.gruppiDoppioni().length, '#/doppioni', 'Lo stesso prodotto arrivato due volte: uniscilo.'],
+      ['Prodotti del tuo foglio', daFoglio, '#/foglio', 'Collegali alle fatture, falli diventare preparazioni, tienili o eliminali.'],
+      ['Cartoni contati come un pezzo', cartoni + impossibili, '#/formati', impossibili ? `${impossibili} ricette costano più del prezzo: c'è un cartone da sistemare.` : 'Scrivi quanti pezzi ci sono nel cartone.'],
+      ['Ricette senza ingredienti completi', incomplete, '#/ricette', 'Con «Rivedi una per una», dalle più vendute.']
+    ];
+  }
+  PAGINE.ordine = function () {
+    const passi = passiOrdine(), fatti = passi.filter(x => !x[1]).length;
+    return { titolo: 'Metti in ordine i dati', indietro: '#/pannello', html: `
+      <div class="card"><p>Fai i passi in quest'ordine: ognuno rende più facile il successivo. Fatti ${fatti} su ${passi.length}.</p></div>
+      <div class="card lista">${passi.map(([t, n, h, sp], i) => `<a class="riga" href="${h}" ${h === '#/ricette' ? 'data-az="ord-ricette"' : h === '#/foglio' ? 'data-az="fg-apri"' : ''}><span><b>${i + 1}. ${t}</b><small>${sp}</small></span><span class="badge ${n ? 'giallo' : 'verde'}">${n ? n : 'fatto'}</span></a>`).join('')}</div>` };
+  };
+  AZ['ord-ricette'] = () => { ui.rivFiltro = 'incomplete'; ui.rivOrdine = 'piu'; };
   AZ['ordine-ricette'] = (el) => { ui.ordineRicette = el.dataset.v; ridisegnaMantenendo(); };
   AZ['riv-inizia'] = () => { ui.rivIdx = 0; ui.rivStorico = []; ui.rivFisso = null; ui.rivFiltro = ui.rivFiltro || 'darivedere'; ui.bozza = null; vai('#/rivedi-ricette'); };
   AZ['riv-tipo'] = (el) => { ui.tipoRicette = el.dataset.v; ui.rivIdx = 0; ui.rivFisso = null; ui.rivStorico = []; ui.bozza = null; ridisegnaMantenendo(); };
@@ -2549,6 +2644,9 @@
       const p = M.prodotto(ui.bozza.id); ui.bozza.prezzi = JSON.parse(JSON.stringify(p.prezzi || [])); ui.bozza.articoli = JSON.parse(JSON.stringify(p.articoli || []));
       delete p.dubbio; delete ui.bozza.dubbio; M.svuota(); salva(); ridisegnaMantenendo(); avviso('Fatto: prezzo per pezzo aggiornato, anche nelle ricette.'); return;
     }
+    if (d.sposta) { const set = new Set(ui.spostaSel || []); if (el.checked) set.add(d.sposta); else set.delete(d.sposta); ui.spostaSel = Array.from(set); const b = document.querySelector('.sposta-barra b'); if (b) b.textContent = `Sposta le ricette spuntate (${set.size})`; return; }
+    if (d.grNome) { const v = el.value.trim(); if (!v) return; const t = (S.tipiExtra || []).find(x => x.id === d.grNome); if (t) t.nome = v; else { S.nomiTipi = S.nomiTipi || {}; S.nomiTipi[d.grNome] = v; } M.aggiornaTipi(); salva(); avviso('Nome cambiato.'); return; }
+    if (d.grRep) { const t = (S.tipiExtra || []).find(x => x.id === d.grRep); if (t) t.reparto = el.value; else { S.repartiTipi = S.repartiTipi || {}; S.repartiTipi[d.grRep] = el.value; } M.aggiornaTipi(); salva(); avviso('Reparto cambiato.'); return; }
     if (d.lfScelta != null) { ui.lfProd[+d.lfScelta].scelta = +el.value; ridisegnaMantenendo(); return; }
     if (d.carica === 'cassa-listino' || d.carica === 'cassa-vendite') { if (el.files[0]) caricaCassa(el.files[0], d.carica === 'cassa-listino' ? 'listino' : 'vendite'); el.value = ''; return; }
     if (d.ccG != null) { ui.ccAperto = +d.ccG; ui.ccListino.gruppi[+d.ccG].tipo = el.value; ui.ccListino.gruppi[+d.ccG].voci.forEach(v => { if (el.value !== 'salta' && v.scelta === '__salta' && v.prezzo > 0 && v.prezzo <= 100) v.scelta = ''; }); ridisegnaMantenendo(); return; }

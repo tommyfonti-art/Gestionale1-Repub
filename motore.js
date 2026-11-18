@@ -3,14 +3,26 @@
   'use strict';
   const M = {};
   M.ALLERGENI = ['Glutine', 'Crostacei', 'Uova', 'Pesce', 'Arachidi', 'Soia', 'Latte', 'Frutta a guscio', 'Sedano', 'Senape', 'Sesamo', 'Solfiti', 'Lupini', 'Molluschi'];
-  M.TIPI = { drink: 'Drink', premium: 'Gin tonic e premium', bevanda: 'Birre, vini e bibite', panino: 'Panini', fritto: 'Fritti', dolce: 'Dolci', combo: 'Combinazioni', altro: 'Salse e altro', semilavorato: 'Preparazioni' };
-  M.TIPI_SINGOLARE = { drink: 'drink', premium: 'premium', bevanda: 'bevanda', panino: 'panino', fritto: 'fritto', dolce: 'dolce', combo: 'combinazione', altro: 'altro', semilavorato: 'preparazione' };
+  // gruppi di ricette: quelli di base più quelli creati in Ricette › Gruppi (es. Amari, Rum), con il loro reparto
+  const TIPI_BASE = { drink: 'Drink', premium: 'Gin tonic e premium', bevanda: 'Birre, vini e bibite', panino: 'Panini', fritto: 'Fritti', dolce: 'Dolci', combo: 'Combinazioni', altro: 'Salse e altro' };
+  const SING_BASE = { drink: 'drink', premium: 'premium', bevanda: 'bevanda', panino: 'panino', fritto: 'fritto', dolce: 'dolce', combo: 'combinazione', altro: 'altro', semilavorato: 'preparazione' };
+  const REP_BASE = { drink: 'bar', premium: 'bar', bevanda: 'bar', panino: 'cucina', fritto: 'cucina', combo: 'cucina', dolce: 'cucina', altro: 'cucina' };
+  M.TIPI = {}; M.TIPI_SINGOLARE = {}; M.REPARTO_TIPO = {};
+  M.aggiornaTipi = function () {
+    Object.keys(M.TIPI).forEach(k => delete M.TIPI[k]); Object.keys(M.TIPI_SINGOLARE).forEach(k => delete M.TIPI_SINGOLARE[k]); Object.keys(M.REPARTO_TIPO).forEach(k => delete M.REPARTO_TIPO[k]);
+    const nomi = (S && S.nomiTipi) || {}, rep = (S && S.repartiTipi) || {};
+    Object.keys(TIPI_BASE).forEach(k => { M.TIPI[k] = nomi[k] || TIPI_BASE[k]; M.TIPI_SINGOLARE[k] = nomi[k] ? nomi[k].toLowerCase() : SING_BASE[k]; M.REPARTO_TIPO[k] = rep[k] || REP_BASE[k]; });
+    ((S && S.tipiExtra) || []).forEach(t => { M.TIPI[t.id] = t.nome; M.TIPI_SINGOLARE[t.id] = t.nome.toLowerCase(); M.REPARTO_TIPO[t.id] = t.reparto || 'bar'; });
+    M.TIPI.semilavorato = 'Preparazioni'; M.TIPI_SINGOLARE.semilavorato = 'preparazione';
+  };
+  M.tipiDi = (reparto) => Object.keys(M.TIPI).filter(k => k !== 'semilavorato' && M.REPARTO_TIPO[k] === reparto);
   M.UNITA = { ml: 'ml', g: 'g', pz: 'pz' };
 
   let S = null;            // stato
   let simulazione = null;  // { prodottoId: prezzo } per il simulatore
   let cache = new Map();
-  M.usa = function (stato) { S = stato; M.svuota(); };
+  M.aggiornaTipi();
+  M.usa = function (stato) { S = stato; M.svuota(); if (M.aggiornaTipi) M.aggiornaTipi(); };
   M.stato = () => S;
   M.svuota = function () { cache = new Map(); };
   M.simula = function (s) { simulazione = s; M.svuota(); };

@@ -248,3 +248,12 @@ label.spunta input { width: auto; margin-top: 3px; }
 
 .pz-riga { padding: 10px 0; border-top: 1px solid var(--linea); }
 .pz-riga small { display: block; color: var(--tenue); font-size: 12px; margin-top: 2px; }
+
+/* gruppi di ricette e spostamento */
+.gr-riga { display: grid; grid-template-columns: 1fr 110px 80px 36px; gap: 8px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--linea); }
+.spunta-riga { display: flex; gap: 12px; align-items: center; cursor: pointer; }
+.spunta-riga input { width: 22px; height: 22px; }
+.sposta-barra { position: sticky; top: 8px; z-index: 20; }
+@media (max-width: 520px) { .gr-riga { grid-template-columns: 1fr 90px 36px; } .gr-riga .tenue { display: none; } }
+
+@media (pointer: coarse) { #contenuto { padding-bottom: 40vh; } }
