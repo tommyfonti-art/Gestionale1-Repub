@@ -1,5 +1,5 @@
 // Funziona anche senza rete: tiene in memoria i file dell'app.
-const VERSIONE = 'repub-v63';
+const VERSIONE = 'repub-v64';
 const FILE = ['./', 'index.html', 'stile.css', 'dati.js', 'dati2.js', 'motore.js', 'app.js', 'manifest.json', 'icone/icona-192.png', 'firebase-config.js', 'jszip.min.js'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(VERSIONE).then(c => c.addAll(FILE))); self.skipWaiting(); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(k => Promise.all(k.filter(x => x !== VERSIONE).map(x => caches.delete(x))))); self.clients.claim(); });

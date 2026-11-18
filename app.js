@@ -375,6 +375,24 @@
     const per = conVendite.includes(sel.per) ? sel.per : conVendite[conVendite.length - 1];
     return { pers: per ? [per] : [], etichetta: per || '', esclusi: [] };
   }
+  // scelta del periodo (tutto, anni, periodi, date) e delle categorie: la stessa per il pannello e per la mappa del menu
+  function scelteVendite(SEL, qv) {
+    const pers = SEL.pers;
+    const conVendite = S.periodiVendita.filter(pp => S.ricette.some(r => (r.vendite || {})[pp]));
+      const sel = ui.panSel || { tipo: 'periodo', per: conVendite[conVendite.length - 1] };
+      const anni = Array.from(new Set(conVendite.map(p => dateDiPeriodo(p)).filter(Boolean).flatMap(x => { const l = []; for (let a = +x.dal.slice(0, 4); a <= +x.al.slice(0, 4); a++) l.push(a); return l; }))).sort();
+      return `<div class="chips"><button class="chip ${sel.tipo === 'tutto' ? 'on' : ''}" data-az="pan-sel" data-tipo="tutto">Tutto</button>${anni.map(a => `<button class="chip ${sel.tipo === 'anno' && sel.anno == a ? 'on' : ''}" data-az="pan-sel" data-tipo="anno" data-v="${a}">${a}</button>`).join('')}${conVendite.filter(pp => { const x = dateDiPeriodo(pp); return !(x && x.dal.slice(5) === '01-01' && x.al.slice(5) === '12-31' && x.dal.slice(0, 4) === x.al.slice(0, 4)); }).map(pp => `<button class="chip ${sel.tipo === 'periodo' && pers[0] === pp ? 'on' : ''}" data-az="pan-sel" data-tipo="periodo" data-v="${esc(pp)}">${esc(pp)}</button>`).join('')}<button class="chip ${sel.tipo === 'date' ? 'on' : ''}" data-az="pan-sel" data-tipo="date">📅 Scegli le date</button></div>
+        ${sel.tipo === 'date' ? `<div class="card form date-pan"><div class="due"><label>Dal<input type="date" data-pan-data="dal" value="${esc(sel.dal || '')}"></label><label>Al<input type="date" data-pan-data="al" value="${esc(sel.al || '')}"></label></div></div>` : ''}
+        ${sel.tipo !== 'periodo' ? `<p class="tenue piccolo">${pers.length ? `Conto i periodi: ${pers.map(esc).join(', ')}.` : 'Nessun periodo caricato cade tutto in queste date.'}${SEL.esclusi.length ? ` Non conto ${SEL.esclusi.map(esc).join(', ')}: ${SEL.esclusi.length === 1 ? 'è' : 'sono'} solo in parte dentro le date. Le vendite si caricano per periodi: per guardare pochi giorni, carica dalla cassa periodi più corti (es. un mese alla volta).` : ''}</p>` : ''}
+        <div class="chips sotto">${[['tutto', 'Tutto il locale'], ['bar', 'Bar'], ['cucina', 'Cucina'], ['scelte', 'Scegli le categorie']].map(([k, v]) => `<button class="chip ${(ui.panGruppo || 'tutto') === k ? 'on' : ''}" data-az="pan-gruppo" data-v="${k}">${v}</button>`).join('')}</div>
+        ${(ui.panGruppo || 'tutto') === 'scelte' ? (() => {
+          const sc = new Set(ui.panCat || []);
+          const tutti = Object.keys(M.TIPI).filter(k => k !== 'semilavorato').map(k => ({ k, q: S.ricette.filter(r => r.tipo === k).reduce((t, r) => t + qv(r), 0) })).filter(x => x.q > 0 || sc.has(x.k));
+          return `<div class="card"><p class="tenue piccolo">Tocca le categorie da guardare insieme: i numeri qui sotto sono la somma. ${sc.size ? '' : 'Finché non ne scegli nessuna vedi tutto il locale.'}</p>
+            <div class="chips">${tutti.map(x => `<button class="chip ${sc.has(x.k) ? 'on' : ''}" data-az="pan-cat" data-v="${x.k}">${sc.has(x.k) ? '✓ ' : ''}${esc(M.TIPI[x.k])} <span class="${sc.has(x.k) ? '' : 'tenue'}">${qta(x.q)}</span></button>`).join('')}</div>
+            ${sc.size ? '<div class="bottoni"><button class="btn piccolo" data-az="pan-cat-via">Togli tutte</button></div>' : ''}</div>`;
+        })() : ''}`;
+  }
   const QUADRANTI = {
     vincenti: ['Vincenti', 'Vendono tanto e fanno guadagnare tanto. Non toccarli.', 'var(--verde)'],
     rendere: ['Da far rendere di più', 'Vendono tanto ma guadagnano poco a pezzo. Rivedi il costo o il prezzo.', 'var(--giallo)'],
@@ -410,19 +428,7 @@
       const su100 = nettoOk ? costoOk / nettoOk * 100 : null;
       const copertura = A.pezziTutti ? A.pezziOk / A.pezziTutti : 0;
       const daCompletare = A.vendute.filter(r => !completa(r)).sort((a, b) => qv(b) - qv(a));
-      const sel = ui.panSel || { tipo: 'periodo', per: conVendite[conVendite.length - 1] };
-      const anni = Array.from(new Set(conVendite.map(p => dateDiPeriodo(p)).filter(Boolean).flatMap(x => { const l = []; for (let a = +x.dal.slice(0, 4); a <= +x.al.slice(0, 4); a++) l.push(a); return l; }))).sort();
-      const scelte = `<div class="chips"><button class="chip ${sel.tipo === 'tutto' ? 'on' : ''}" data-az="pan-sel" data-tipo="tutto">Tutto</button>${anni.map(a => `<button class="chip ${sel.tipo === 'anno' && sel.anno == a ? 'on' : ''}" data-az="pan-sel" data-tipo="anno" data-v="${a}">${a}</button>`).join('')}${conVendite.filter(pp => { const x = dateDiPeriodo(pp); return !(x && x.dal.slice(5) === '01-01' && x.al.slice(5) === '12-31' && x.dal.slice(0, 4) === x.al.slice(0, 4)); }).map(pp => `<button class="chip ${sel.tipo === 'periodo' && pers[0] === pp ? 'on' : ''}" data-az="pan-sel" data-tipo="periodo" data-v="${esc(pp)}">${esc(pp)}</button>`).join('')}<button class="chip ${sel.tipo === 'date' ? 'on' : ''}" data-az="pan-sel" data-tipo="date">📅 Scegli le date</button></div>
-        ${sel.tipo === 'date' ? `<div class="card form date-pan"><div class="due"><label>Dal<input type="date" data-pan-data="dal" value="${esc(sel.dal || '')}"></label><label>Al<input type="date" data-pan-data="al" value="${esc(sel.al || '')}"></label></div></div>` : ''}
-        ${sel.tipo !== 'periodo' ? `<p class="tenue piccolo">${pers.length ? `Conto i periodi: ${pers.map(esc).join(', ')}.` : 'Nessun periodo caricato cade tutto in queste date.'}${SEL.esclusi.length ? ` Non conto ${SEL.esclusi.map(esc).join(', ')}: ${SEL.esclusi.length === 1 ? 'è' : 'sono'} solo in parte dentro le date. Le vendite si caricano per periodi: per guardare pochi giorni, carica dalla cassa periodi più corti (es. un mese alla volta).` : ''}</p>` : ''}
-        <div class="chips sotto">${[['tutto', 'Tutto il locale'], ['bar', 'Bar'], ['cucina', 'Cucina'], ['scelte', 'Scegli le categorie']].map(([k, v]) => `<button class="chip ${gruppoScelto === k ? 'on' : ''}" data-az="pan-gruppo" data-v="${k}">${v}</button>`).join('')}</div>
-        ${gruppoScelto === 'scelte' ? (() => {
-          const sc = new Set(ui.panCat || []);
-          const tutti = Object.keys(M.TIPI).filter(k => k !== 'semilavorato').map(k => ({ k, q: S.ricette.filter(r => r.tipo === k).reduce((t, r) => t + qv(r), 0) })).filter(x => x.q > 0 || sc.has(x.k));
-          return `<div class="card"><p class="tenue piccolo">Tocca le categorie da guardare insieme: i numeri qui sotto sono la somma. ${sc.size ? '' : 'Finché non ne scegli nessuna vedi tutto il locale.'}</p>
-            <div class="chips">${tutti.map(x => `<button class="chip ${sc.has(x.k) ? 'on' : ''}" data-az="pan-cat" data-v="${x.k}">${sc.has(x.k) ? '✓ ' : ''}${esc(M.TIPI[x.k])} <span class="${sc.has(x.k) ? '' : 'tenue'}">${qta(x.q)}</span></button>`).join('')}</div>
-            ${sc.size ? '<div class="bottoni"><button class="btn piccolo" data-az="pan-cat-via">Togli tutte</button></div>' : ''}</div>`;
-        })() : ''}`;
+      const scelte = scelteVendite(SEL, qv);
       const top = (lista, titolo, spiega, valore) => `<div class="card"><h3>${titolo}</h3><p class="tenue piccolo">${spiega}</p>${lista.length ? lista.map((x, k) => `<a class="riga" href="#/ricetta/${x.r.id}"><span>${k + 1}. ${esc(x.r.nome)}</span><span class="destra">${valore(x)}</span></a>`).join('') : '<p class="tenue">Ancora nessuna ricetta completa venduta.</p>'}</div>`;
       const piuVendute = A.vendute.slice().sort((a, b) => qv(b) - qv(a)).slice(0, 5).map(r => ({ r, q: qv(r) }));
       const piuGuadagno = A.voci.slice().sort((a, b) => b.tot - a.tot).slice(0, 5);
@@ -1258,13 +1264,11 @@
 
   // ----- Mappa del menu -----
   PAGINE.mappa = function () {
-    const periodi = S.periodiVendita;
-    const per = ui.mappaPeriodo || (periodi.includes('2025') ? '2025' : periodi[periodi.length - 1]);
-    const gruppi = { cucina: M.tipiDi('cucina'), bar: M.tipiDi('bar') };
-    const voci = S.ricette.filter(r => gruppi[ui.mappaGruppo].includes(r.tipo)).map(r => ({ r, q: (r.vendite || {})[per] || 0, i: M.indicatori(r) })).filter(x => x.q > 0 && x.i.margine != null);
-    let html = `<div class="chips">${Object.keys(gruppi).map(g => `<button class="chip ${ui.mappaGruppo === g ? 'on' : ''}" data-az="mappa-gruppo" data-v="${g}">${g === 'bar' ? 'Bar' : 'Cucina'}</button>`).join('')}</div>
-      <div class="chips">${periodi.map(pp => `<button class="chip ${per === pp ? 'on' : ''}" data-az="mappa-periodo" data-v="${esc(pp)}">${esc(pp)}</button>`).join('')}</div>`;
-    if (voci.length < 2) return { titolo: 'Mappa del menu', indietro: '#/altro', html: html + '<p class="tenue centro">Servono le vendite di almeno due ricette in questo periodo.</p>' };
+    const SEL = selezionePannello(), pers = SEL.pers;
+    const A = analisiMenu(pers, tipiPannello());
+    const voci = A.voci;
+    let html = scelteVendite(SEL, A.q);
+    if (voci.length < 2) return { titolo: 'Mappa del menu', indietro: '#/altro', html: html + '<p class="tenue centro">Servono almeno due ricette complete con delle vendite in quello che hai scelto.</p>' };
     const tot = voci.reduce((s, x) => s + x.q, 0);
     const sogliaQ = 0.7 * tot / voci.length;
     const sogliaM = voci.reduce((s, x) => s + x.q * x.i.margine, 0) / tot;
@@ -2164,7 +2168,7 @@
   AZ['pan-gruppo'] = (el) => { ui.panGruppo = el.dataset.v; ridisegnaMantenendo(); };
   AZ['pan-cat'] = (el) => { const k = el.dataset.v, l = ui.panCat || []; ui.panCat = l.includes(k) ? l.filter(x => x !== k) : l.concat(k); ridisegnaMantenendo(); };
   AZ['pan-cat-via'] = () => { ui.panCat = []; ridisegnaMantenendo(); };
-  AZ['pan-mappa'] = () => { const p = selezionePannello().pers; ui.mappaPeriodo = p.length === 1 ? p[0] : null; if (ui.panGruppo === 'bar' || ui.panGruppo === 'cucina') ui.mappaGruppo = ui.panGruppo; };
+  AZ['pan-mappa'] = () => {}; // la mappa usa la stessa scelta del pannello
   AZ['pan-completa'] = () => {
     // il tipo con più vendite da completare: «Rivedi» con filtro incomplete, dalle più vendute, in quel periodo
     const pers = selezionePannello().pers, per = pers[pers.length - 1];
@@ -2956,7 +2960,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v63';
+  const VERSIONE_APP = 'repub-v64';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
