@@ -1903,9 +1903,15 @@
     const cQ = chiavi.find(k => qRe.test(k)), cInc = chiavi.find(k => /^(incasso|totale|importo|venduto)/i.test(k));
     if (!cNome) throw new Error('Non trovo la colonna con il nome dei prodotti (colonne trovate: ' + chiavi.join(', ') + ').');
     ui.ccPerProdotto = cNome !== 'Sku';
+    const vendibili = S.ricette.filter(x => x.tipo !== 'semilavorato');
     const out = righe.map(r => {
       const sku = String(r[cNome] || '').trim(); const ric = ricettaDiSku(sku);
-      return { sku, q: Number(r[cQ]) || 0, incasso: Number(cInc ? r[cInc] : 0) || 0, scelta: ric ? ric.id : '' };
+      if (ric) return { sku, q: Number(r[cQ]) || 0, incasso: Number(cInc ? r[cInc] : 0) || 0, scelta: ric.id };
+      // nessun collegamento già noto: propongo la ricetta col nome più simile (es. «AMARI - MONTENEGRO» → «Montenegro»), da controllare
+      const k = sku.lastIndexOf(' - '), variante = k > 0 ? sku.slice(k + 3) : '';
+      let best = null, punti = 0;
+      vendibili.forEach(x => { const sc = Math.max(somiglianzaNomi(sku, x.nome), variante ? somiglianzaNomi(variante, x.nome) - 0.05 : 0); if (sc > punti) { punti = sc; best = x; } });
+      return { sku, q: Number(r[cQ]) || 0, incasso: Number(cInc ? r[cInc] : 0) || 0, scelta: punti >= 0.65 ? best.id : '', proposta: punti >= 0.65 };
     }).filter(r => r.sku && !/^tot(ale)?$/i.test(r.sku));
     if (!out.length) throw new Error('nel file non trovo righe con un nome e una quantità (colonne trovate: ' + chiavi.join(', ') + '). Mandalo a Claude così lo sistemo.');
     return out;
@@ -1944,7 +1950,7 @@
       <div class="due"><label>Dal<input type="date" data-cc-data="dal" value="${esc(ui.ccDal || '')}"></label><label>Al<input type="date" data-cc-data="al" value="${esc(ui.ccAl || '')}"></label></div>
       <label class="btn">Scegli il file delle vendite<input type="file" accept=".xlsx" data-carica="cassa-vendite" hidden></label></div>`;
     if (Vd) {
-      const coll = Vd.filter(v => v.scelta && v.scelta !== '__salta'), non = Vd.filter(v => !v.scelta);
+      const coll = Vd.filter(v => v.scelta && v.scelta !== '__salta'), non = Vd.filter(v => !v.scelta), prop = Vd.filter(v => v.proposta && v.scelta);
       const pezzi = coll.reduce((s, v) => s + v.q, 0), tot = Vd.reduce((s, v) => s + v.q, 0), inc = Vd.reduce((s, v) => s + v.incasso, 0);
       const nome = ui.ccDal && ui.ccAl ? nomeDaDate(ui.ccDal, ui.ccAl) : '';
       vendite += `<div class="card evidenza"><h3>Anteprima delle vendite${ui.ccFileVendite ? ' · ' + esc(ui.ccFileVendite) : ''}</h3>
@@ -1952,6 +1958,8 @@
         <p>${Vd.length} voci, ${qta(tot)} pezzi, incasso ${euro(inc, 0)}. Collegate a una ricetta: <b>${coll.length}</b> voci (${qta(pezzi)} pezzi). Senza ricetta: <b>${non.length}</b>.</p>
         ${nome ? `<p>Periodo: <b>${esc(nome)}</b>${S.periodiVendita.includes(nome) ? ' (esiste già: sostituisco i numeri)' : ''}</p>` : '<p class="msg giallo">Scegli le date «Dal» e «Al» qui sopra: la data grigia che vedi è solo un suggerimento, il campo è ancora vuoto.</p>'}
         <div class="bottoni"><button class="btn primario" data-az="cc-vendite-ok">Salva le vendite</button><button class="btn" data-az="cc-vendite-annulla">Annulla</button></div></div>
+        ${prop.length ? `<div class="card"><h3>Collegate per nome simile: controlla (${prop.length})</h3><p class="tenue piccolo">Queste voci della cassa non erano mai state collegate: ho scelto la ricetta col nome più simile. Se è sbagliata cambiala; salvando me le ricordo per le prossime volte.</p>
+          ${Vd.map((v, i) => v.proposta && v.scelta ? `<div class="riga-ed cc-riga"><span>${esc(v.sku)}<small>${qta(v.q)} pezzi · ${euro(v.incasso, 0)}</small></span><select data-cc-vv="${i}"><option value="">Lascia fuori</option>${opzioniRicette(v.scelta, '')}</select></div>` : '').join('')}</div>` : ''}
         ${non.length ? `<div class="card"><h3>Voci senza ricetta (${non.length})</h3><p class="tenue piccolo">Se una di queste è una ricetta con un altro nome, collegala: me lo ricordo per le prossime volte. Le altre (coperto, consegne…) restano fuori.</p>
           ${Vd.map((v, i) => v.scelta ? '' : `<div class="riga-ed cc-riga"><span>${esc(v.sku)}<small>${qta(v.q)} pezzi · ${euro(v.incasso, 0)}</small></span><select data-cc-vv="${i}"><option value="">Lascia fuori</option>${opzioniRicette('', '')}</select></div>`).join('')}</div>` : ''}`;
     }
@@ -2683,7 +2691,7 @@
     if (d.ccV != null) { const [gi, vi] = d.ccV.split(',').map(Number); ui.ccAperto = gi; ui.ccListino.gruppi[gi].voci[vi].scelta = el.value; ridisegnaMantenendo(); return; }
     if (d.lsTipo) { ui.lsTipo = el.value; return; }
     if (d.ls != null) { const [i, j] = d.ls.split(',').map(Number); ui.lsAnte[i].ingr[j].rif = el.value; return; }
-    if (d.ccVv != null) { ui.ccVendite[+d.ccVv].scelta = el.value; ridisegnaMantenendo(); return; }
+    if (d.ccVv != null) { ui.ccVendite[+d.ccVv].scelta = el.value; if (!el.value) ui.ccVendite[+d.ccVv].proposta = false; ridisegnaMantenendo(); return; }
     if (d.ccData) { ui[d.ccData === 'dal' ? 'ccDal' : 'ccAl'] = el.value; ridisegnaMantenendo(); return; }
     if (d.carica === 'copia') {
       const fr = new FileReader(); fr.onload = () => { try { const x = JSON.parse(fr.result); if (!x.prodotti || !x.ricette) throw 0; if (!confirm('Sostituisco tutti i dati con questa copia?')) return; prepara(x); salva(); disegna(); avviso('Copia caricata.'); } catch (er) { alert('Il file non è una copia valida.'); } }; fr.readAsText(el.files[0]); el.value = ''; return;
