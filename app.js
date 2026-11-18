@@ -325,11 +325,13 @@
   // Analisi del menu per un periodo: quanto vende e quanto rende ogni ricetta con gli ingredienti completi
   const GRUPPI_MENU = { tutto: null, get bar() { return M.tipiDi('bar'); }, get cucina() { return M.tipiDi('cucina'); } };
   const completa = (r) => { const c = M.costoRicetta(r); return c.totale > 0 && !c.mancanti.length && !/^Ricetta da completare/.test(r.note || ''); };
-  function analisiMenu(per, gruppo) {
+  function analisiMenu(pers, gruppo) {
+    if (!Array.isArray(pers)) pers = [pers];
     const tipi = GRUPPI_MENU[gruppo];
-    const vendute = S.ricette.filter(r => r.tipo !== 'semilavorato' && (!tipi || tipi.includes(r.tipo)) && ((r.vendite || {})[per] || 0) > 0);
-    const voci = vendute.filter(completa).map(r => { const i = M.indicatori(r); return { r, q: r.vendite[per], i, tot: r.vendite[per] * i.margine }; }).filter(x => x.i.margine != null);
-    const pezziTutti = vendute.reduce((s, r) => s + r.vendite[per], 0), pezziOk = voci.reduce((s, x) => s + x.q, 0);
+    const q = (r) => pers.reduce((s, p) => s + (Number((r.vendite || {})[p]) || 0), 0);
+    const vendute = S.ricette.filter(r => r.tipo !== 'semilavorato' && (!tipi || tipi.includes(r.tipo)) && q(r) > 0);
+    const voci = vendute.filter(completa).map(r => { const i = M.indicatori(r); return { r, q: q(r), i, tot: q(r) * i.margine }; }).filter(x => x.i.margine != null);
+    const pezziTutti = vendute.reduce((s, r) => s + q(r), 0), pezziOk = voci.reduce((s, x) => s + x.q, 0);
     let gruppoDi = () => null, sogliaQ = 0, sogliaM = 0;
     if (voci.length >= 2) {
       sogliaQ = 0.7 * pezziOk / voci.length;
@@ -337,7 +339,39 @@
       gruppoDi = (x) => x.q >= sogliaQ ? (x.i.margine >= sogliaM ? 'vincenti' : 'rendere') : (x.i.margine >= sogliaM ? 'spingere' : 'ripensare');
     }
     voci.forEach(x => { x.g = gruppoDi(x); });
-    return { vendute, voci, pezziTutti, pezziOk, sogliaQ, sogliaM };
+    return { vendute, voci, pezziTutti, pezziOk, sogliaQ, sogliaM, q };
+  }
+  // ---------- Periodi: date di ogni periodo (anche quelli scritti a mano, es. «Mar-ago 2026») e scelta per date ----------
+  const MESI_IT = ['gen', 'feb', 'mar', 'apr', 'mag', 'giu', 'lug', 'ago', 'set', 'ott', 'nov', 'dic'];
+  const meseDa = (t) => MESI_IT.indexOf(String(t).toLowerCase().slice(0, 3));
+  const fineMese = (a, m) => new Date(Date.UTC(a, m + 1, 0)).toISOString().slice(0, 10);
+  const dd = (a, m) => `${a}-${String(m + 1).padStart(2, '0')}-01`;
+  function dateDiPeriodo(per) {
+    if (S.periodiDate && S.periodiDate[per]) return S.periodiDate[per];
+    const t = String(per).trim().toLowerCase(); let m;
+    if ((m = t.match(/^(\d{4})$/))) return { dal: m[1] + '-01-01', al: m[1] + '-12-31' };
+    if ((m = t.match(/^([a-z]+)\s*-\s*([a-z]+)\s+(\d{4})$/)) && meseDa(m[1]) >= 0 && meseDa(m[2]) >= 0) { const a = +m[3], m1 = meseDa(m[1]), m2 = meseDa(m[2]); return { dal: dd(m1 > m2 ? a - 1 : a, m1), al: fineMese(a, m2) }; }
+    if ((m = t.match(/^([a-z]+)\s+(\d{4})$/)) && meseDa(m[1]) >= 0) { const a = +m[2], mm = meseDa(m[1]); return { dal: dd(a, mm), al: fineMese(a, mm) }; }
+    return null;
+  }
+  // tiene solo i periodi che non sono già dentro un altro scelto (es. «Mar-ago 2025» dentro «2025»), così non conta due volte
+  function senzaDoppi(pers) {
+    const d = pers.map(p => ({ p, x: dateDiPeriodo(p) }));
+    return d.filter(a => !a.x || !d.some(b => b !== a && b.x && b.x.dal <= a.x.dal && b.x.al >= a.x.al && (b.x.dal < a.x.dal || b.x.al > a.x.al || d.indexOf(b) < d.indexOf(a)))).map(a => a.p);
+  }
+  function selezionePannello() {
+    const conVendite = S.periodiVendita.filter(pp => S.ricette.some(r => (r.vendite || {})[pp]));
+    const sel = ui.panSel || { tipo: 'periodo', per: conVendite[conVendite.length - 1] };
+    if (sel.tipo === 'tutto') return { pers: senzaDoppi(conVendite), etichetta: 'Tutto', esclusi: [] };
+    if (sel.tipo === 'anno' || sel.tipo === 'date') {
+      const dal = sel.tipo === 'anno' ? sel.anno + '-01-01' : sel.dal, al = sel.tipo === 'anno' ? sel.anno + '-12-31' : sel.al;
+      if (!dal || !al) return { pers: [], etichetta: 'Scegli le date', esclusi: [] };
+      const dentro = [], esclusi = [];
+      conVendite.forEach(p => { const x = dateDiPeriodo(p); if (!x) return; if (x.dal >= dal && x.al <= al) dentro.push(p); else if (x.dal <= al && x.al >= dal) esclusi.push(p); });
+      return { pers: senzaDoppi(dentro), etichetta: sel.tipo === 'anno' ? 'Anno ' + sel.anno : `dal ${dataIt(dal)} al ${dataIt(al)}`, esclusi };
+    }
+    const per = conVendite.includes(sel.per) ? sel.per : conVendite[conVendite.length - 1];
+    return { pers: per ? [per] : [], etichetta: per || '', esclusi: [] };
   }
   const QUADRANTI = {
     vincenti: ['Vincenti', 'Vendono tanto e fanno guadagnare tanto. Non toccarli.', 'var(--verde)'],
@@ -348,7 +382,7 @@
 
   PAGINE.pannello = function () {
     const conVendite = S.periodiVendita.filter(pp => S.ricette.some(r => (r.vendite || {})[pp]));
-    const per = conVendite.includes(ui.panPer) ? ui.panPer : conVendite[conVendite.length - 1];
+    const SEL = selezionePannello(), pers = SEL.pers, per = SEL.etichetta;
     const gruppo = ui.panGruppo || 'tutto';
     const aumenti = [];
     S.prodotti.forEach(p => {
@@ -365,19 +399,23 @@
 
     // ---- com'è andato il periodo
     let andamento = '';
-    if (per) {
-      const A = analisiMenu(per, gruppo);
+    if (conVendite.length) {
+      const A = analisiMenu(pers, gruppo), qv = A.q;
       const iva = 1 + (S.impostazioni.ivaVendita || 0) / 100;
-      const incassoRic = A.vendute.reduce((s, r) => s + r.vendite[per] * (r.prezzo || 0), 0);
-      const cassa = gruppo === 'tutto' && S.periodiCassa[per] ? S.periodiCassa[per].incasso : null;
+      const incassoRic = A.vendute.reduce((s, r) => s + qv(r) * (r.prezzo || 0), 0);
+      const cassa = gruppo === 'tutto' && pers.length && pers.every(p => S.periodiCassa[p]) ? pers.reduce((s, p) => s + S.periodiCassa[p].incasso, 0) : null;
       const nettoOk = A.voci.reduce((s, x) => s + x.q * x.i.netto, 0), costoOk = A.voci.reduce((s, x) => s + x.q * x.i.costo, 0);
       const su100 = nettoOk ? costoOk / nettoOk * 100 : null;
       const copertura = A.pezziTutti ? A.pezziOk / A.pezziTutti : 0;
-      const daCompletare = A.vendute.filter(r => !completa(r)).sort((a, b) => b.vendite[per] - a.vendite[per]);
-      const scelte = `<div class="chips">${conVendite.map(pp => `<button class="chip ${per === pp ? 'on' : ''}" data-az="pan-per" data-v="${esc(pp)}">${esc(pp)}</button>`).join('')}</div>
+      const daCompletare = A.vendute.filter(r => !completa(r)).sort((a, b) => qv(b) - qv(a));
+      const sel = ui.panSel || { tipo: 'periodo', per: conVendite[conVendite.length - 1] };
+      const anni = Array.from(new Set(conVendite.map(p => dateDiPeriodo(p)).filter(Boolean).flatMap(x => { const l = []; for (let a = +x.dal.slice(0, 4); a <= +x.al.slice(0, 4); a++) l.push(a); return l; }))).sort();
+      const scelte = `<div class="chips"><button class="chip ${sel.tipo === 'tutto' ? 'on' : ''}" data-az="pan-sel" data-tipo="tutto">Tutto</button>${anni.map(a => `<button class="chip ${sel.tipo === 'anno' && sel.anno == a ? 'on' : ''}" data-az="pan-sel" data-tipo="anno" data-v="${a}">${a}</button>`).join('')}${conVendite.filter(pp => { const x = dateDiPeriodo(pp); return !(x && x.dal.slice(5) === '01-01' && x.al.slice(5) === '12-31' && x.dal.slice(0, 4) === x.al.slice(0, 4)); }).map(pp => `<button class="chip ${sel.tipo === 'periodo' && pers[0] === pp ? 'on' : ''}" data-az="pan-sel" data-tipo="periodo" data-v="${esc(pp)}">${esc(pp)}</button>`).join('')}<button class="chip ${sel.tipo === 'date' ? 'on' : ''}" data-az="pan-sel" data-tipo="date">📅 Scegli le date</button></div>
+        ${sel.tipo === 'date' ? `<div class="card form date-pan"><div class="due"><label>Dal<input type="date" data-pan-data="dal" value="${esc(sel.dal || '')}"></label><label>Al<input type="date" data-pan-data="al" value="${esc(sel.al || '')}"></label></div></div>` : ''}
+        ${sel.tipo !== 'periodo' ? `<p class="tenue piccolo">${pers.length ? `Conto i periodi: ${pers.map(esc).join(', ')}.` : 'Nessun periodo caricato cade tutto in queste date.'}${SEL.esclusi.length ? ` Non conto ${SEL.esclusi.map(esc).join(', ')}: ${SEL.esclusi.length === 1 ? 'è' : 'sono'} solo in parte dentro le date. Le vendite si caricano per periodi: per guardare pochi giorni, carica dalla cassa periodi più corti (es. un mese alla volta).` : ''}</p>` : ''}
         <div class="chips sotto">${[['tutto', 'Tutto il locale'], ['bar', 'Bar'], ['cucina', 'Cucina']].map(([k, v]) => `<button class="chip ${gruppo === k ? 'on' : ''}" data-az="pan-gruppo" data-v="${k}">${v}</button>`).join('')}</div>`;
       const top = (lista, titolo, spiega, valore) => `<div class="card"><h3>${titolo}</h3><p class="tenue piccolo">${spiega}</p>${lista.length ? lista.map((x, k) => `<a class="riga" href="#/ricetta/${x.r.id}"><span>${k + 1}. ${esc(x.r.nome)}</span><span class="destra">${valore(x)}</span></a>`).join('') : '<p class="tenue">Ancora nessuna ricetta completa venduta.</p>'}</div>`;
-      const piuVendute = A.vendute.slice().sort((a, b) => b.vendite[per] - a.vendite[per]).slice(0, 5).map(r => ({ r, q: r.vendite[per] }));
+      const piuVendute = A.vendute.slice().sort((a, b) => qv(b) - qv(a)).slice(0, 5).map(r => ({ r, q: qv(r) }));
       const piuGuadagno = A.voci.slice().sort((a, b) => b.tot - a.tot).slice(0, 5);
       const menoAPezzo = A.voci.filter(x => x.i.molt != null).sort((a, b) => a.i.molt - b.i.molt).slice(0, 5);
       andamento = `${scelte}
@@ -388,7 +426,7 @@
         ${kpi('Calcolato su', Math.round(copertura * 100) + '% delle vendite', 'il resto non ha ancora la ricetta completa', copertura < 0.6 ? 'giallo' : '')}
       </div>
       ${daCompletare.length ? `<div class="card larga"><h3>Ricette vendute ma senza ingredienti completi (${daCompletare.length})</h3><p class="tenue piccolo">Finché non le completi i conti sono parziali. Parti da quelle che vendono di più:</p>
-        ${daCompletare.slice(0, 5).map(r => `<a class="riga" href="#/ricetta/${r.id}"><span>${esc(r.nome)}</span><span class="destra">${qta(r.vendite[per])} venduti</span></a>`).join('')}
+        ${daCompletare.slice(0, 5).map(r => `<a class="riga" href="#/ricetta/${r.id}"><span>${esc(r.nome)}</span><span class="destra">${qta(qv(r))} venduti</span></a>`).join('')}
         <div class="bottoni"><button class="btn primario" data-az="pan-completa">Completale una per una, dalle più vendute</button></div></div>` : ''}
       <div class="card larga"><h3>La mappa del menu · ${esc(per)}</h3>
         <p class="tenue piccolo">Ogni ricetta finisce in una delle quattro caselle, secondo quanto vende e quanto fa guadagnare a pezzo rispetto alla media (${euro(A.sogliaM)} a pezzo).</p>
@@ -2035,13 +2073,17 @@
     S.periodiCassa[nome] = { incasso: Math.round(Vd.reduce((s, v) => s + v.incasso, 0) * 100) / 100, pezzi: Vd.reduce((s, v) => s + v.q, 0) };
     ui.ccVendite = null; ui.vendPer = nome; salva(); avviso(`Vendite salvate: ${n} voci nel periodo «${nome}».`); vai('#/vendite');
   };
-  AZ['pan-per'] = (el) => { ui.panPer = el.dataset.v; ridisegnaMantenendo(); };
+  AZ['pan-per'] = (el) => { ui.panSel = { tipo: 'periodo', per: el.dataset.v }; ridisegnaMantenendo(); };
+  AZ['pan-sel'] = (el) => {
+    const t = el.dataset.tipo, prima = ui.panSel || {};
+    ui.panSel = t === 'periodo' ? { tipo: t, per: el.dataset.v } : t === 'anno' ? { tipo: t, anno: el.dataset.v } : t === 'date' ? { tipo: t, dal: prima.dal || '', al: prima.al || '' } : { tipo: t };
+    ridisegnaMantenendo();
+  };
   AZ['pan-gruppo'] = (el) => { ui.panGruppo = el.dataset.v; ridisegnaMantenendo(); };
-  AZ['pan-mappa'] = () => { ui.mappaPeriodo = ui.panPer || null; if (ui.panGruppo && ui.panGruppo !== 'tutto') ui.mappaGruppo = ui.panGruppo; };
+  AZ['pan-mappa'] = () => { const p = selezionePannello().pers; ui.mappaPeriodo = p.length === 1 ? p[0] : null; if (ui.panGruppo && ui.panGruppo !== 'tutto') ui.mappaGruppo = ui.panGruppo; };
   AZ['pan-completa'] = () => {
     // il tipo con più vendite da completare: «Rivedi» con filtro incomplete, dalle più vendute, in quel periodo
-    const conVendite = S.periodiVendita.filter(pp => S.ricette.some(r => (r.vendite || {})[pp]));
-    const per = conVendite.includes(ui.panPer) ? ui.panPer : conVendite[conVendite.length - 1];
+    const pers = selezionePannello().pers, per = pers[pers.length - 1];
     const tipi = GRUPPI_MENU[ui.panGruppo || 'tutto'];
     const conta = {}; S.ricette.forEach(r => { if (r.tipo !== 'semilavorato' && (!tipi || tipi.includes(r.tipo)) && !completa(r) && (r.vendite || {})[per]) conta[r.tipo] = (conta[r.tipo] || 0) + r.vendite[per]; });
     const tipo = Object.keys(conta).sort((a, b) => conta[b] - conta[a])[0] || 'panino';
@@ -2682,6 +2724,7 @@
       const p = M.prodotto(ui.bozza.id); ui.bozza.prezzi = JSON.parse(JSON.stringify(p.prezzi || [])); ui.bozza.articoli = JSON.parse(JSON.stringify(p.articoli || []));
       delete p.dubbio; delete ui.bozza.dubbio; M.svuota(); salva(); ridisegnaMantenendo(); avviso('Fatto: prezzo per pezzo aggiornato, anche nelle ricette.'); return;
     }
+    if (d.panData) { const sel = ui.panSel || { tipo: 'date' }; sel[d.panData] = el.value; ui.panSel = Object.assign({ tipo: 'date' }, sel); ridisegnaMantenendo(); return; }
     if (d.sposta) { const set = new Set(ui.spostaSel || []); if (el.checked) set.add(d.sposta); else set.delete(d.sposta); ui.spostaSel = Array.from(set); const b = document.querySelector('.sposta-barra b'); if (b) b.textContent = `Sposta le ricette spuntate (${set.size})`; return; }
     if (d.grNome) { const v = el.value.trim(); if (!v) return; const t = (S.tipiExtra || []).find(x => x.id === d.grNome); if (t) t.nome = v; else { S.nomiTipi = S.nomiTipi || {}; S.nomiTipi[d.grNome] = v; } M.aggiornaTipi(); salva(); avviso('Nome cambiato.'); return; }
     if (d.grRep) { const t = (S.tipiExtra || []).find(x => x.id === d.grRep); if (t) t.reparto = el.value; else { S.repartiTipi = S.repartiTipi || {}; S.repartiTipi[d.grRep] = el.value; } M.aggiornaTipi(); salva(); avviso('Reparto cambiato.'); return; }
@@ -2748,5 +2791,21 @@
     if (S.casella.url && (!S.casella.ultimoControllo || Date.now() - new Date(S.casella.ultimoControllo) > 15 * 60e3)) setTimeout(() => controllaCasella(false), 800);
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+  // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
+  const VERSIONE_APP = 'repub-v60';
+  let avvisoAggiornamento = false;
+  async function controllaVersione() {
+    if (location.protocol !== 'https:') return;
+    try {
+      const t = await (await fetch('sw.js?v=' + Date.now(), { cache: 'no-store' })).text();
+      const m = t.match(/VERSIONE = '([^']+)'/); if (!m || m[1] === VERSIONE_APP) return;
+      const occupato = ui.bozza || ui.conta || (document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName));
+      if (!occupato) { location.reload(); return; }
+      if (!avvisoAggiornamento) { avvisoAggiornamento = true; avviso('C\'è una versione nuova dell\'app: si carica appena finisci quello che stai facendo.'); }
+    } catch (e) { /* senza rete: va bene così */ }
+  }
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') controllaVersione(); });
+  setInterval(controllaVersione, 10 * 60e3);
+  window.addEventListener('hashchange', () => { if (avvisoAggiornamento) controllaVersione(); });
   avvia();
 })();
