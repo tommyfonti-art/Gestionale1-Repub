@@ -567,6 +567,22 @@
   function repartiUsati() { const s = new Set(S.prodotti.map(p => M.reparto(p))); return M.REPARTI.concat(['Da classificare']).filter(r => s.has(r)); }
   const norm2 = (s) => String(s || '').toLowerCase().replace(/\b(s ?r ?l|s ?p ?a|s ?n ?c|s ?a ?s|srls)\b/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim();
   function categorie() { return Array.from(new Set(S.prodotti.map(p => p.categoria))).sort(); }
+  // filtro dei prodotti: un reparto (o tutto) e una o più categorie insieme. st = { rep: '', cats: [] }
+  const PF = () => (ui.prodFiltro = ui.prodFiltro || { rep: '', cats: [] });
+  const passaReparti = (p, st) => (!st.rep || M.reparto(p) === st.rep) && (!(st.cats || []).length || st.cats.includes(p.categoria));
+  function cambiaReparti(st, el) {
+    if (el.dataset.rep != null) { st.rep = el.dataset.rep; st.cats = []; }
+    else if (el.dataset.cat === '') st.cats = [];
+    else { const c = el.dataset.cat, l = st.cats || []; st.cats = l.includes(c) ? l.filter(x => x !== c) : l.concat(c); }
+  }
+  function chipsReparti(st, az, prima, spento) {
+    const prod = S.prodotti.filter(p => !p.speciale), sel = new Set(st.cats || []);
+    const nel = p => !st.rep || M.reparto(p) === st.rep;
+    const cats = categorie().filter(c => sel.has(c) || prod.some(p => p.categoria === c && nel(p)));
+    const n = c => prod.filter(p => p.categoria === c && nel(p)).length;
+    return `<div class="chips">${prima || ''}${[['', 'Tutto']].concat(repartiUsati().map(r => [r, r])).map(([v, t]) => `<button class="chip ${!spento && (st.rep || '') === v ? 'on' : ''}" data-az="${az}" data-rep="${esc(v)}">${esc(t)}</button>`).join('')}</div>
+      ${spento ? '' : `<div class="chips sotto">${cats.map(c => `<button class="chip ${sel.has(c) ? 'on' : ''}" data-az="${az}" data-cat="${esc(c)}">${sel.has(c) ? '✓ ' : ''}${esc(c)} <span class="${sel.has(c) ? '' : 'tenue'}">${n(c)}</span></button>`).join('')}${sel.size ? `<button class="chip giallo" data-az="${az}" data-cat="">Togli le categorie</button>` : ''}</div>`}`;
+  }
   const diFornitore = (p, id) => p.fornitoreId === id || (p.prezzi || []).some(e => e.fornitoreId === id) || (p.articoli || []).some(e => e.fornitoreId === id);
   function fornitoriConProdotti() {
     return S.fornitori.filter(f => !f.servizi).map(f => ({ f, n: S.prodotti.filter(p => diFornitore(p, f.id)).length })).filter(x => x.n).sort((x, y) => x.f.nome.localeCompare(y.f.nome));
@@ -574,7 +590,7 @@
   function listaProdotti() {
     const f = ui.filtroProdotti.toLowerCase();
     const perForn = ui.prodVista === 'fornitori';
-    const l = S.prodotti.filter(p => (perForn ? (!ui.fornProd || diFornitore(p, ui.fornProd)) : (ui.categoria === '__nuovi' ? p.daCompletare : ((!ui.reparto || M.reparto(p) === ui.reparto) && (ui.categoria === 'Tutte' || p.categoria === ui.categoria)))) && (!f || (p.nomeBreve + ' ' + p.nomeCompleto).toLowerCase().includes(f)))
+    const l = S.prodotti.filter(p => (perForn ? (!ui.fornProd || diFornitore(p, ui.fornProd)) : (ui.categoria === '__nuovi' ? p.daCompletare : passaReparti(p, PF()))) && (!f || (p.nomeBreve + ' ' + p.nomeCompleto).toLowerCase().includes(f)))
       .sort((a, b) => a.nomeBreve.localeCompare(b.nomeBreve));
     if (!l.length) return '<p class="tenue centro">Nessun prodotto.</p>';
     return l.map(p => {
@@ -592,11 +608,10 @@
       ${(() => { const n = S.prodotti.filter(p => M.daFoglio(p) && !(S.foglioTenuti || []).includes(p.id)).length; return n ? `<a class="btn largo" href="#/foglio" data-az="fg-apri">Prodotti del tuo foglio da collegare alle fatture (${n})</a>` : ''; })()}
       ${ui.prodVista === 'fornitori'
         ? (ui.fornProd && M.fornitore(ui.fornProd) ? `<a class="btn primario largo" href="#/formati" data-az="fmt-fornitore" data-id="${ui.fornProd}">Metti a posto tutti i prodotti di ${esc(M.fornitore(ui.fornProd).nome)}, uno dopo l'altro</a>` : '<p class="tenue">Scegli un fornitore: vedi tutta la sua roba e la sistemi in un colpo con la fattura sotto mano.</p>')
-        : `<a class="btn largo" href="#/formati" data-az="fmt-categoria">${ui.categoria && ui.categoria !== 'Tutte' && ui.categoria !== '__nuovi' ? `Ricontrolla i formati: solo ${esc(ui.categoria)}` : ui.reparto ? `Ricontrolla i formati: tutto ${esc(ui.reparto)}` : 'Ricontrolla i formati, uno dopo l\'altro'}</a>`}
+        : `<a class="btn largo" href="#/formati" data-az="fmt-categoria">${ui.categoria !== '__nuovi' && PF().cats.length === 1 ? `Ricontrolla i formati: solo ${esc(PF().cats[0])}` : ui.categoria !== '__nuovi' && PF().rep ? `Ricontrolla i formati: tutto ${esc(PF().rep)}` : 'Ricontrolla i formati, uno dopo l\'altro'}</a>`}
       <input class="cerca" type="search" placeholder="Cerca un prodotto" value="${esc(ui.filtroProdotti)}" data-filtro="prodotti">
       <div class="chips"><button class="chip ${ui.prodVista !== 'fornitori' ? 'on' : ''}" data-az="prod-vista" data-v="categorie">Per categoria</button><button class="chip ${ui.prodVista === 'fornitori' ? 'on' : ''}" data-az="prod-vista" data-v="fornitori">Per fornitore</button></div>
-      ${ui.prodVista === 'fornitori' ? `<div class="chips">${fornitoriConProdotti().map(x => `<button class="chip ${ui.fornProd === x.f.id ? 'on' : ''}" data-az="forn-prod" data-v="${x.f.id}">${esc(x.f.nome)} (${x.n})</button>`).join('')}</div>` : `<div class="chips">${(nuoviDaCompletare() ? [['__nuovi', 'Da completare (' + nuoviDaCompletare() + ')']] : []).map(([v, t]) => `<button class="chip ${ui.categoria === v ? 'on' : ''} giallo" data-az="categoria" data-v="${esc(v)}">${esc(t)}</button>`).join('')}${[['', 'Tutto']].concat(repartiUsati().map(r => [r, r])).map(([v, t]) => `<button class="chip ${(ui.reparto || '') === v && ui.categoria !== '__nuovi' ? 'on' : ''}" data-az="reparto" data-v="${esc(v)}">${esc(t)}</button>`).join('')}</div>
-      ${ui.reparto && ui.categoria !== '__nuovi' ? `<div class="chips sotto">${[['Tutte', 'Tutto ' + ui.reparto]].concat(categorie().filter(c => S.prodotti.some(p => p.categoria === c && M.reparto(p) === ui.reparto)).map(c => [c, c])).map(([v, t]) => `<button class="chip ${ui.categoria === v ? 'on' : ''}" data-az="categoria" data-v="${esc(v)}">${esc(t)}</button>`).join('')}</div>` : ''}</div>`}
+      ${ui.prodVista === 'fornitori' ? `<div class="chips">${fornitoriConProdotti().map(x => `<button class="chip ${ui.fornProd === x.f.id ? 'on' : ''}" data-az="forn-prod" data-v="${x.f.id}">${esc(x.f.nome)} (${x.n})</button>`).join('')}</div>` : chipsReparti(PF(), 'prod-filtro', nuoviDaCompletare() ? `<button class="chip ${ui.categoria === '__nuovi' ? 'on' : ''} giallo" data-az="categoria" data-v="__nuovi">Da completare (${nuoviDaCompletare()})</button>` : '', ui.categoria === '__nuovi')}
       <div class="card lista" id="lista">${listaProdotti()}</div>`
     };
   };
@@ -671,7 +686,7 @@
 
   PAGINE['modifica-prodotto'] = function (id) {
     if (!ui.bozza || ui.bozza._per !== 'p:' + id) {
-      const base = id === 'nuovo' ? { id: M.uid('p'), nomeBreve: '', nomeCompleto: '', categoria: ui.categoria !== 'Tutte' ? ui.categoria : '', unita: 'ml', contenuto: 1000, confezione: 'bottiglia', iva: 22, giacenza: 0, scortaMinima: 0, resa: 100, allergeni: [], venditaDiretta: null, fornitoreId: '', articoli: [], prezzi: [], note: '' } : JSON.parse(JSON.stringify(M.prodotto(id)));
+      const base = id === 'nuovo' ? { id: M.uid('p'), nomeBreve: '', nomeCompleto: '', categoria: PF().cats.length === 1 ? PF().cats[0] : '', unita: 'ml', contenuto: 1000, confezione: 'bottiglia', iva: 22, giacenza: 0, scortaMinima: 0, resa: 100, allergeni: [], venditaDiretta: null, fornitoreId: '', articoli: [], prezzi: [], note: '' } : JSON.parse(JSON.stringify(M.prodotto(id)));
       base._per = 'p:' + id; base._prezzo = M.prezzo(base) == null ? '' : '';
       ui.bozza = base;
     }
@@ -1241,11 +1256,11 @@
     const cats = categorie().filter(c => S.prodotti.some(p => p.categoria === c && !p.speciale));
     const c = ui.conta;
     if (c) {
-      const lista = S.prodotti.filter(p => !p.speciale && (c.categoria === 'Tutte' || p.categoria === c.categoria)).sort((a, b) => a.nomeBreve.localeCompare(b.nomeBreve));
+      const lista = S.prodotti.filter(p => !p.speciale && passaReparti(p, c)).sort((a, b) => a.nomeBreve.localeCompare(b.nomeBreve));
       return {
         titolo: 'Inventario', indietro: '#/magazzino', html: `
         <p class="tenue">Scrivi quante confezioni ci sono davvero (anche a metà: 0,5). Quelle che non tocchi restano come sono.</p>
-        <div class="chips">${['Tutte'].concat(cats).map(x => `<button class="chip ${c.categoria === x ? 'on' : ''}" data-az="conta-cat" data-v="${esc(x)}">${esc(x)}</button>`).join('')}</div>
+        ${chipsReparti(c, 'conta-filtro')}
         <div class="card">${lista.map(p => { const v = c.valori[p.id]; return `<div class="conta ${v != null ? 'toccato' : ''}"><span>${esc(p.nomeBreve)}<small>${esc(p.confezione)} · in app ${qta(p.giacenza)}</small></span>
           <button class="tondo" data-az="conta-meno" data-id="${p.id}">−</button><input type="number" step="any" inputmode="decimal" data-conta="${p.id}" value="${v != null ? v : ''}" placeholder="${qta(p.giacenza)}"><button class="tondo" data-az="conta-piu" data-id="${p.id}">＋</button></div>`; }).join('')}</div>
         <div class="bottoni"><button class="btn primario" data-az="salva-conta">Salva la conta (${Object.keys(c.valori).length})</button><button class="btn" data-az="esci-conta">Annulla</button></div>`
@@ -1732,7 +1747,7 @@
   AZ.esempio = (el) => { const x = window.FATTURE_ESEMPIO[+el.dataset.i]; aggiungiFatture(M.leggiFatturaXML(x.xml, x.nome + '.xml')); };
   AZ['vai-nuovi'] = () => { ui.categoria = '__nuovi'; vai('#/prodotti'); };
   AZ.categoria = (el) => { ui.categoria = el.dataset.v; ridisegnaMantenendo(); };
-  AZ.reparto = (el) => { ui.reparto = el.dataset.v; ui.categoria = 'Tutte'; ridisegnaMantenendo(); };
+  AZ['prod-filtro'] = (el) => { cambiaReparti(PF(), el); ui.categoria = 'Tutte'; ridisegnaMantenendo(); };
   AZ['prod-vista'] = (el) => { ui.prodVista = el.dataset.v; ridisegnaMantenendo(); };
   AZ['forn-prod'] = (el) => { ui.fornProd = ui.fornProd === el.dataset.v ? '' : el.dataset.v; ridisegnaMantenendo(); };
   AZ['tipo-ricette'] = (el) => { ui.tipoRicette = el.dataset.v; if (SCELTE_REP[el.dataset.v]) ui.repRicette = el.dataset.v; ridisegnaMantenendo(); };
@@ -1790,7 +1805,7 @@
   AZ['ctrlf-merce'] = (el) => { ricorda('ctrlf', 'ctrlFIdx', true); const f = M.fornitore(el.dataset.id); const n = M.togliServizi(f.id); f.controllato = true; ctrlFAvanti(); avviso(`${f.nome}: creati ${n} prodotti.`); };
   AZ['ctrlf-salta'] = () => { ricordaPosto('ctrlf', 'ctrlFIdx'); ui.ctrlFIdx = (ui.ctrlFIdx || 0) + 1; ridisegnaMantenendo(); };
   AZ['ctrlf-indietro'] = () => tornaIndietro('ctrlf', 'ctrlFIdx');
-  AZ['fmt-categoria'] = () => { ui.fmtCat = ui.categoria && ui.categoria !== 'Tutte' && ui.categoria !== '__nuovi' ? ui.categoria : ''; ui.fmtRep = ui.categoria !== '__nuovi' ? (ui.reparto || '') : ''; ui.fmtForn = ''; ui.fmtFiltro = ui.fmtCat || ui.fmtRep ? 'tutti' : 'ricette'; ui.fmtIdx = 0; vai('#/formati'); };
+  AZ['fmt-categoria'] = () => { ui.fmtCat = ui.categoria !== '__nuovi' && PF().cats.length === 1 ? PF().cats[0] : ''; ui.fmtRep = ui.categoria !== '__nuovi' ? (PF().rep || '') : ''; ui.fmtForn = ''; ui.fmtFiltro = ui.fmtCat || ui.fmtRep ? 'tutti' : 'ricette'; ui.fmtIdx = 0; vai('#/formati'); };
   AZ['fmt-fornitore'] = (el) => { ui.fmtForn = el.dataset.id; ui.fmtCat = ''; ui.fmtRep = ''; ui.fmtFiltro = 'tutti'; ui.fmtIdx = 0; vai('#/formati'); };
   AZ['fmt-filtro'] = (el) => { ui.fmtFiltro = el.dataset.v; ui.fmtIdx = 0; ui.st_fmt = []; ridisegnaMantenendo(); };
   AZ['fmt-giusto'] = (el) => { ricorda('fmt', 'fmtIdx'); const p = M.prodotto(el.dataset.id); p.formatoOk = true; p.daCompletare = false; delete p.dubbio; if (!['dacontrollare', 'cartoni'].includes(ui.fmtFiltro || 'ricette')) ui.fmtIdx = (ui.fmtIdx || 0) + 1; salva(); ridisegnaMantenendo(); window.scrollTo(0, 0); };
@@ -2717,9 +2732,9 @@
   AZ.pagata = (el) => { const f = S.fatture.find(x => x.id === el.dataset.id); f.scadenze[+el.dataset.k].pagata = el.checked; salva(); setTimeout(ridisegnaMantenendo, 150); };
   AZ['nuovo-fornitore'] = () => { const n = prompt('Nome del fornitore'); if (!n) return; const f = { id: M.uid('f'), nome: n.trim(), piva: '', telefono: '', email: '', referente: '', giorniConsegna: '', note: '' }; S.fornitori.push(f); salva(); vai('#/fornitore/' + f.id); };
   AZ['elimina-fornitore'] = (el) => { if (!confirm('Eliminare il fornitore? Prodotti e fatture restano.')) return; S.fornitori = S.fornitori.filter(f => f.id !== el.dataset.id); salva(); vai('#/fornitori'); };
-  AZ['inizia-conta'] = () => { ui.conta = { categoria: 'Tutte', valori: {} }; ridisegnaMantenendo(); };
+  AZ['inizia-conta'] = () => { ui.conta = { rep: '', cats: [], valori: {} }; ridisegnaMantenendo(); };
   AZ['esci-conta'] = () => { ui.conta = null; ridisegnaMantenendo(); };
-  AZ['conta-cat'] = (el) => { ui.conta.categoria = el.dataset.v; ridisegnaMantenendo(); };
+  AZ['conta-filtro'] = (el) => { cambiaReparti(ui.conta, el); ridisegnaMantenendo(); };
   const passo = (id, d) => { const p = M.prodotto(id); const v = ui.conta.valori[id] != null ? ui.conta.valori[id] : (Number(p.giacenza) || 0); ui.conta.valori[id] = Math.max(0, Math.round((v + d) * 100) / 100); ridisegnaMantenendo(); };
   AZ['conta-meno'] = (el) => passo(el.dataset.id, -1);
   AZ['conta-piu'] = (el) => passo(el.dataset.id, 1);
@@ -2992,7 +3007,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v66';
+  const VERSIONE_APP = 'repub-v67';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
