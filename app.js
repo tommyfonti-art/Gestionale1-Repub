@@ -1247,7 +1247,7 @@
       const att = p ? M.prezzo(p) : null;
       const v = p && att && prConf && rg.totale > 0 && !reg ? (prConf / att - 1) * 100 : null;
       let coll;
-      if (reg) coll = rg.ignora ? '<span class="tenue">non è merce: ignorata</span>' : p ? `→ <a href="#/prodotto/${p.id}">${esc(p.nomeBreve)}</a> · ${qta(conf)} × ${esc(p.confezione)}${p.daCompletare ? ' <span class="badge giallo">nuovo, da completare</span>' : ''}` : '';
+      if (reg) coll = rg.ignora ? `<span class="tenue">non è merce: ignorata</span> <button class="btn piccolo" data-az="riga-merce" data-id="${f.id}" data-k="${k}">È merce: collegala a un prodotto</button>` : p ? `→ <a href="#/prodotto/${p.id}">${esc(p.nomeBreve)}</a> · ${qta(conf)} × ${esc(p.confezione)}${p.daCompletare ? ' <span class="badge giallo">nuovo, da completare</span>' : ''}` : '';
       else coll = `<select data-fr="${k}" data-k="scelta">
           <option value="">Collega a un prodotto…</option>
           <option value="__nuovo">＋ Crea un prodotto nuovo</option>
@@ -2768,9 +2768,10 @@
   function speseFattura(f) {
     const segno = f.tipoDoc === 'TD04' ? -1 : 1, tot = Number(f.imponibile || f.totale) || 0;
     const forn = M.fornitore(f.fornitoreId), cat = categoriaSpesa(forn), out = {};
-    if (cat !== 'merce') { out[cat] = segno * tot; return out; }
-    // fornitore di merce: le righe di prodotti «Non food» vanno nei materiali, il resto (anche trasporti e sconti) nella merce
-    let nf = 0; f.righe.forEach(rg => { const p = rg.prodottoId && M.prodotto(rg.prodottoId); if (p && !rg.ignora && M.reparto(p) === 'Non food') nf += Number(rg.totale) || 0; });
+    // righe collegate a un prodotto: «Non food» nei materiali, il resto nella merce (anche da un fornitore di servizi, es. tovagliette dalla tipografia)
+    let nf = 0, me = 0; f.righe.forEach(rg => { const p = rg.prodottoId && M.prodotto(rg.prodottoId); if (!p || rg.ignora) return; if (M.reparto(p) === 'Non food') nf += Number(rg.totale) || 0; else me += Number(rg.totale) || 0; });
+    if (cat !== 'merce') { out.materiali = segno * nf; out.merce = segno * me; out[cat] = (out[cat] || 0) + segno * (tot - nf - me); return out; }
+    // fornitore di merce: il resto (anche trasporti e sconti) va nella merce
     out.materiali = segno * nf; out.merce = segno * (tot - nf); return out;
   }
   function speseTra(dal, al) {
@@ -2846,6 +2847,14 @@
   AZ['duplica-ricetta'] = (el) => { const r = JSON.parse(JSON.stringify(M.ricetta(el.dataset.id))); r.id = M.uid('r'); r.nome += ' (copia)'; r.vendite = {}; S.ricette.push(r); salva(); vai('#/modifica-ricetta/' + r.id); };
   AZ['registra-fattura'] = (el) => { const f = S.fatture.find(x => x.id === el.dataset.id); M.registraFattura(f); salva(); window.scrollTo(0, 0); disegna(); avviso('Fattura registrata: costi aggiornati.'); };
   AZ['annulla-fattura'] = (el) => { if (!confirm('Annullare la registrazione? Tolgo i prezzi di questa fattura.')) return; const f = S.fatture.find(x => x.id === el.dataset.id); M.annullaFattura(f); salva(); ridisegnaMantenendo(); };
+  AZ['riga-merce'] = (el) => {
+    const f = S.fatture.find(x => x.id === el.dataset.id); if (!f) return; const rg = f.righe[+el.dataset.k]; if (!rg) return;
+    M.annullaFattura(f); rg.ignora = false; rg.automatico = false; rg.prodottoId = null; rg.forzaMerce = true;
+    // non va più saltata in automatico nelle prossime fatture dello stesso fornitore
+    const nn = (t) => String(t || '').toLowerCase().replace(/\s+/g, ' ').trim();
+    S.ignorati = (S.ignorati || []).filter(x => !(x.fornitoreId === f.fornitoreId && ((rg.codice && x.codice === rg.codice) || nn(x.descrizione) === nn(rg.descrizione))));
+    salva(); ridisegnaMantenendo(); avviso('Ora scegli il prodotto per questa riga (o creane uno nuovo), poi registra di nuovo la fattura.');
+  };
   AZ['elimina-fattura'] = (el) => { if (!confirm('Eliminare la fattura? Finisce nel Cestino.')) return; const f = S.fatture.find(x => x.id === el.dataset.id); nelCestino('fatture', f); M.annullaFattura(f); S.fatture = S.fatture.filter(x => x !== f); salva(); vai('#/fatture'); };
   AZ.pagata = (el) => { const f = S.fatture.find(x => x.id === el.dataset.id); f.scadenze[+el.dataset.k].pagata = el.checked; salva(); setTimeout(ridisegnaMantenendo, 150); };
   AZ['nuovo-fornitore'] = () => { const n = prompt('Nome del fornitore'); if (!n) return; const f = { id: M.uid('f'), nome: n.trim(), piva: '', telefono: '', email: '', referente: '', giorniConsegna: '', note: '' }; S.fornitori.push(f); salva(); vai('#/fornitore/' + f.id); };
@@ -3128,7 +3137,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v70';
+  const VERSIONE_APP = 'repub-v71';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;

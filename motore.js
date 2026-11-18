@@ -439,9 +439,11 @@
   // ---------- Prodotti creati in automatico dalle fatture ----------
   const NON_MERCE = /trasport|spedizion|\bspese\b|cauzion|contribut|\bbollo\b|imball|facchinagg|arrotond|rimborso|noleggio|canone|\bsconto\b|commission|diritt[io]|accisa/i;
   // righe che non sono merce: trasporti, cauzioni, sconti e abbuoni (anche scritti come importi negativi)
-  M.nonMerce = (rg) => NON_MERCE.test(rg.descrizione) || /^(SC|PR|AB|AC)$/.test(rg.tipoRiga || '') || rg.totale < 0 || (!rg.totale && rg.prezzoUnitario < 0.01);
+  // «(spedizione inclusa)» o «trasporto incluso» dentro la descrizione di un articolo non lo rendono un costo di trasporto
+  const testoNM = (d) => String(d || '').replace(/(spedizion\w*|trasport\w*)\s+(inclus\w*|compres\w*|gratuit\w*)/gi, '');
+  M.nonMerce = (rg) => (!rg.forzaMerce && NON_MERCE.test(testoNM(rg.descrizione))) || /^(SC|PR|AB|AC)$/.test(rg.tipoRiga || '') || rg.totale < 0 || (!rg.totale && rg.prezzoUnitario < 0.01);
   // riga a zero euro con un prezzo (omaggio, sconto merce): va col prodotto pagato, se c'è
-  const rigaOmaggio = (rg) => !rg.totale && !NON_MERCE.test(rg.descrizione) && !/^(SC|PR|AB|AC)$/.test(rg.tipoRiga || '');
+  const rigaOmaggio = (rg) => !rg.totale && !NON_MERCE.test(testoNM(rg.descrizione)) && !/^(SC|PR|AB|AC)$/.test(rg.tipoRiga || '');
   const CATEGORIE = [
     [/\baceto\b|\bolio\b|\bsale\b|zucchero|farina|\bspezi|origano|\bpepe\b|paprika|curry|\blievito/i, 'Dispensa'],
     [/\bbirr|\bfus(to|ti)?\b|lager|weiss|blanche|ipa\b|stout|guinness/i, 'Birra e fusti'], [/\bgin\b/i, 'Gin'], [/vodka/i, 'Vodka'], [/\brum\b|cacha/i, 'Rum e cachaça'],
