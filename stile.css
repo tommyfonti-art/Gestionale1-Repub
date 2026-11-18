@@ -257,3 +257,15 @@ label.spunta input { width: auto; margin-top: 3px; }
 @media (max-width: 520px) { .gr-riga { grid-template-columns: 1fr 90px 36px; } .gr-riga .tenue { display: none; } }
 
 @media (pointer: coarse) { #contenuto { padding-bottom: 40vh; } }
+
+/* costi del locale */
+.costo-cat { border-bottom: 1px solid var(--linea); }
+.costo-cat summary, .costo-riga { display: grid; grid-template-columns: minmax(120px, 1.2fr) 2fr 90px; gap: 10px; align-items: center; padding: 10px 0; cursor: pointer; list-style: none; }
+.costo-cat summary::-webkit-details-marker { display: none; }
+.costo-nome { display: flex; gap: 8px; align-items: center; font-size: 14px; }
+.costo-nome i { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.costo-barra { background: var(--linea); border-radius: 6px; height: 10px; overflow: hidden; }
+.costo-barra b { display: block; height: 100%; background: var(--accento); border-radius: 6px; }
+.costo-val { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+.costo-cat .riga.piccola { padding-left: 18px; font-size: 14px; }
+@media (max-width: 520px) { .costo-cat summary, .costo-riga { grid-template-columns: 1fr 80px; } .costo-barra { grid-column: 1 / -1; grid-row: 2; } }

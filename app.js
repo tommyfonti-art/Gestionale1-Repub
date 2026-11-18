@@ -425,6 +425,24 @@
         ${kpi('Guadagno sulla merce', euro(A.voci.reduce((s, x) => s + x.tot, 0), 0), 'incasso senza IVA meno ingredienti, prima di personale e spese')}
         ${kpi('Calcolato su', Math.round(copertura * 100) + '% delle vendite', 'il resto non ha ancora la ricetta completa', copertura < 0.6 ? 'giallo' : '')}
       </div>
+      ${(() => {
+        // i costi del locale nelle stesse date delle vendite scelte
+        if (gruppo !== 'tutto' || !pers.length) return '';
+        const dd = pers.map(dateDiPeriodo).filter(Boolean); if (dd.length !== pers.length) return '';
+        const dal = dd.map(x => x.dal).sort()[0], al = dd.map(x => x.al).sort().slice(-1)[0];
+        // solo i giorni coperti dalle vendite scelte (se ci sono buchi tra un periodo e l'altro, lì non conto le spese)
+        const X = { per: {}, totale: 0 }; dd.forEach(x => { const y = speseTra(x.dal, x.al); Object.entries(y.per).forEach(([c, v]) => { X.per[c] = (X.per[c] || 0) + v; }); X.totale += y.totale; });
+        const cop = coperturaFatture(); if (!X.totale) return '';
+        const iva = 1 + (S.impostazioni.ivaVendita || 10) / 100, inc = (cassa != null ? cassa : incassoRic) / iva;
+        const completo = cop && cop.dal <= dal && cop.al >= al.slice(0, 8) + '01';
+        // il confronto ha senso solo con l'incasso vero della cassa: quello stimato dalle ricette è parziale
+        if (cassa == null) return `<div class="card larga"><h3>Spese dalle fatture in queste date</h3><div class="kpi-griglia">${kpi('Merce comprata', euro(X.per.merce || 0, 0))}${kpi('Altre spese', euro(X.totale - (X.per.merce || 0), 0), 'bollette, servizi, materiali…')}</div>
+          <p class="tenue piccolo">Per vedere quanto resta serve l'incasso vero: carica il venduto della cassa di queste date (Importa dati). <a href="#/costi">Vedi tutti i costi ›</a></p></div>`;
+        return `<div class="card larga"><h3>Quanto resta, con le fatture di questo periodo</h3>
+          <div class="kpi-griglia">${kpi('Incasso senza IVA', euro(inc, 0))}${kpi('Merce comprata', euro(X.per.merce || 0, 0), inc ? Math.round((X.per.merce || 0) / inc * 100) + '% dell\'incasso' : '')}${kpi('Altre spese', euro(X.totale - (X.per.merce || 0), 0), 'bollette, servizi, materiali…')}${kpi('Resta', euro(inc - X.totale, 0), 'prima di stipendi, contributi e tasse', inc - X.totale < 0 ? 'rosso' : '')}</div>
+          ${completo ? '' : `<p class="msg giallo">Per queste date le fatture sono incomplete (caricate ${cop ? 'dal ' + dataIt(cop.dal) + ' al ' + dataIt(cop.al) : 'nessuna'}): il «Resta» non è affidabile.</p>`}
+          <p class="tenue piccolo">La merce comprata non è quella consumata (ci sono le scorte), ma su qualche mese si avvicina. <a href="#/costi">Vedi tutti i costi ›</a></p></div>`;
+      })()}
       ${daCompletare.length ? `<div class="card larga"><h3>Ricette vendute ma senza ingredienti completi (${daCompletare.length})</h3><p class="tenue piccolo">Finché non le completi i conti sono parziali. Parti da quelle che vendono di più:</p>
         ${daCompletare.slice(0, 5).map(r => `<a class="riga" href="#/ricetta/${r.id}"><span>${esc(r.nome)}</span><span class="destra">${qta(qv(r))} venduti</span></a>`).join('')}
         <div class="bottoni"><button class="btn primario" data-az="pan-completa">Completale una per una, dalle più vendute</button></div></div>` : ''}
@@ -1086,6 +1104,7 @@
       ['fornitori', 'Fornitori', 'contatti, spesa, prodotti'], ['magazzino', 'Magazzino', 'inventario ogni sei mesi'],
 ['vendite', 'Vendite', 'pezzi venduti per periodo'], ['mappa', 'Mappa del menu', 'cosa vende e cosa rende'],
       ['simulatore', 'Simulatore', 'e se cambia un prezzo?'], ['eventi', 'Eventi', 'listini per le serate'], ['olio', 'Costo olio', 'quanto costa friggere'],
+      ['costi', 'Costi del locale', 'tutte le fatture: merce, bollette, servizi, materiali'],
       ['ordine', 'Metti in ordine i dati', 'tutti gli strumenti di sistemazione, in ordine'],
       ['foglio', 'Prodotti del foglio', 'collegali a quelli delle fatture, uno per uno'],
       ['importa', 'Importa dati', 'cassa, liste di ricette, listini dei fornitori'],
@@ -1120,6 +1139,8 @@
       <div class="kpi-griglia">${kpi('Prodotti', prod.length)}${kpi('Fatture registrate', fatt.filter(x => x.stato === 'registrata').length)}</div>
       ${prod.length && !f.servizi ? `<a class="btn primario largo" href="#/formati" data-az="fmt-fornitore" data-id="${id}">Ricontrolla i formati di tutto quello che compriamo da ${esc(f.nome)}</a>` : ''}
       <div class="card form"><label class="interruttore"><input type="checkbox" data-az="toggle-servizi" data-id="${id}" ${f.servizi ? 'checked' : ''}> Non vende merce (bollette, banca, pagamenti, servizi): le sue fatture restano in archivio e non creano prodotti</label></div>
+      <div class="card form"><h3>Tipo di spesa</h3><p class="tenue piccolo">Serve per «Costi del locale». ${f.catSpesa ? '' : 'Ora è indovinato dal nome: cambialo se è sbagliato.'}</p>
+        <select data-cat-spesa="${id}">${Object.entries(CAT_SPESA).map(([k, v]) => `<option value="${k}" ${categoriaSpesa(f) === k ? 'selected' : ''}>${v[0]}</option>`).join('')}</select></div>
       <div class="card form"><h3>Contatti</h3>${campo('Nome', 'nome')}${campo('Partita IVA', 'piva')}${campo('Referente', 'referente')}${campo('Telefono', 'telefono', 'tel')}${campo('Email', 'email', 'email')}${campo('Giorni di consegna', 'giorniConsegna')}
         <label>Note<textarea data-forn="${id}" data-k="note" rows="2">${esc(f.note)}</textarea></label>
         ${f.telefono ? `<div class="bottoni"><a class="btn piccolo" href="tel:${esc(f.telefono)}">Chiama</a><a class="btn piccolo" href="https://wa.me/${esc(f.telefono.replace(/\D/g, '').replace(/^(?!39)/, '39'))}">WhatsApp</a></div>` : ''}</div>
@@ -1383,9 +1404,9 @@
   };
 
   // ---------- Disegno ----------
-  const ALTRE = [['fornitori', 'Fornitori'], ['magazzino', 'Magazzino'], ['vendite', 'Vendite'], ['mappa', 'Mappa del menu'], ['simulatore', 'Simulatore'], ['eventi', 'Eventi'], ['olio', 'Costo olio'], ['foglio', 'Prodotti del foglio'], ['importa', 'Importa dalla cassa'], ['impostazioni', 'Impostazioni']];
+  const ALTRE = [['fornitori', 'Fornitori'], ['magazzino', 'Magazzino'], ['vendite', 'Vendite'], ['costi', 'Costi del locale'], ['mappa', 'Mappa del menu'], ['simulatore', 'Simulatore'], ['eventi', 'Eventi'], ['olio', 'Costo olio'], ['foglio', 'Prodotti del foglio'], ['importa', 'Importa dati'], ['impostazioni', 'Impostazioni']];
   const TAB = [['pannello', 'Pannello', 'M3 12l9-8 9 8v8a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z'], ['prodotti', 'Prodotti', 'M4 7l8-4 8 4v10l-8 4-8-4zM4 7l8 4 8-4M12 11v10'], ['ricette', 'Ricette', 'M6 3h12M8 3v6l-4 12h16L16 9V3'], ['fatture', 'Fatture', 'M6 2h9l5 5v15H6zM14 2v6h6M9 13h8M9 17h8'], ['altro', 'Altro', 'M5 12h.01M12 12h.01M19 12h.01']];
-  const SEZIONE = { ordine: 'pannello', 'gruppi-ricette': 'ricette', foglio: 'prodotti', doppioni: 'prodotti', importa: 'altro', 'controllo-fatture': 'fatture', controllo: 'prodotti', pulizia: 'altro', formati: 'prodotti', prodotto: 'prodotti', 'modifica-prodotto': 'prodotti', ricetta: 'ricette', 'modifica-ricetta': 'ricette', 'rivedi-ricette': 'ricette', fattura: 'fatture' };
+  const SEZIONE = { costi: 'altro', ordine: 'pannello', 'gruppi-ricette': 'ricette', foglio: 'prodotti', doppioni: 'prodotti', importa: 'altro', 'controllo-fatture': 'fatture', controllo: 'prodotti', pulizia: 'altro', formati: 'prodotti', prodotto: 'prodotti', 'modifica-prodotto': 'prodotti', ricetta: 'ricette', 'modifica-ricetta': 'ricette', 'rivedi-ricette': 'ricette', fattura: 'fatture' };
   function disegna() {
     if (!S) return;
     const [, nome, arg] = (location.hash || '#/pannello').split('/');
@@ -2477,6 +2498,79 @@
       <div class="card lista">${passi.map(([t, n, h, sp], i) => `<a class="riga" href="${h}" ${h === '#/ricette' ? 'data-az="ord-ricette"' : h === '#/foglio' ? 'data-az="fg-apri"' : ''}><span><b>${i + 1}. ${t}</b><small>${sp}</small></span><span class="badge ${n ? 'giallo' : 'verde'}">${n ? n : 'fatto'}</span></a>`).join('')}</div>` };
   };
   AZ['ord-ricette'] = () => { ui.rivFiltro = 'incomplete'; ui.rivOrdine = 'piu'; };
+  // ---------- Costi del locale: tutte le fatture, non solo la merce (bollette, servizi, materiali, attrezzatura…) ----------
+  const CAT_SPESA = {
+    merce: ['Merce: bar e cucina', 'var(--verde)'],
+    materiali: ['Non food e materiali', '#8a6d3b'],
+    attrezzatura: ['Attrezzatura e arredo', '#6b5b95'],
+    utenze: ['Luce, gas, acqua, telefono', '#c0392b'],
+    consulenze: ['Commercialista e consulenze', '#2c3e8f'],
+    manutenzioni: ['Manutenzioni e servizi', '#16808a'],
+    pubblicita: ['Pubblicità e stampa', '#b9770e'],
+    banca: ['Banca e pagamenti', '#566573'],
+    eventi: ['Eventi e spettacoli', '#a04000'],
+    affitto: ['Affitto e locali', '#4a235a'],
+    altro: ['Altro', '#7f8c8d']
+  };
+  // il tipo di spesa di un fornitore: quello scelto a mano, altrimenti lo indovino dal nome
+  function categoriaSpesa(f) {
+    if (!f) return 'altro';
+    if (f.catSpesa) return f.catSpesa;
+    const n = normCassa(f.nome);
+    if (/\b(hera|enel|acea|engie|eni|enimoov|edison|iren|a2a|fastweb|tim|telecom|vodafone|wind|iliad|sky|acque|acqua|gas|energia|luce|aruba|estra|sorgenia|illumia)\b/.test(n)) return 'utenze';
+    if (/\b(studio|consulenz|commercialist|notai|avvocat|paghe|lavoro|sicura|caf)\b/.test(n)) return 'consulenze';
+    if (/\b(nexi|banca|bancario|sumup|satispay|paypal|pos|credit)\b/.test(n)) return 'banca';
+    if (/\b(grafic|flyeralarm|stampa|tipograf|pubblicit|xmenu|menu)\b/.test(n)) return 'pubblicita';
+    if (/\b(siae|associazione|asd|spettacol|musica|eventi|servicefest)\b/.test(n)) return 'eventi';
+    if (/\b(service|servizi|assistenza|termotecnic|ferramenta|manutenz|pulizi|ecologic|rifiuti|estintor|antincendio|idraulic|elettric)\b/.test(n)) return 'manutenzioni';
+    if (/\b(immobiliar|affitt|locazion)\b/.test(n)) return 'affitto';
+    if (/\b(amazon|ikea|iper|leroy|brico|mediaworld|unieuro)\b/.test(n)) return 'attrezzatura';
+    return f.servizi ? 'altro' : 'merce';
+  }
+  // quanto pesa ogni fattura su ogni tipo di spesa (senza IVA; le note di credito tolgono)
+  function speseFattura(f) {
+    const segno = f.tipoDoc === 'TD04' ? -1 : 1, tot = Number(f.imponibile || f.totale) || 0;
+    const forn = M.fornitore(f.fornitoreId), cat = categoriaSpesa(forn), out = {};
+    if (cat !== 'merce') { out[cat] = segno * tot; return out; }
+    // fornitore di merce: le righe di prodotti «Non food» vanno nei materiali, il resto (anche trasporti e sconti) nella merce
+    let nf = 0; f.righe.forEach(rg => { const p = rg.prodottoId && M.prodotto(rg.prodottoId); if (p && !rg.ignora && M.reparto(p) === 'Non food') nf += Number(rg.totale) || 0; });
+    out.materiali = segno * nf; out.merce = segno * (tot - nf); return out;
+  }
+  function speseTra(dal, al) {
+    const per = {}, perForn = {}, perMese = {};
+    S.fatture.forEach(f => {
+      if (!f.data || (dal && f.data < dal) || (al && f.data > al)) return;
+      const x = speseFattura(f), m = f.data.slice(0, 7);
+      Object.entries(x).forEach(([c, v]) => { if (!v) return; per[c] = (per[c] || 0) + v; const k = c + '|' + (f.fornitoreId || f.fornitoreNome); perForn[k] = (perForn[k] || 0) + v; perMese[m] = (perMese[m] || 0) + v; });
+    });
+    return { per, perForn, perMese, totale: Object.values(per).reduce((s, v) => s + v, 0) };
+  }
+  const coperturaFatture = () => { const d = S.fatture.map(f => f.data).filter(Boolean).sort(); return d.length ? { dal: d[0], al: d[d.length - 1] } : null; };
+  PAGINE.costi = function () {
+    const anni = Array.from(new Set(S.fatture.map(f => (f.data || '').slice(0, 4)).filter(Boolean))).sort();
+    const sel = ui.costiSel || { tipo: 'anno', anno: anni[anni.length - 1] };
+    let dal = null, al = null, etich = 'Tutto';
+    if (sel.tipo === 'anno') { dal = sel.anno + '-01-01'; al = sel.anno + '-12-31'; etich = sel.anno; }
+    if (sel.tipo === 'mese') { dal = sel.mese + '-01'; al = sel.mese + '-31'; etich = sel.mese; }
+    if (sel.tipo === 'date') { dal = sel.dal || null; al = sel.al || null; etich = 'dal ' + (dal ? dataIt(dal) : '…') + ' al ' + (al ? dataIt(al) : '…'); }
+    const X = speseTra(dal, al), cop = coperturaFatture();
+    const cats = Object.keys(CAT_SPESA).filter(c => X.per[c]).sort((a, b) => X.per[b] - X.per[a]);
+    const max = Math.max(1, ...cats.map(c => X.per[c]));
+    const mesi = Object.keys(X.perMese).sort(), maxM = Math.max(1, ...mesi.map(m => X.perMese[m]));
+    const nomeMese = (m) => { const [a, mm] = m.split('-'); return ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'][+mm - 1] + ' ' + a; };
+    return { titolo: 'Costi del locale', indietro: '#/altro', html: `
+      <div class="chips"><button class="chip ${sel.tipo === 'tutto' ? 'on' : ''}" data-az="costi-sel" data-tipo="tutto">Tutto</button>${anni.map(a => `<button class="chip ${sel.tipo === 'anno' && sel.anno === a ? 'on' : ''}" data-az="costi-sel" data-tipo="anno" data-v="${a}">${a}</button>`).join('')}<button class="chip ${sel.tipo === 'date' ? 'on' : ''}" data-az="costi-sel" data-tipo="date">📅 Scegli le date</button></div>
+      ${sel.tipo === 'date' ? `<div class="card form"><div class="due"><label>Dal<input type="date" data-costi-data="dal" value="${esc(sel.dal || '')}"></label><label>Al<input type="date" data-costi-data="al" value="${esc(sel.al || '')}"></label></div></div>` : ''}
+      <div class="kpi-griglia">${kpi('Spese totali', euro(X.totale, 0), 'senza IVA, da tutte le fatture · ' + esc(etich))}${kpi('Merce', euro(X.per.merce || 0, 0), X.totale ? Math.round((X.per.merce || 0) / X.totale * 100) + '% del totale' : '')}${kpi('Tutto il resto', euro(X.totale - (X.per.merce || 0), 0), 'bollette, servizi, materiali…')}</div>
+      ${cop ? `<p class="tenue piccolo">Fatture caricate dal ${dataIt(cop.dal)} al ${dataIt(cop.al)}. Mancano stipendi, contributi, tasse e quello che si paga senza fattura elettronica: qui c'è solo quello che arriva in fattura.</p>` : ''}
+      <div class="card larga"><h3>Per tipo di spesa</h3>
+        ${cats.length ? cats.map(c => { const fs = Object.entries(X.perForn).filter(([k]) => k.startsWith(c + '|')).map(([k, v]) => { const id = k.slice(c.length + 1); const f = M.fornitore(id); return { id, nome: f ? f.nome : id, v }; }).sort((a, b) => b.v - a.v);
+          return `<details class="costo-cat"><summary><span class="costo-nome"><i style="background:${CAT_SPESA[c][1]}"></i>${CAT_SPESA[c][0]}</span><span class="costo-barra"><b style="width:${Math.max(2, X.per[c] / max * 100)}%;background:${CAT_SPESA[c][1]}"></b></span><span class="costo-val">${euro(X.per[c], 0)}</span></summary>
+            ${fs.map(x => `<a class="riga piccola" href="#/fornitore/${esc(x.id)}"><span>${esc(x.nome)}</span><span>${euro(x.v, 0)}</span></a>`).join('')}</details>`; }).join('') : '<p class="tenue">Nessuna fattura in queste date.</p>'}
+        <p class="tenue piccolo">Tocca un tipo per vedere i fornitori. Se un fornitore è nel tipo sbagliato, aprilo e cambia «Tipo di spesa».</p></div>
+      ${mesi.length > 1 ? `<div class="card larga"><h3>Mese per mese</h3>${mesi.map(m => `<div class="costo-cat"><div class="costo-riga"><span class="costo-nome">${nomeMese(m)}</span><span class="costo-barra"><b style="width:${Math.max(2, X.perMese[m] / maxM * 100)}%"></b></span><span class="costo-val">${euro(X.perMese[m], 0)}</span></div></div>`).join('')}</div>` : ''}` };
+  };
+  AZ['costi-sel'] = (el) => { const t = el.dataset.tipo, p = ui.costiSel || {}; ui.costiSel = t === 'anno' ? { tipo: t, anno: el.dataset.v } : t === 'date' ? { tipo: t, dal: p.dal || '', al: p.al || '' } : { tipo: t }; ridisegnaMantenendo(); };
   AZ['ordine-ricette'] = (el) => { ui.ordineRicette = el.dataset.v; ridisegnaMantenendo(); };
   AZ['riv-inizia'] = () => { ui.rivIdx = 0; ui.rivStorico = []; ui.rivFisso = null; ui.rivFiltro = ui.rivFiltro || 'darivedere'; ui.bozza = null; vai('#/rivedi-ricette'); };
   AZ['riv-tipo'] = (el) => { ui.tipoRicette = el.dataset.v; ui.rivIdx = 0; ui.rivFisso = null; ui.rivStorico = []; ui.bozza = null; ridisegnaMantenendo(); };
@@ -2725,6 +2819,8 @@
       delete p.dubbio; delete ui.bozza.dubbio; M.svuota(); salva(); ridisegnaMantenendo(); avviso('Fatto: prezzo per pezzo aggiornato, anche nelle ricette.'); return;
     }
     if (d.panData) { const sel = ui.panSel || { tipo: 'date' }; sel[d.panData] = el.value; ui.panSel = Object.assign({ tipo: 'date' }, sel); ridisegnaMantenendo(); return; }
+    if (d.catSpesa) { const f = M.fornitore(d.catSpesa); if (f) { f.catSpesa = el.value; salva(); avviso('Tipo di spesa cambiato.'); } return; }
+    if (d.costiData) { const sel = Object.assign({ tipo: 'date' }, ui.costiSel || {}); sel.tipo = 'date'; sel[d.costiData] = el.value; ui.costiSel = sel; ridisegnaMantenendo(); return; }
     if (d.sposta) { const set = new Set(ui.spostaSel || []); if (el.checked) set.add(d.sposta); else set.delete(d.sposta); ui.spostaSel = Array.from(set); const b = document.querySelector('.sposta-barra b'); if (b) b.textContent = `Sposta le ricette spuntate (${set.size})`; return; }
     if (d.grNome) { const v = el.value.trim(); if (!v) return; const t = (S.tipiExtra || []).find(x => x.id === d.grNome); if (t) t.nome = v; else { S.nomiTipi = S.nomiTipi || {}; S.nomiTipi[d.grNome] = v; } M.aggiornaTipi(); salva(); avviso('Nome cambiato.'); return; }
     if (d.grRep) { const t = (S.tipiExtra || []).find(x => x.id === d.grRep); if (t) t.reparto = el.value; else { S.repartiTipi = S.repartiTipi || {}; S.repartiTipi[d.grRep] = el.value; } M.aggiornaTipi(); salva(); avviso('Reparto cambiato.'); return; }
@@ -2792,7 +2888,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v60';
+  const VERSIONE_APP = 'repub-v61';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
