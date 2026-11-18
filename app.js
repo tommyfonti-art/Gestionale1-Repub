@@ -2781,7 +2781,7 @@
   AZ['vend-elimina'] = () => {
     const vec = ui.vendPer; if (!confirm(`Elimino il periodo «${vec}» e le sue vendite?`)) return;
     S.periodiVendita = S.periodiVendita.filter(x => x !== vec); S.periodiScaricati = S.periodiScaricati.filter(x => x !== vec);
-    if (S.periodiDate) delete S.periodiDate[vec];
+    if (S.periodiDate) delete S.periodiDate[vec]; if (S.periodiCassa) delete S.periodiCassa[vec];
     S.ricette.forEach(r => { if (r.vendite) delete r.vendite[vec]; });
     ui.vendPer = null; salva(); ridisegnaMantenendo();
   };
@@ -3007,7 +3007,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v67';
+  const VERSIONE_APP = 'repub-v68';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
