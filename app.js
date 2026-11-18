@@ -400,6 +400,27 @@
     ripensare: ['Da ripensare', 'Vendono poco e guadagnano poco. Da cambiare o togliere.', 'var(--rosso)']
   };
 
+  // la mappa del menu: grafico e quattro caselle, dentro il pannello (stessa scelta di periodo e categorie)
+  function schedaMappa(A, per) {
+    const testa = `<div class="card larga" id="mappa"><h3>La mappa del menu · ${esc(per)}</h3>`;
+    if (A.voci.length < 2) return testa + '<p class="tenue">Servono almeno due ricette complete con delle vendite in quello che hai scelto.</p></div>';
+    const voci = A.voci.slice().sort((a, b) => b.tot - a.tot), num = new Map(voci.map((x, k) => [x, k + 1]));
+    const col = { vincenti: 'var(--verde)', rendere: 'var(--giallo)', spingere: 'var(--accento)', ripensare: 'var(--rosso)' };
+    const W = 340, H = 260, P = 34;
+    const maxQ = Math.max(...voci.map(x => x.q)), maxM = Math.max(...voci.map(x => x.i.margine)), minM = Math.min(0, ...voci.map(x => x.i.margine));
+    const X = q => P + 10 + Math.sqrt(q / maxQ) * (W - P - 24), Y = m => H - P - 10 - (m - minM) / (maxM - minM || 1) * (H - P - 30);
+    const svg = `<svg class="mappa" viewBox="0 0 ${W} ${H}">
+      <line x1="${X(A.sogliaQ)}" y1="8" x2="${X(A.sogliaQ)}" y2="${H - P}" class="asse-s"/><line x1="${P}" y1="${Y(A.sogliaM)}" x2="${W - 6}" y2="${Y(A.sogliaM)}" class="asse-s"/>
+      <line x1="${P}" y1="${H - P}" x2="${W - 6}" y2="${H - P}" class="asse"/><line x1="${P}" y1="8" x2="${P}" y2="${H - P}" class="asse"/>
+      <text x="${W / 2}" y="${H - 8}" text-anchor="middle" class="g-x">quanto vende →</text><text x="12" y="${H / 2}" transform="rotate(-90 12 ${H / 2})" text-anchor="middle" class="g-x">quanto rende a pezzo →</text>
+      ${voci.slice().reverse().map(x => `<circle cx="${X(x.q)}" cy="${Y(x.i.margine)}" r="9" fill="${col[x.g]}" stroke="#fff" stroke-width="1.5"/><text x="${X(x.q)}" y="${Y(x.i.margine) + 3.5}" text-anchor="middle" class="g-num">${num.get(x)}</text>`).join('')}
+    </svg>`;
+    const riga = (x) => `<a class="riga piccola" href="#/ricetta/${x.r.id}"><span><span><span class="num" style="background:${col[x.g]}">${num.get(x)}</span>${esc(x.r.nome)}</span></span><small>${qta(x.q)} · ${euro(x.i.margine)}</small></a>`;
+    return testa + `<p class="tenue piccolo">Ogni ricetta finisce in una delle quattro caselle, secondo quanto vende e quanto fa guadagnare a pezzo rispetto alla media (${euro(A.sogliaM)} a pezzo). Il numero è lo stesso nel grafico e negli elenchi: 1 è quella che fa guadagnare di più in tutto.</p>
+      <div class="mappa-due">${svg}
+      <div class="quadranti">${Object.entries(QUADRANTI).map(([k, [nome, spiega, c]]) => { const l = voci.filter(x => x.g === k); return `<div class="quad" style="border-color:${c}"><h4 style="color:${c}">${nome} <small>(${l.length})</small></h4><p class="tenue piccolo">${spiega}</p>${l.slice(0, 6).map(riga).join('')}${l.length > 6 ? `<details><summary class="piccolo">e altre ${l.length - 6}</summary>${l.slice(6).map(riga).join('')}</details>` : ''}</div>`; }).join('')}</div></div>
+      <p class="tenue piccolo">Accanto al nome: pezzi venduti · guadagno a pezzo senza IVA. La soglia di «vende tanto» è il 70% della media (${n2(A.sogliaQ, 0)} pezzi).</p></div>`;
+  }
   PAGINE.pannello = function () {
     const conVendite = S.periodiVendita.filter(pp => S.ricette.some(r => (r.vendite || {})[pp]));
     const SEL = selezionePannello(), pers = SEL.pers, per = SEL.etichetta;
@@ -474,16 +495,12 @@
       ${daCompletare.length ? `<div class="card larga"><h3>Ricette vendute ma senza ingredienti completi (${daCompletare.length})</h3><p class="tenue piccolo">Finché non le completi i conti sono parziali. Parti da quelle che vendono di più:</p>
         ${daCompletare.slice(0, 5).map(r => `<a class="riga" href="#/ricetta/${r.id}"><span>${esc(r.nome)}</span><span class="destra">${qta(qv(r))} venduti</span></a>`).join('')}
         <div class="bottoni"><button class="btn primario" data-az="pan-completa">Completale una per una, dalle più vendute</button></div></div>` : ''}
-      <div class="card larga"><h3>La mappa del menu · ${esc(per)}</h3>
-        <p class="tenue piccolo">Ogni ricetta finisce in una delle quattro caselle, secondo quanto vende e quanto fa guadagnare a pezzo rispetto alla media (${euro(A.sogliaM)} a pezzo).</p>
-        ${A.voci.length >= 2 ? `<div class="quadranti">${Object.entries(QUADRANTI).map(([k, [nome, spiega, col]]) => { const l = A.voci.filter(x => x.g === k).sort((a, b) => b.tot - a.tot); return `<div class="quad" style="border-color:${col}"><h4 style="color:${col}">${nome} <small>(${l.length})</small></h4><p class="tenue piccolo">${spiega}</p>${l.slice(0, 6).map(x => `<a class="riga piccola" href="#/ricetta/${x.r.id}"><span>${esc(x.r.nome)}</span><small>${qta(x.q)} · ${euro(x.i.margine)}</small></a>`).join('')}${l.length > 6 ? `<p class="tenue piccolo">e altre ${l.length - 6}</p>` : ''}</div>`; }).join('')}</div>
-          <p class="tenue piccolo">Accanto al nome: pezzi venduti · guadagno a pezzo. <a href="#/mappa" data-az="pan-mappa">Vedi la mappa con il grafico ›</a></p>` : '<p class="tenue">Servono almeno due ricette complete con delle vendite in questo periodo.</p>'}
-      </div>
       <div class="griglia-tre">
         ${top(piuVendute, 'I più venduti', 'Pezzi venduti nel periodo.', x => qta(x.q) + ' pz')}
         ${top(piuGuadagno, 'Fanno guadagnare di più', 'Guadagno sulla merce in tutto il periodo.', x => euro(x.tot, 0))}
         ${top(menoAPezzo, 'Rendono meno a pezzo', 'Il moltiplicatore più basso tra quelli venduti.', x => badgeMolt(x.i))}
-      </div>`;
+      </div>
+      ${schedaMappa(A, per)}`;
     } else {
       andamento = `<div class="card evidenza"><h3>Carica le vendite</h3><p>Qui vedrai com'è andato il periodo: incasso, quanto se ne va in merce, cosa vende e cosa fa guadagnare. Servono le vendite della cassa.</p><a class="btn primario" href="#/importa">Importa dalla cassa</a></div>`;
     }
@@ -1130,7 +1147,7 @@
   PAGINE.altro = function () {
     const voci = [
       ['fornitori', 'Fornitori', 'contatti, spesa, prodotti'], ['magazzino', 'Magazzino', 'inventario ogni sei mesi'],
-['vendite', 'Vendite', 'pezzi venduti per periodo'], ['mappa', 'Mappa del menu', 'cosa vende e cosa rende'],
+['vendite', 'Vendite', 'pezzi venduti per periodo'],
       ['simulatore', 'Simulatore', 'e se cambia un prezzo?'], ['eventi', 'Eventi', 'listini per le serate'], ['olio', 'Costo olio', 'quanto costa friggere'],
       ['costi', 'Costi del locale', 'tutte le fatture: merce, bollette, servizi, materiali'],
       ['ordine', 'Metti in ordine i dati', 'tutti gli strumenti di sistemazione, in ordine'],
@@ -1263,30 +1280,8 @@
   };
 
   // ----- Mappa del menu -----
-  PAGINE.mappa = function () {
-    const SEL = selezionePannello(), pers = SEL.pers;
-    const A = analisiMenu(pers, tipiPannello());
-    const voci = A.voci;
-    let html = scelteVendite(SEL, A.q);
-    if (voci.length < 2) return { titolo: 'Mappa del menu', indietro: '#/altro', html: html + '<p class="tenue centro">Servono almeno due ricette complete con delle vendite in quello che hai scelto.</p>' };
-    const tot = voci.reduce((s, x) => s + x.q, 0);
-    const sogliaQ = 0.7 * tot / voci.length;
-    const sogliaM = voci.reduce((s, x) => s + x.q * x.i.margine, 0) / tot;
-    const gruppo = (x) => x.q >= sogliaQ ? (x.i.margine >= sogliaM ? 'vincenti' : 'rendere') : (x.i.margine >= sogliaM ? 'spingere' : 'ripensare');
-    const NOMI = { vincenti: ['Vincenti', 'vendono tanto e rendono tanto: non toccarli'], rendere: ['Da far rendere di più', 'vendono tanto ma rendono poco: rivedi costo o prezzo'], spingere: ['Da spingere', 'rendono bene ma vendono poco: mettili in vista'], ripensare: ['Da ripensare', 'vendono poco e rendono poco'] };
-    const W = 340, H = 260, P = 34;
-    const maxQ = Math.max(...voci.map(x => x.q)), maxM = Math.max(...voci.map(x => x.i.margine)), minM = Math.min(0, ...voci.map(x => x.i.margine));
-    const X = q => P + 10 + q / maxQ * (W - P - 24), Y = m => H - P - 10 - (m - minM) / (maxM - minM || 1) * (H - P - 30);
-    const col = { vincenti: 'var(--verde)', rendere: 'var(--giallo)', spingere: 'var(--accento)', ripensare: 'var(--rosso)' };
-    html += `<div class="card"><svg class="mappa" viewBox="0 0 ${W} ${H}">
-      <line x1="${X(sogliaQ)}" y1="8" x2="${X(sogliaQ)}" y2="${H - P}" class="asse-s"/><line x1="${P}" y1="${Y(sogliaM)}" x2="${W - 6}" y2="${Y(sogliaM)}" class="asse-s"/>
-      <line x1="${P}" y1="${H - P}" x2="${W - 6}" y2="${H - P}" class="asse"/><line x1="${P}" y1="8" x2="${P}" y2="${H - P}" class="asse"/>
-      <text x="${W / 2}" y="${H - 8}" text-anchor="middle" class="g-x">quanto vende →</text><text x="12" y="${H / 2}" transform="rotate(-90 12 ${H / 2})" text-anchor="middle" class="g-x">quanto rende a pezzo →</text>
-      ${voci.map((x, k) => `<circle cx="${X(x.q)}" cy="${Y(x.i.margine)}" r="9" fill="${col[gruppo(x)]}" stroke="#fff" stroke-width="1.5"/><text x="${X(x.q)}" y="${Y(x.i.margine) + 3.5}" text-anchor="middle" class="g-num">${k + 1}</text>`).join('')}
-    </svg><p class="tenue piccolo">Rende = margine a pezzo senza IVA (${euro(sogliaM)} di media). Vende = pezzi venduti (la soglia è il 70% della media, ${n2(sogliaQ, 0)} pezzi).</p></div>`;
-    html += Object.keys(NOMI).map(g => { const l = voci.filter(x => gruppo(x) === g); return l.length ? `<div class="card"><h3><span class="punto" style="background:${col[g]}"></span>${NOMI[g][0]}</h3><p class="tenue piccolo">${NOMI[g][1]}</p>${l.map(x => `<a class="riga" href="#/ricetta/${x.r.id}"><span><span><span class="num" style="background:${col[g]}">${voci.indexOf(x) + 1}</span>${esc(x.r.nome)}</span><small>${qta(x.q)} venduti</small></span><span class="destra">${euro(x.i.margine)}<small>a pezzo · ${euro(x.q * x.i.margine, 0)} in tutto</small></span></a>`).join('')}</div>` : ''; }).join('');
-    return { titolo: 'Mappa del menu', indietro: '#/altro', html };
-  };
+  // la mappa del menu ora è in fondo al pannello: il vecchio indirizzo porta lì
+  PAGINE.mappa = function () { history.replaceState(null, '', '#/pannello'); setTimeout(() => { const m = document.getElementById('mappa'); if (m) m.scrollIntoView({ block: 'start' }); }, 60); return PAGINE.pannello(); };
 
   // ----- Simulatore -----
   PAGINE.simulatore = function () {
@@ -1430,9 +1425,9 @@
   };
 
   // ---------- Disegno ----------
-  const ALTRE = [['fornitori', 'Fornitori'], ['magazzino', 'Magazzino'], ['vendite', 'Vendite'], ['costi', 'Costi del locale'], ['mappa', 'Mappa del menu'], ['simulatore', 'Simulatore'], ['eventi', 'Eventi'], ['olio', 'Costo olio'], ['foglio', 'Prodotti del foglio'], ['importa', 'Importa dati'], ['impostazioni', 'Impostazioni']];
+  const ALTRE = [['fornitori', 'Fornitori'], ['magazzino', 'Magazzino'], ['vendite', 'Vendite'], ['costi', 'Costi del locale'], ['simulatore', 'Simulatore'], ['eventi', 'Eventi'], ['olio', 'Costo olio'], ['foglio', 'Prodotti del foglio'], ['importa', 'Importa dati'], ['impostazioni', 'Impostazioni']];
   const TAB = [['pannello', 'Pannello', 'M3 12l9-8 9 8v8a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z'], ['prodotti', 'Prodotti', 'M4 7l8-4 8 4v10l-8 4-8-4zM4 7l8 4 8-4M12 11v10'], ['ricette', 'Ricette', 'M6 3h12M8 3v6l-4 12h16L16 9V3'], ['fatture', 'Fatture', 'M6 2h9l5 5v15H6zM14 2v6h6M9 13h8M9 17h8'], ['altro', 'Altro', 'M5 12h.01M12 12h.01M19 12h.01']];
-  const SEZIONE = { costi: 'altro', ordine: 'pannello', 'gruppi-ricette': 'ricette', foglio: 'prodotti', doppioni: 'prodotti', importa: 'altro', 'controllo-fatture': 'fatture', controllo: 'prodotti', pulizia: 'altro', formati: 'prodotti', prodotto: 'prodotti', 'modifica-prodotto': 'prodotti', ricetta: 'ricette', 'modifica-ricetta': 'ricette', 'rivedi-ricette': 'ricette', fattura: 'fatture' };
+  const SEZIONE = { mappa: 'pannello', costi: 'altro', ordine: 'pannello', 'gruppi-ricette': 'ricette', foglio: 'prodotti', doppioni: 'prodotti', importa: 'altro', 'controllo-fatture': 'fatture', controllo: 'prodotti', pulizia: 'altro', formati: 'prodotti', prodotto: 'prodotti', 'modifica-prodotto': 'prodotti', ricetta: 'ricette', 'modifica-ricetta': 'ricette', 'rivedi-ricette': 'ricette', fattura: 'fatture' };
   function disegna() {
     if (!S) return;
     const [, nome, arg] = (location.hash || '#/pannello').split('/');
@@ -2960,7 +2955,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v64';
+  const VERSIONE_APP = 'repub-v65';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;

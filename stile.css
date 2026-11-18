@@ -333,3 +333,9 @@ label.spunta input { flex: none; margin-top: 1px; }
 @media (max-width: 520px) { h1 { font-size: 17px; } }
 /* tante categorie: su iPad e Mac le scelte vanno a capo invece di scorrere di lato */
 @media (min-width: 700px) { .chips { flex-wrap: wrap; overflow-x: visible; } }
+/* mappa del menu nel pannello: grafico e caselle affiancati sugli schermi larghi */
+.mappa-due { display: grid; grid-template-columns: 1fr; gap: 12px; align-items: start; }
+.mappa-due .mappa { max-width: 520px; margin: 0 auto; }
+@media (min-width: 1100px) { .mappa-due { grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); } }
+.quad details summary { margin-top: 4px; font-size: 13px; }
+.quad .riga small { white-space: nowrap; flex: none; }
