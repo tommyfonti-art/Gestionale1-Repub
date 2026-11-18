@@ -1200,8 +1200,31 @@
   };
 
   // ----- Fatture -----
+  // elenco delle fatture con la ricerca: fornitore, numero, data, importo o un articolo dentro le righe (es. «tovagliette»)
+  function listaFatture() {
+    const t = normCassa(ui.filtroFatt || '').split(' ').filter(Boolean), st = ui.statoFatt || '';
+    const imp = /^\d+([.,]\d+)?$/.test((ui.filtroFatt || '').trim()) ? Number(ui.filtroFatt.trim().replace(',', '.')) : null;
+    // una data (18/11/2026) o un mese (11/2026, novembre 2026): cerco solo per data
+    const q = (ui.filtroFatt || '').trim().toLowerCase(); let md = null, mm;
+    if ((mm = q.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/))) md = `${mm[3]}-${mm[2].padStart(2, '0')}-${mm[1].padStart(2, '0')}`;
+    else if ((mm = q.match(/^(\d{1,2})[\/.-](\d{4})$/))) md = `${mm[2]}-${mm[1].padStart(2, '0')}`;
+    else if ((mm = q.match(/^([a-z]+)\s+(\d{4})$/)) && meseDa(mm[1]) >= 0) md = `${mm[2]}-${String(meseDa(mm[1]) + 1).padStart(2, '0')}`;
+    else if ((mm = q.match(/^(\d{4})$/))) md = mm[1];
+    const l = S.fatture.filter(f => (!st || (st === 'reg' ? f.stato === 'registrata' : st === 'nc' ? f.tipoDoc === 'TD04' : f.stato !== 'registrata'))).map(f => {
+      if (md) return (f.data || '').startsWith(md) ? { f } : null;
+      if (!t.length) return { f };
+      const nome = (M.fornitore(f.fornitoreId) || {}).nome || f.fornitoreNome || '';
+      const testa = normCassa(nome + ' ' + f.fornitoreNome + ' ' + f.numero + ' ' + dataIt(f.data));
+      if (t.every(w => testa.includes(w)) || (imp != null && (Math.abs((f.totale || 0) - imp) < 0.5 || Math.abs((f.imponibile || 0) - imp) < 0.5))) return { f };
+      const rg = f.righe.find(r => { const x = normCassa(r.descrizione + ' ' + ((M.prodotto(r.prodottoId) || {}).nomeBreve || '')); return t.every(w => (x + ' ' + testa).includes(w)); });
+      return rg ? { f, rg } : null;
+    }).filter(Boolean).sort((a, b) => (a.f.data || '') < (b.f.data || '') ? 1 : -1);
+    if (!l.length) return '<p class="tenue centro">Nessuna fattura.</p>';
+    const tot = l.reduce((x, { f }) => x + (f.tipoDoc === 'TD04' ? -1 : 1) * (Number(f.imponibile) || 0), 0);
+    return (t.length || st ? `<p class="tenue piccolo" style="grid-column:1/-1">${l.length} ${l.length === 1 ? 'fattura' : 'fatture'} · ${euro(tot, 0)} senza IVA</p>` : '') + l.map(({ f, rg }) => `<a class="riga" href="#/fattura/${f.id}"><span>${esc((M.fornitore(f.fornitoreId) || {}).nome || f.fornitoreNome)}<small>n. ${esc(f.numero)} del ${dataIt(f.data)}${f.tipoDoc === 'TD04' ? ' · nota di credito' : ''}${f.origine === 'foto' ? ' · da foto' : ''}${rg ? `<br>riga: ${esc(String(rg.descrizione).slice(0, 70))} · ${euro(rg.totale)}` : ''}</small></span><span class="destra">${euro(f.totale)}${f.stato === 'registrata' ? '<span class="badge verde">registrata</span>' : `<span class="badge giallo">${M.daAbbinare(f) ? M.daAbbinare(f) + ' da collegare' : 'da registrare'}</span>`}</span></a>`).join('');
+  }
   PAGINE.fatture = function () {
-    const l = S.fatture.slice().sort((a, b) => (a.data || '') < (b.data || '') ? 1 : -1);
+    const l = S.fatture;
     const daCtrl = fornitoriDaControllare().length;
     return {
       titolo: 'Fatture', html: `
@@ -1215,7 +1238,9 @@
         <div class="casella">${S.casella.url ? `<div><b>Casella delle fatture</b><small>${S.casella.ultimoControllo ? 'ultimo controllo ' + new Date(S.casella.ultimoControllo).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'mai controllata'}${S.casella.fotoInAttesa ? ' · ' + S.casella.fotoInAttesa + ' foto in attesa' : ''}</small></div><button class="btn piccolo" data-az="controlla-casella">Controlla adesso</button>` : `<div><b>Casella delle fatture</b><small>non ancora collegata</small></div><a class="btn piccolo" href="#/impostazioni">Collega</a>`}</div>
         <details><summary>Fatture di esempio per la prova</summary><div class="bottoni">${window.FATTURE_ESEMPIO.map((x, i) => `<button class="btn piccolo" data-az="esempio" data-i="${i}">${esc(x.nome)}</button>`).join('')}</div></details>
       </div>
-      <div class="card lista">${l.length ? l.map(f => `<a class="riga" href="#/fattura/${f.id}"><span>${esc((M.fornitore(f.fornitoreId) || {}).nome || f.fornitoreNome)}<small>n. ${esc(f.numero)} del ${dataIt(f.data)}${f.tipoDoc === 'TD04' ? ' · nota di credito' : ''}${f.origine === 'foto' ? ' · da foto' : ''}</small></span><span class="destra">${euro(f.totale)}${f.stato === 'registrata' ? '<span class="badge verde">registrata</span>' : `<span class="badge giallo">${M.daAbbinare(f) ? M.daAbbinare(f) + ' da collegare' : 'da registrare'}</span>`}</span></a>`).join('') : '<p class="tenue centro">Nessuna fattura caricata.</p>'}</div>`
+      ${l.length ? `<input class="cerca" type="search" placeholder="Cerca: fornitore, numero, articolo, importo, data o mese (es. 11/2026)" value="${esc(ui.filtroFatt || '')}" data-filtro="fatture">
+      <div class="chips">${[['', 'Tutte'], ['dafare', 'Da sistemare (' + l.filter(f => f.stato !== 'registrata').length + ')'], ['reg', 'Registrate'], ['nc', 'Note di credito']].map(([k, v]) => `<button class="chip ${(ui.statoFatt || '') === k ? 'on' : ''}" data-az="stato-fatt" data-v="${k}">${v}</button>`).join('')}</div>` : ''}
+      <div class="card lista" id="lista-fatt">${l.length ? listaFatture() : '<p class="tenue centro">Nessuna fattura caricata.</p>'}</div>`
     };
   };
 
@@ -2847,6 +2872,7 @@
   AZ['duplica-ricetta'] = (el) => { const r = JSON.parse(JSON.stringify(M.ricetta(el.dataset.id))); r.id = M.uid('r'); r.nome += ' (copia)'; r.vendite = {}; S.ricette.push(r); salva(); vai('#/modifica-ricetta/' + r.id); };
   AZ['registra-fattura'] = (el) => { const f = S.fatture.find(x => x.id === el.dataset.id); M.registraFattura(f); salva(); window.scrollTo(0, 0); disegna(); avviso('Fattura registrata: costi aggiornati.'); };
   AZ['annulla-fattura'] = (el) => { if (!confirm('Annullare la registrazione? Tolgo i prezzi di questa fattura.')) return; const f = S.fatture.find(x => x.id === el.dataset.id); M.annullaFattura(f); salva(); ridisegnaMantenendo(); };
+  AZ['stato-fatt'] = (el) => { ui.statoFatt = el.dataset.v; ridisegnaMantenendo(); };
   AZ['riga-merce'] = (el) => {
     const f = S.fatture.find(x => x.id === el.dataset.id); if (!f) return; const rg = f.righe[+el.dataset.k]; if (!rg) return;
     M.annullaFattura(f); rg.ignora = false; rg.automatico = false; rg.prodottoId = null; rg.forzaMerce = true;
@@ -2983,6 +3009,7 @@
   document.addEventListener('input', (e) => {
     const el = e.target; const d = el.dataset;
     if (d.filtro === 'vendFiltro') { ui.vendFiltro = el.value; const f = el.value.toLowerCase(); document.querySelectorAll('.vend-riga').forEach(x => { x.style.display = !f || x.textContent.toLowerCase().includes(f) ? '' : 'none'; }); document.querySelectorAll('.griglia-vend > .card').forEach(c => { c.style.display = [...c.querySelectorAll('.vend-riga')].some(x => x.style.display !== 'none') ? '' : 'none'; }); return; }
+    if (d.filtro === 'fatture') { ui.filtroFatt = el.value; const x = $('#lista-fatt'); if (x) x.innerHTML = listaFatture(); return; }
     if (d.filtro === 'fornitori') { ui.filtroForn = el.value; const t = normCassa(el.value); document.querySelectorAll('#lista-forn [data-nome]').forEach(x => { x.hidden = t && !x.dataset.nome.includes(t); }); return; }
     if (d.filtro === 'prodotti') { ui.filtroProdotti = el.value; $('#lista').innerHTML = listaProdotti(); return; }
     if (d.filtro === 'ricette') {
@@ -3137,7 +3164,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v72';
+  const VERSIONE_APP = 'repub-v73';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
