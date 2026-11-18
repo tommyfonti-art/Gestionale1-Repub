@@ -4,7 +4,7 @@
   const M = window.Motore;
   const CHIAVE = 'gestionaleRepub.v1';
   let S;
-  const ui = { filtroProdotti: '', categoria: 'Tutte', tipoRicette: 'drink', filtroRicette: '', bozza: null, conta: null, mappaPeriodo: null, mappaGruppo: 'cucina', sim: { modo: 'prodotto', prodottoId: '', valore: '', ricettaId: '', prezzo: '' } };
+  const ui = { filtroProdotti: '', categoria: 'Tutte', tipoRicette: '*tutto', filtroRicette: '', bozza: null, conta: null, mappaPeriodo: null, mappaGruppo: 'cucina', sim: { modo: 'prodotto', prodottoId: '', valore: '', ricettaId: '', prezzo: '' } };
 
   // ---------- Utilità ----------
   const $ = (s, el) => (el || document).querySelector(s);
@@ -288,18 +288,42 @@
   function kpi(etichetta, valore, sotto, cls) {
     return `<div class="kpi ${cls || ''}"><div class="kpi-v">${valore}</div><div class="kpi-e">${esc(etichetta)}</div>${sotto ? `<div class="kpi-s">${sotto}</div>` : ''}</div>`;
   }
+  // andamento nel tempo: linea a gradini (il prezzo resta uguale finché non cambia), date in proporzione,
+  // numeri scritti solo dove il valore cambia, così anche con tante fatture resta leggibile
   function grafico(punti, etichettaY) {
-    if (!punti || punti.length < 2) return '<p class="tenue">Il grafico compare quando ci sono almeno due prezzi in date diverse.</p>';
-    const W = 320, H = 140, P = 28;
-    const ys = punti.map(p => p.y); let min = Math.min(...ys), max = Math.max(...ys);
-    if (max === min) { max += max * 0.05 || 1; min -= min * 0.05 || 1; }
-    const x = i => P + i * (W - 2 * P) / (punti.length - 1);
-    const y = v => H - P + 6 - (v - min) / (max - min) * (H - 2 * P);
-    const linea = punti.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.y).toFixed(1)}`).join(' ');
+    const tutti = (punti || []).filter(p => p.data && p.y != null).sort((a, b) => a.data < b.data ? -1 : 1);
+    // un punto per giorno, e solo quando il valore cambia (più l'ultimo)
+    const l = [];
+    tutti.forEach(p => { const u = l[l.length - 1]; if (u && u.data === p.data) u.y = p.y; else if (!u || Math.abs(u.y - p.y) > 0.0005) l.push({ data: p.data, y: p.y }); });
+    const ultimo = tutti[tutti.length - 1];
+    if (l.length < 2) return tutti.length ? `<p class="tenue">Sempre ${euro(tutti[0].y)} dal ${dataIt(tutti[0].data)}: non è mai cambiato.</p>` : '<p class="tenue">Il grafico compare quando ci sono almeno due prezzi in date diverse.</p>';
+    const fine = ultimo.data > l[l.length - 1].data ? ultimo.data : l[l.length - 1].data;
+    const W = 340, H = 150, PL = 10, PR = 10, PT = 22, PB = 24;
+    const t = d => Date.parse(d), t0 = t(l[0].data), t1 = Math.max(t(fine), t0 + 864e5);
+    const ys = l.map(p => p.y); let min = Math.min(...ys), max = Math.max(...ys);
+    const pad = (max - min) * 0.15 || max * 0.05 || 1; min -= pad; max += pad;
+    const x = d => PL + (t(d) - t0) / (t1 - t0) * (W - PL - PR);
+    const y = v => PT + (max - v) / (max - min) * (H - PT - PB);
+    let path = `M${x(l[0].data).toFixed(1)},${y(l[0].y).toFixed(1)}`;
+    l.slice(1).forEach(p => { path += ` H${x(p.data).toFixed(1)} V${y(p.y).toFixed(1)}`; });
+    path += ` H${x(fine).toFixed(1)}`;
+    // quali numeri scrivere: tutti se sono pochi, altrimenti primo, ultimo, il più alto e il più basso
+    const idx = new Set(l.length <= 6 ? l.map((_, i) => i) : [0, l.length - 1, ys.indexOf(Math.max(...ys)), ys.indexOf(Math.min(...ys))]);
+    const ancora = (xx) => xx < 40 ? 'start' : xx > W - 40 ? 'end' : 'middle';
+    // date sull'asse: inizio, fine e qualche mese in mezzo
+    const mesi = []; { const a = new Date(t0), b = new Date(t1); let d = new Date(Date.UTC(a.getUTCFullYear(), a.getUTCMonth() + 1, 1)); while (d < b) { mesi.push(d.toISOString().slice(0, 10)); d = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1)); } }
+    const passo = Math.ceil(mesi.length / 5) || 1;
+    const MM = ['gen', 'feb', 'mar', 'apr', 'mag', 'giu', 'lug', 'ago', 'set', 'ott', 'nov', 'dic'];
+    const tacche = mesi.filter((_, i) => i % passo === 0).filter(d => x(d) > PL + 30 && x(d) < W - PR - 30);
+    const primo = l[0].y, dopo = l[l.length - 1].y, varia = primo ? (dopo / primo - 1) * 100 : 0;
     return `<svg class="grafico" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(etichettaY)}">
-      <path d="${linea}" fill="none" stroke="var(--accento)" stroke-width="2.5" stroke-linejoin="round"/>
-      ${punti.map((p, i) => `<circle cx="${x(i)}" cy="${y(p.y)}" r="4" fill="var(--accento)"/><text x="${x(i)}" y="${y(p.y) - 9}" text-anchor="middle" class="g-val">${n2(p.y)}</text><text x="${x(i)}" y="${H - 4}" text-anchor="middle" class="g-x">${esc(p.x)}</text>`).join('')}
-    </svg>`;
+      <line x1="${PL}" y1="${H - PB}" x2="${W - PR}" y2="${H - PB}" class="asse"/>
+      ${tacche.map(d => `<line x1="${x(d).toFixed(1)}" y1="${PT - 6}" x2="${x(d).toFixed(1)}" y2="${H - PB}" stroke="var(--linea)" stroke-width="1"/><text x="${x(d).toFixed(1)}" y="${H - 8}" text-anchor="middle" class="g-x">${MM[+d.slice(5, 7) - 1]}${d.slice(5, 7) === '01' ? ' ' + d.slice(2, 4) : ''}</text>`).join('')}
+      <text x="${PL}" y="${H - 8}" text-anchor="start" class="g-x">${dataIt(l[0].data).slice(0, 5)}</text><text x="${W - PR}" y="${H - 8}" text-anchor="end" class="g-x">${dataIt(fine).slice(0, 5)}</text>
+      <path d="${path}" fill="none" stroke="var(--accento)" stroke-width="2.2" stroke-linejoin="round"/>
+      ${l.map((p, i) => `<circle cx="${x(p.data).toFixed(1)}" cy="${y(p.y).toFixed(1)}" r="3.2" fill="var(--accento)"/>${idx.has(i) ? `<text x="${x(p.data).toFixed(1)}" y="${(y(p.y) - 7).toFixed(1)}" text-anchor="${ancora(x(p.data))}" class="g-val">${n2(p.y)}</text>` : ''}`).join('')}
+    </svg>
+    <p class="tenue piccolo">Dal ${dataIt(l[0].data)} ${euro(primo)}, oggi ${euro(dopo)} (<b class="${varia > 0.5 ? 'rosso-t' : varia < -0.5 ? 'verde-t' : ''}">${varia > 0 ? '+' : ''}${n2(varia, 1)}%</b>). È cambiato ${l.length - 1} ${l.length === 2 ? 'volta' : 'volte'}${tutti.length > l.length ? `, su ${tutti.length} prezzi registrati` : ''}.</p>`;
   }
   function opzioniProdotti(sel, filtroCat) {
     const lista = S.prodotti.filter(p => !filtroCat || filtroCat(p)).slice().sort((a, b) => a.nomeBreve.localeCompare(b.nomeBreve));
@@ -625,9 +649,10 @@
       ${vdHtml}
       ${(p.allergeni || []).length ? `<div class="card"><h3>Allergeni</h3><div class="chips">${p.allergeni.map(a => `<span class="chip on">${esc(a)}</span>`).join('')}</div></div>` : ''}
       ${p.speciale ? '' : `<div class="card"><h3>Storico dei prezzi</h3>
-        ${grafico(storico.map(e => ({ x: dataIt(e.data).slice(0, 5), y: e.prezzo })), 'Prezzo')}
-        <table class="tab"><tr><th>Data</th><th>Fornitore</th><th class="n">Prezzo</th><th>Da</th></tr>
-        ${storico.slice().reverse().map(e => `<tr><td>${dataIt(e.data)}</td><td>${esc((M.fornitore(e.fornitoreId) || {}).nome || '—')}</td><td class="n">${euro(e.prezzo)}${e.sconto ? `<small>sconto ${n2(e.sconto, 0)}%</small>` : ''}</td><td>${e.fatturaId ? `<a href="#/fattura/${e.fatturaId}">${esc(e.origine)}</a>` : esc(e.origine || 'a mano')}</td></tr>`).join('')}</table>
+        ${grafico(storico.map(e => ({ data: e.data, y: e.prezzo })), 'Prezzo')}
+        ${(() => { const rigaP = e => `<tr><td>${dataIt(e.data)}</td><td>${esc((M.fornitore(e.fornitoreId) || {}).nome || '—')}</td><td class="n">${euro(e.prezzo)}${e.sconto ? `<small>sconto ${n2(e.sconto, 0)}%</small>` : ''}</td><td>${e.fatturaId ? `<a href="#/fattura/${e.fatturaId}">${esc(e.origine)}</a>` : esc(e.origine || 'a mano')}</td></tr>`;
+          const testa = '<tr><th>Data</th><th>Fornitore</th><th class="n">Prezzo</th><th>Da</th></tr>', l = storico.slice().reverse();
+          return `<table class="tab">${testa}${l.slice(0, 8).map(rigaP).join('')}</table>${l.length > 8 ? `<details><summary>Vedi tutti i ${l.length} prezzi</summary><table class="tab">${l.slice(8).map(rigaP).join('')}</table></details>` : ''}`; })()}
         <button class="btn piccolo" data-az="prezzo-mano" data-id="${p.id}">＋ Aggiungi un prezzo a mano</button></div>`}
       ${ultimi.length > 1 ? `<div class="card"><h3>Confronto fornitori</h3><table class="tab"><tr><th>Fornitore</th><th>Ultimo acquisto</th><th class="n">Prezzo</th></tr>
         ${ultimi.sort((a, b) => a[1].prezzo - b[1].prezzo).map(([fid, e], i) => `<tr><td>${esc((M.fornitore(fid) || {}).nome || '—')}${i === 0 ? ' <span class="badge verde">il più basso</span>' : ''}</td><td>${dataIt(e.data)}</td><td class="n">${euro(e.prezzo)}</td></tr>`).join('')}</table></div>` : ''}
@@ -878,9 +903,20 @@
   };
 
   // ----- Ricette -----
+  // scelta del gruppo: un gruppo solo, oppure tutte le ricette (o tutte quelle del bar o della cucina)
+  const SCELTE_REP = { '*tutto': 'Tutte', '*bar': 'Bar', '*cucina': 'Cucina' };
+  const tipiScelti = (t) => t === '*tutto' ? Object.keys(M.TIPI).filter(k => k !== 'semilavorato') : t === '*bar' ? M.tipiDi('bar') : t === '*cucina' ? M.tipiDi('cucina') : [t];
+  const nomeScelta = (t) => t === '*tutto' ? 'ricette' : t === '*bar' ? 'ricette del bar' : t === '*cucina' ? 'ricette della cucina' : (M.TIPI[t] || 'ricette').toLowerCase();
+  function chipsGruppi(az) {
+    const t = ui.tipoRicette, rep = ui.repRicette || (SCELTE_REP[t] ? t : '*tutto');
+    const gruppi = Object.keys(M.TIPI).filter(k => k !== 'semilavorato' && (rep === '*tutto' || M.REPARTO_TIPO[k] === rep.slice(1)));
+    return `<div class="chips">${Object.entries(SCELTE_REP).map(([k, v]) => `<button class="chip ${t === k ? 'on' : rep === k && !SCELTE_REP[t] && t !== 'semilavorato' ? 'giallo' : ''}" data-az="${az}" data-v="${k}">${v}</button>`).join('')}<button class="chip ${t === 'semilavorato' ? 'on' : ''}" data-az="${az}" data-v="semilavorato">Preparazioni</button></div>
+      <div class="chips sotto">${gruppi.map(k => `<button class="chip ${t === k ? 'on' : ''}" data-az="${az}" data-v="${k}">${esc(M.TIPI[k])} <span class="${t === k ? '' : 'tenue'}">${S.ricette.filter(r => r.tipo === k).length}</span></button>`).join('')}</div>`;
+  }
   function listaRicette() {
     const f = ui.filtroRicette.toLowerCase();
-    const l = S.ricette.filter(r => r.tipo === ui.tipoRicette && (!f || r.nome.toLowerCase().includes(f))).sort((a, b) => a.nome.localeCompare(b.nome));
+    const scelti = tipiScelti(ui.tipoRicette), conGruppo = scelti.length > 1;
+    const l = S.ricette.filter(r => scelti.includes(r.tipo) && (!f || r.nome.toLowerCase().includes(f))).sort((a, b) => a.nome.localeCompare(b.nome));
     if (!l.length) return '<p class="tenue centro">Nessuna ricetta.</p>';
     // ordinamento: dal guadagno più basso, o dal moltiplicatore più basso (così i problemi stanno in cima)
     const ord = ui.ordineRicette || 'nome';
@@ -901,20 +937,20 @@
       const i = M.indicatori(r);
       // ricette con solo una parte degli ingredienti: i numeri sono troppo belli, lo dico chiaro
       const parziale = /^Ricetta da completare/.test(r.note || '');
-      return `<a class="riga" href="#/ricetta/${r.id}"><span>${esc(r.nome)}<small>costo ${euro(i.costo)} → prezzo ${euro(i.prezzo)}</small></span><span class="destra">${parziale ? '<span class="badge giallo">ingredienti incompleti</span>' : badgeMolt(i)}<small>${i.margine != null ? 'guadagni ' + euro(i.margine) : ''}</small></span></a>`;
+      return `<a class="riga" href="#/ricetta/${r.id}"><span>${esc(r.nome)}<small>${conGruppo ? esc(M.TIPI[r.tipo] || '') + ' · ' : ''}costo ${euro(i.costo)} → prezzo ${euro(i.prezzo)}</small></span><span class="destra">${parziale ? '<span class="badge giallo">ingredienti incompleti</span>' : badgeMolt(i)}<small>${i.margine != null ? 'guadagni ' + euro(i.margine) : ''}</small></span></a>`;
     }).join('');
   }
   PAGINE.ricette = function () {
     return {
       titolo: 'Ricette', azione: '<a class="btn-top" href="#/modifica-ricetta/nuovo">＋ Nuova</a>', html: `
       <input class="cerca" type="search" placeholder="Cerca una ricetta" value="${esc(ui.filtroRicette)}" data-filtro="ricette">
-      <div class="chips">${Object.entries(M.TIPI).map(([k, v]) => `<button class="chip ${ui.tipoRicette === k ? 'on' : ''}" data-az="tipo-ricette" data-v="${k}">${esc(v)}</button>`).join('')}</div>
+      ${chipsGruppi('tipo-ricette')}
       ${ui.tipoRicette !== 'semilavorato' ? `<div class="chips sotto"><span class="tenue piccolo">Ordina per:</span>${[['nome', 'Nome'], ['vendute', 'Più vendute'], ['guadagno', 'Guadagno più basso'], ['molt', 'Moltiplicatore più basso']].map(([k, v]) => `<button class="chip ${(ui.ordineRicette || 'nome') === k ? 'on' : ''}" data-az="ordine-ricette" data-v="${k}">${v}</button>`).join('')}</div>` : ''}
       ${ui.spostaModo ? `<div class="card evidenza sposta-barra"><b>Sposta le ricette spuntate (${(ui.spostaSel || []).length})</b>
         <label>nel gruppo<select id="sposta-in">${Object.entries(M.TIPI).filter(([k]) => k !== ui.tipoRicette).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('')}</select></label>
         <div class="bottoni"><button class="btn primario" data-az="sposta-ok">Sposta</button><button class="btn" data-az="sposta-tutte">Spunta tutte quelle visibili</button><button class="btn" data-az="sposta-fine">Annulla</button></div></div>` : ''}
       <div class="bottoni"><button class="btn piccolo" data-az="sposta-inizia">Sposta ricette in un altro gruppo</button><a class="btn piccolo" href="#/gruppi-ricette">＋ Nuovo gruppo / gestisci i gruppi</a></div>
-      <div class="bottoni"><button class="btn" data-az="riv-inizia">Rivedi ${ui.filtroRicette ? 'quelle con «' + esc(ui.filtroRicette) + '»' : 'le ' + esc((M.TIPI[ui.tipoRicette] || 'ricette').toLowerCase())} una per una</button></div>
+      <div class="bottoni"><button class="btn" data-az="riv-inizia">Rivedi ${ui.filtroRicette ? 'quelle con «' + esc(ui.filtroRicette) + '»' : 'le ' + esc(nomeScelta(ui.tipoRicette))} una per una</button></div>
       <div class="card lista" id="lista">${listaRicette()}</div>`
     };
   };
@@ -956,7 +992,7 @@
       ${!semi && periodi.length ? `<div class="card"><h3>Vendite</h3><table class="tab"><tr><th>Periodo</th><th class="n">Pezzi</th><th class="n">Incasso</th><th class="n">Margine</th></tr>
         ${periodi.map(pp => `<tr><td>${esc(pp)}</td><td class="n">${qta(r.vendite[pp])}</td><td class="n">${euro(r.vendite[pp] * r.prezzo, 0)}</td><td class="n">${euro(i.margine != null ? r.vendite[pp] * i.margine : null, 0)}</td></tr>`).join('')}</table>
         <p class="tenue piccolo">Margine senza IVA, con il costo di oggi.</p></div>` : ''}
-      <div class="card"><h3>Andamento del costo</h3>${grafico(and.map(x => ({ x: dataIt(x.data).slice(0, 5), y: x.costo })), 'Costo')}</div>
+      <div class="card"><h3>Andamento del costo</h3>${grafico(and.map(x => ({ data: x.data, y: x.costo })), 'Costo')}</div>
       ${uso.tutte.length ? `<div class="card"><h3>Usata in</h3>${uso.tutte.map(x => `<a class="riga" href="#/ricetta/${x.id}"><span>${esc(x.nome)}</span><span>${euro(M.costo(x))}</span></a>`).join('')}</div>` : ''}
       ${r.note ? `<div class="card"><h3>Note</h3><p>${esc(r.note)}</p></div>` : ''}
       <div class="bottoni">${!semi ? `<button class="btn" data-az="simula-ricetta" data-id="${r.id}">Simula un altro prezzo</button>` : ''}<button class="btn" data-az="duplica-ricetta" data-id="${r.id}">Duplica</button></div>`
@@ -974,7 +1010,8 @@
     const filtro = ui.rivFiltro || 'darivedere';
     const cerca = (ui.filtroRicette || '').toLowerCase();
     const ord = ui.rivOrdine || 'nome', pp = periodoVendite();
-    const l = S.ricette.filter(r => r.tipo === ui.tipoRicette && (!cerca || r.nome.toLowerCase().includes(cerca)) && (filtro === 'tutte' || r.id === ui.rivFisso || (filtro === 'incomplete' ? /^Ricetta da completare/.test(r.note || '') || !(r.righe || []).length : !r.rivista)))
+    const sceltiR = tipiScelti(ui.tipoRicette);
+    const l = S.ricette.filter(r => sceltiR.includes(r.tipo) && (!cerca || r.nome.toLowerCase().includes(cerca)) && (filtro === 'tutte' || r.id === ui.rivFisso || (filtro === 'incomplete' ? /^Ricetta da completare/.test(r.note || '') || !(r.righe || []).length : !r.rivista)))
       .sort((a, b) => a.nome.localeCompare(b.nome));
     if (ord === 'piu') l.sort((a, b) => vendutiDi(b, pp) - vendutiDi(a, pp));
     if (ord === 'meno') l.sort((a, b) => vendutiDi(a, pp) - vendutiDi(b, pp));
@@ -984,10 +1021,10 @@
   PAGINE['rivedi-ricette'] = function () {
     const lista = listaRivedi();
     const filtro = ui.rivFiltro || 'darivedere';
-    const tutte = S.ricette.filter(r => r.tipo === ui.tipoRicette);
+    const sceltiR = tipiScelti(ui.tipoRicette), tutte = S.ricette.filter(r => sceltiR.includes(r.tipo));
     const fatte = tutte.filter(r => r.rivista).length;
-    const titolo = 'Rivedi ' + (M.TIPI[ui.tipoRicette] || 'ricette').toLowerCase() + (ui.filtroRicette ? ' «' + ui.filtroRicette + '»' : '');
-    const chips = `<div class="chips">${Object.entries(M.TIPI).map(([k, v]) => `<button class="chip ${ui.tipoRicette === k ? 'on' : ''}" data-az="riv-tipo" data-v="${k}">${esc(v)}</button>`).join('')}</div>
+    const titolo = 'Rivedi ' + nomeScelta(ui.tipoRicette) + (ui.filtroRicette ? ' «' + ui.filtroRicette + '»' : '');
+    const chips = `${chipsGruppi('riv-tipo')}
       <div class="chips sotto">${[['darivedere', 'Da rivedere (' + (tutte.length - fatte) + ')'], ['incomplete', 'Con ingredienti incompleti'], ['tutte', 'Tutte (' + tutte.length + ')']].map(([k, v]) => `<button class="chip ${filtro === k ? 'on' : ''}" data-az="riv-filtro" data-v="${k}">${v}</button>`).join('')}</div>
       <div class="chips sotto"><span class="tenue piccolo">Ordine:</span>${[['nome', 'Per nome'], ['piu', 'Più vendute prima'], ['meno', 'Meno vendute prima'], ['nonvendute', 'Solo mai vendute']].map(([k, v]) => `<button class="chip ${(ui.rivOrdine || 'nome') === k ? 'on' : ''}" data-az="riv-ordine" data-v="${k}">${v}</button>`).join('')}</div>
       ${(ui.rivOrdine || 'nome') !== 'nome' ? `<div class="chips sotto"><span class="tenue piccolo">Vendite del periodo:</span>${S.periodiVendita.filter(pp => S.ricette.some(r => (r.vendite || {})[pp])).map(pp => `<button class="chip ${periodoVendite() === pp ? 'on' : ''}" data-az="riv-per" data-v="${esc(pp)}">${esc(pp)}</button>`).join('') || '<span class="tenue piccolo">nessuna vendita caricata</span>'}</div>` : ''}`;
@@ -1027,7 +1064,7 @@
   };
   PAGINE['modifica-ricetta'] = function (id) {
     if (!ui.bozza || ui.bozza._per !== 'r:' + id) {
-      const base = id === 'nuovo' ? { id: M.uid('r'), nome: '', tipo: ui.tipoRicette, prezzo: null, righe: [], resa: null, unita: 'ml', asporto: [], costiExtra: [], vendite: {}, note: '' } : JSON.parse(JSON.stringify(M.ricetta(id)));
+      const base = id === 'nuovo' ? { id: M.uid('r'), nome: '', tipo: tipiScelti(ui.tipoRicette)[0] || 'drink', prezzo: null, righe: [], resa: null, unita: 'ml', asporto: [], costiExtra: [], vendite: {}, note: '' } : JSON.parse(JSON.stringify(M.ricetta(id)));
       base._per = 'r:' + id; ui.bozza = base;
     }
     const b = ui.bozza;
@@ -1698,7 +1735,7 @@
   AZ.reparto = (el) => { ui.reparto = el.dataset.v; ui.categoria = 'Tutte'; ridisegnaMantenendo(); };
   AZ['prod-vista'] = (el) => { ui.prodVista = el.dataset.v; ridisegnaMantenendo(); };
   AZ['forn-prod'] = (el) => { ui.fornProd = ui.fornProd === el.dataset.v ? '' : el.dataset.v; ridisegnaMantenendo(); };
-  AZ['tipo-ricette'] = (el) => { ui.tipoRicette = el.dataset.v; ridisegnaMantenendo(); };
+  AZ['tipo-ricette'] = (el) => { ui.tipoRicette = el.dataset.v; if (SCELTE_REP[el.dataset.v]) ui.repRicette = el.dataset.v; ridisegnaMantenendo(); };
   AZ.allergene = (el) => { const a = el.dataset.v, b = ui.bozza; b.allergeni = b.allergeni || []; b.allergeni = b.allergeni.includes(a) ? b.allergeni.filter(x => x !== a) : b.allergeni.concat(a); ridisegnaMantenendo(); };
   AZ['vd-attiva'] = (el) => { ui.bozza.venditaDiretta = el.checked ? { nomePorzione: ui.bozza.unita === 'ml' ? 'calice' : 'porzione', porzione: ui.bozza.unita === 'ml' ? 150 : 1, prezzoPorzione: null, prezzoIntero: null } : null; ridisegnaMantenendo(); };
   AZ['salva-prodotto'] = () => {
@@ -2130,7 +2167,7 @@
     // i gruppi di base rimasti vuoti spariscono (si possono ricreare in Ricette › Gruppi)
     let tolti = 0;
     if (gruppiNuovi || L.gruppi.some(g => g.tipo === '__nuovo')) baseVecchi.forEach(k => { if (!S.ricette.some(r => r.tipo === k)) { S.tipiNascosti = Array.from(new Set((S.tipiNascosti || []).concat(k))); tolti++; } });
-    M.aggiornaTipi(); if (!M.TIPI[ui.tipoRicette]) ui.tipoRicette = Object.keys(M.TIPI)[0];
+    M.aggiornaTipi(); if (!M.TIPI[ui.tipoRicette] && !SCELTE_REP[ui.tipoRicette]) ui.tipoRicette = '*tutto';
     ui.ccListino = null; M.svuota(); salva(); ridisegnaMantenendo(); window.scrollTo(0, 0);
     avviso(`Fatto: ${nuove} ricette nuove, ${agg} aggiornate${spostate ? `, ${spostate} spostate nella categoria della cassa` : ''}${gruppiNuovi ? `, ${gruppiNuovi} gruppi nuovi` : ''}${tolti ? `, ${tolti} gruppi vecchi vuoti tolti` : ''}.`);
   };
@@ -2640,7 +2677,7 @@
   AZ['costi-sel'] = (el) => { const t = el.dataset.tipo, p = ui.costiSel || {}; ui.costiSel = t === 'anno' ? { tipo: t, anno: el.dataset.v } : t === 'date' ? { tipo: t, dal: p.dal || '', al: p.al || '' } : { tipo: t }; ridisegnaMantenendo(); };
   AZ['ordine-ricette'] = (el) => { ui.ordineRicette = el.dataset.v; ridisegnaMantenendo(); };
   AZ['riv-inizia'] = () => { ui.rivIdx = 0; ui.rivStorico = []; ui.rivFisso = null; ui.rivFiltro = ui.rivFiltro || 'darivedere'; ui.bozza = null; vai('#/rivedi-ricette'); };
-  AZ['riv-tipo'] = (el) => { ui.tipoRicette = el.dataset.v; ui.rivIdx = 0; ui.rivFisso = null; ui.rivStorico = []; ui.bozza = null; ridisegnaMantenendo(); };
+  AZ['riv-tipo'] = (el) => { ui.tipoRicette = el.dataset.v; if (SCELTE_REP[el.dataset.v]) ui.repRicette = el.dataset.v; ui.rivIdx = 0; ui.rivFisso = null; ui.rivStorico = []; ui.bozza = null; ridisegnaMantenendo(); };
   AZ['riv-filtro'] = (el) => { ui.rivFiltro = el.dataset.v; ui.rivIdx = 0; ui.rivFisso = null; ui.rivStorico = []; ui.bozza = null; ridisegnaMantenendo(); };
   AZ['riv-ordine'] = (el) => { ui.rivOrdine = el.dataset.v; ui.rivIdx = 0; ui.rivFisso = null; ui.rivStorico = []; ui.bozza = null; ridisegnaMantenendo(); };
   AZ['riv-per'] = (el) => { ui.rivPer = el.dataset.v; ui.rivIdx = 0; ui.rivFisso = null; ui.rivStorico = []; ui.bozza = null; ridisegnaMantenendo(); };
@@ -2806,7 +2843,7 @@
     if (d.filtro === 'prodotti') { ui.filtroProdotti = el.value; $('#lista').innerHTML = listaProdotti(); return; }
     if (d.filtro === 'ricette') {
       ui.filtroRicette = el.value; $('#lista').innerHTML = listaRicette();
-      const bt = $('[data-az="riv-inizia"]'); if (bt) bt.textContent = 'Rivedi ' + (el.value ? 'quelle con «' + el.value + '»' : 'le ' + (M.TIPI[ui.tipoRicette] || 'ricette').toLowerCase()) + ' una per una';
+      const bt = $('[data-az="riv-inizia"]'); if (bt) bt.textContent = 'Rivedi ' + (el.value ? 'quelle con «' + el.value + '»' : 'le ' + nomeScelta(ui.tipoRicette)) + ' una per una';
       return;
     }
     if (d.media && ui.bozza) { ui.bozza.media = el.checked; ridisegnaMantenendo(); return; }
@@ -2955,7 +2992,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v65';
+  const VERSIONE_APP = 'repub-v66';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
