@@ -342,3 +342,5 @@ label.spunta input { flex: none; margin-top: 1px; }
 .spunta-riga.da-togliere { background: #fbe4e1; }
 .spunta-riga.da-togliere span { text-decoration: line-through; text-decoration-color: rgba(161, 40, 28, .5); }
 .spunta-riga span small b { color: var(--giallo); }
+/* ciò che è nascosto resta nascosto anche dove lo stile dice «flex» o «grid» (es. ricerca dei fornitori) */
+[hidden] { display: none !important; }
