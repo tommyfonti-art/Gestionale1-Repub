@@ -339,3 +339,6 @@ label.spunta input { flex: none; margin-top: 1px; }
 @media (min-width: 1100px) { .mappa-due { grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); } }
 .quad details summary { margin-top: 4px; font-size: 13px; }
 .quad .riga small { white-space: nowrap; flex: none; }
+.spunta-riga.da-togliere { background: #fbe4e1; }
+.spunta-riga.da-togliere span { text-decoration: line-through; text-decoration-color: rgba(161, 40, 28, .5); }
+.spunta-riga span small b { color: var(--giallo); }

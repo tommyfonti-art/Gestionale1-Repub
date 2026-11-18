@@ -59,6 +59,8 @@
     M.aggiornaTipi(); Object.keys(M.TIPI).forEach(k => { if (k !== 'semilavorato' && S.impostazioni.soglie[k] == null) S.impostazioni.soglie[k] = 3.5; });
     if (S.impostazioni.soglie.altro == null) S.impostazioni.soglie.altro = 3;
     S.periodiCassa = S.periodiCassa || {};
+    // cestino: quello che elimini resta qui 90 giorni, poi se ne va da solo
+    S.cestino = (S.cestino || []).filter(c => c && c.x && Date.now() - Date.parse(c.quando) < 90 * 864e5 && !((S[c.tipo] || []).some && (S[c.tipo] || []).some(y => y.id === c.x.id)));
     const AG = window.AGGIUNTE_RICETTE;
     if (AG && (S.versioneRicette || 1) < AG.versione) {
       const nn = (x) => String(x || '').toLowerCase().normalize('NFD').replace(/[^a-z0-9]+/g, ' ').trim();
@@ -158,9 +160,12 @@
   const COLL = ['prodotti', 'ricette', 'fatture', 'fornitori'];
   function documenti(stato) {
     const m = new Map(); const resto = {};
-    Object.keys(stato).forEach(k => { if (!COLL.includes(k)) resto[k] = stato[k]; });
+    Object.keys(stato).forEach(k => { if (!COLL.includes(k) && k !== 'cestino') resto[k] = stato[k]; });
+    // cestino: ricette, prodotti, fatture e fornitori restano nella loro raccolta con il segno «_cestino»; il resto (periodi, eventi) nel generale
+    resto.cestino = (stato.cestino || []).filter(c => !COLL.includes(c.tipo));
     m.set('dati/generale', JSON.stringify(resto));
     COLL.forEach(c => (stato[c] || []).forEach(x => m.set(c + '/' + x.id, JSON.stringify(x))));
+    (stato.cestino || []).forEach(c => { if (COLL.includes(c.tipo) && !m.has(c.tipo + '/' + c.x.id)) m.set(c.tipo + '/' + c.x.id, JSON.stringify(Object.assign({}, c.x, { _cestino: { id: c.id, quando: c.quando, gruppo: c.gruppo || null, righe: c.righe || null } }))); });
     return m;
   }
   function salvaCloud() { clearTimeout(timerCloud); timerCloud = setTimeout(scriviCloud, 400); }
@@ -192,10 +197,15 @@
     if (!gen.exists) return null;
     const stato = JSON.parse(gen.data().json);
     ultimoTimbro = gen.data().timbro || null;
+    const ces = (stato.cestino || []).slice();
     for (const c of COLL) {
       const snap = await db.collection(c).get();
-      stato[c] = snap.docs.map(d => JSON.parse(d.data().json));
+      stato[c] = snap.docs.map(d => JSON.parse(d.data().json)).filter(x => {
+        if (!x._cestino) return true;
+        const m = x._cestino; delete x._cestino; ces.push({ id: m.id, tipo: c, quando: m.quando, gruppo: m.gruppo, righe: m.righe, x }); return false;
+      });
     }
+    stato.cestino = ces.sort((a, b) => a.quando < b.quando ? 1 : -1);
     return stato;
   }
   function caricaScriptOrdinati(lista) { return lista.reduce((p, src) => p.then(() => caricaScript(src)), Promise.resolve()); }
@@ -343,8 +353,61 @@
   }
   function chiudiModale() { const m = $('#modale'); if (m) m.remove(); }
 
+  // ---------- Cestino: niente sparisce subito, si può rimettere ----------
+  const NOMI_CESTINO = { ricette: ['ricetta', 'ricette'], prodotti: ['prodotto', 'prodotti'], fatture: ['fattura', 'fatture'], fornitori: ['fornitore', 'fornitori'], eventi: ['evento', 'eventi'], periodi: ['periodo di vendite', 'periodi di vendite'] };
+  function nelCestino(tipo, x, extra, gruppo) {
+    S.cestino = S.cestino || [];
+    S.cestino.unshift(Object.assign({ id: M.uid('c'), tipo, quando: new Date().toISOString(), gruppo: gruppo || null, x: JSON.parse(JSON.stringify(x)) }, extra || {}));
+  }
+  const nomeCestino = (c) => c.tipo === 'ricette' ? c.x.nome : c.tipo === 'prodotti' ? c.x.nomeBreve : c.tipo === 'fatture' ? `${c.x.fornitoreNome || 'Fattura'} n. ${c.x.numero || '?'} del ${dataIt(c.x.data)}` : c.x.nome || '—';
+  function rimettiDalCestino(c) {
+    const x = c.x;
+    if (c.tipo === 'ricette') { if (x.tipo !== 'semilavorato' && !M.TIPI[x.tipo]) { S.tipiNascosti = (S.tipiNascosti || []).filter(k => k !== x.tipo); M.aggiornaTipi(); if (!M.TIPI[x.tipo]) x.tipo = Object.keys(M.TIPI)[0]; } if (!S.ricette.some(r => r.id === x.id)) S.ricette.push(x); }
+    else if (c.tipo === 'prodotti') {
+      if (!S.prodotti.some(p => p.id === x.id)) S.prodotti.push(x);
+      (c.righe || []).forEach(([fid, i]) => { const f = S.fatture.find(y => y.id === fid), rg = f && f.righe[i]; if (rg && !rg.prodottoId) { rg.prodottoId = x.id; rg.ignora = false; rg.automatico = false; } });
+    } else if (c.tipo === 'fatture') {
+      if (!S.fatture.some(f => f.id === x.id)) { const era = x.stato === 'registrata'; x.stato = 'da_abbinare'; x.resoconto = null; S.fatture.push(x); if (era && !M.daAbbinare(x)) M.registraFattura(x); }
+    } else if (c.tipo === 'fornitori') { if (!S.fornitori.some(f => f.id === x.id)) S.fornitori.push(x); }
+    else if (c.tipo === 'eventi') { if (!S.eventi.some(e => e.id === x.id)) S.eventi.push(x); }
+    else if (c.tipo === 'periodi') {
+      if (!S.periodiVendita.includes(x.nome)) S.periodiVendita.push(x.nome);
+      if (x.date) (S.periodiDate = S.periodiDate || {})[x.nome] = x.date;
+      if (x.cassa) S.periodiCassa[x.nome] = x.cassa;
+      if (x.scaricato && !S.periodiScaricati.includes(x.nome)) S.periodiScaricati.push(x.nome);
+      Object.entries(x.vendite || {}).forEach(([rid, q]) => { const r = M.ricetta(rid); if (r) { r.vendite = r.vendite || {}; r.vendite[x.nome] = q; } });
+    }
+    S.cestino = S.cestino.filter(y => y !== c);
+  }
+  // tolgo un prodotto: le righe di fattura collegate restano senza prodotto (me le segno per poterle ricollegare)
+  function togliProdotto(id, gruppo) {
+    const p = M.prodotto(id); if (!p) return;
+    const righe = [];
+    S.fatture.forEach(f => f.righe.forEach((rg, i) => { if (rg.prodottoId === id) { righe.push([f.id, i]); rg.prodottoId = null; rg.ignora = true; rg.automatico = true; } }));
+    nelCestino('prodotti', p, { righe }, gruppo);
+    S.prodotti = S.prodotti.filter(x => x.id !== id);
+  }
+  function togliRicetta(id, gruppo) { const r = M.ricetta(id); if (!r) return; nelCestino('ricette', r, null, gruppo); S.ricette = S.ricette.filter(x => x.id !== id); }
+
   // ---------- Pagine ----------
   const PAGINE = {};
+  PAGINE.cestino = function () {
+    const C = S.cestino || [], filtro = ui.cestinoTipo || '';
+    const tipi = Object.keys(NOMI_CESTINO).filter(t => C.some(c => c.tipo === t));
+    const l = C.filter(c => !filtro || c.tipo === filtro);
+    // le cose eliminate insieme (es. 30 ricette in un colpo) stanno in un blocco solo
+    const blocchi = []; const visti = new Map();
+    l.forEach(c => { if (c.gruppo) { if (!visti.has(c.gruppo)) { const b = { gruppo: c.gruppo, voci: [] }; visti.set(c.gruppo, b); blocchi.push(b); } visti.get(c.gruppo).voci.push(c); } else blocchi.push({ voci: [c] }); });
+    const quando = (c) => { const d = new Date(c.quando); return dataIt(c.quando.slice(0, 10)) + ' alle ' + d.toTimeString().slice(0, 5); };
+    const riga = (c) => `<div class="riga"><span>${esc(nomeCestino(c))}<small>${NOMI_CESTINO[c.tipo][0]} · ${['ricette', 'fatture'].includes(c.tipo) ? 'eliminata' : 'eliminato'} il ${quando(c)}</small></span><span class="bottoni" style="margin:0;flex-wrap:nowrap"><button class="btn piccolo" data-az="ces-rimetti" data-id="${c.id}">Rimetti</button><button class="x" data-az="ces-via" data-id="${c.id}" aria-label="Elimina per sempre">✕</button></span></div>`;
+    return { titolo: 'Cestino', indietro: '#/altro', html: `
+      <p class="tenue">Qui finisce quello che elimini: ricette, prodotti, fatture, fornitori, eventi e periodi di vendite. Puoi rimetterlo com'era. Dopo 90 giorni se ne va da solo.</p>
+      ${C.length ? `<div class="chips"><button class="chip ${!filtro ? 'on' : ''}" data-az="ces-tipo" data-v="">Tutto (${C.length})</button>${tipi.map(t => `<button class="chip ${filtro === t ? 'on' : ''}" data-az="ces-tipo" data-v="${t}">${NOMI_CESTINO[t][1].charAt(0).toUpperCase() + NOMI_CESTINO[t][1].slice(1)} (${C.filter(c => c.tipo === t).length})</button>`).join('')}</div>` : ''}
+      ${blocchi.length ? blocchi.map(b => b.voci.length > 1 ? (() => { const f = ['ricette', 'fatture'].includes(b.voci[0].tipo); return `<div class="card"><div class="riga"><span><b>${b.voci.length} ${NOMI_CESTINO[b.voci[0].tipo][1]} ${f ? 'eliminate' : 'eliminati'} insieme</b><small>il ${quando(b.voci[0])}: ${esc(b.voci.slice(0, 4).map(nomeCestino).join(', '))}${b.voci.length > 4 ? '…' : ''}</small></span><button class="btn primario piccolo" data-az="ces-rimetti-gruppo" data-g="${b.gruppo}">Rimetti ${f ? 'tutte' : 'tutti'}</button></div>
+          <details><summary>Vedi ${f ? 'quali sono e rimettine solo alcune' : 'quali sono e rimettine solo alcuni'}</summary>${b.voci.map(riga).join('')}</details></div>`; })() : `<div class="card lista-ces">${riga(b.voci[0])}</div>`).join('')
+        : '<p class="tenue centro">Il cestino è vuoto.</p>'}
+      ${C.length ? '<div class="bottoni"><button class="btn pericolo" data-az="ces-svuota">Svuota il cestino</button></div>' : ''}` };
+  };
 
   // Analisi del menu per un periodo: quanto vende e quanto rende ogni ricetta con gli ingredienti completi
   const GRUPPI_MENU = { tutto: null, get bar() { return M.tipiDi('bar'); }, get cucina() { return M.tipiDi('cucina'); } };
@@ -587,12 +650,30 @@
   function fornitoriConProdotti() {
     return S.fornitori.filter(f => !f.servizi).map(f => ({ f, n: S.prodotti.filter(p => diFornitore(p, f.id)).length })).filter(x => x.n).sort((x, y) => x.f.nome.localeCompare(y.f.nome));
   }
+  // ---------- Eliminare tante ricette o tanti prodotti in un colpo (con «Rimetti» subito dopo) ----------
+  const inElimina = (t) => ui.elim && ui.elim.tipo === t;
+  function rigaElimina(id, nome, info) {
+    const on = ui.elim.sel.includes(id);
+    return `<label class="riga spunta-riga ${on ? 'da-togliere' : ''}"><input type="checkbox" data-elim="${id}" ${on ? 'checked' : ''}><span>${esc(nome)}<small>${info}</small></span></label>`;
+  }
+  function barraElimina(t) {
+    const cos = t === 'r' ? 'ricette' : 'prodotti', n = ui.elim.sel.length;
+    return `<div class="card evidenza sposta-barra elim-barra"><b>Spunta ${t === 'r' ? 'le ricette' : 'i prodotti'} da eliminare: <span data-elim-n>${n}</span> ${n === 1 ? (t === 'r' ? 'ricetta' : 'prodotto') : cos}</b>
+      <div class="bottoni"><button class="btn pericolo" data-az="elim-ok">Elimina quelli spuntati</button>
+      <button class="btn" data-az="elim-tutte">Spunta tutti quelli visibili</button>
+      ${t === 'r' ? '<button class="btn" data-az="elim-mai">Spunta le mai vendute</button>' : '<button class="btn" data-az="elim-mai">Spunta quelli non usati in nessuna ricetta</button>'}
+      ${n ? '<button class="btn" data-az="elim-nessuno">Togli le spunte</button>' : ''}
+      <button class="btn" data-az="elim-fine">Annulla</button></div>
+      <p class="tenue piccolo">Usa la ricerca e i filtri qui sopra per trovarli; le spunte restano anche se cambi filtro. Quelli eliminati finiscono nel Cestino.</p></div>`;
+  }
+  const avvisoCestino = (t) => ui.cestino && ui.cestino.tipo === t ? `<div class="msg grigio casella"><div>${ui.cestino.n} ${t === 'r' ? (ui.cestino.n === 1 ? 'ricetta spostata' : 'ricette spostate') : (ui.cestino.n === 1 ? 'prodotto spostato' : 'prodotti spostati')} nel <a href="#/cestino">Cestino</a>.</div><button class="btn piccolo" data-az="elim-rimetti">Rimetti</button></div>` : '';
   function listaProdotti() {
     const f = ui.filtroProdotti.toLowerCase();
     const perForn = ui.prodVista === 'fornitori';
     const l = S.prodotti.filter(p => (perForn ? (!ui.fornProd || diFornitore(p, ui.fornProd)) : (ui.categoria === '__nuovi' ? p.daCompletare : passaReparti(p, PF()))) && (!f || (p.nomeBreve + ' ' + p.nomeCompleto).toLowerCase().includes(f)))
       .sort((a, b) => a.nomeBreve.localeCompare(b.nomeBreve));
     if (!l.length) return '<p class="tenue centro">Nessun prodotto.</p>';
+    if (inElimina('p')) return l.map(p => { const u = M.usatoIn('p:' + p.id).tutte.length; return rigaElimina(p.id, p.nomeBreve, `${esc((M.fornitore(p.fornitoreId) || {}).nome || 'senza fornitore')} · ${u ? `<b>usato in ${u} ${u === 1 ? 'ricetta' : 'ricette'}</b>` : 'non usato'}`); }).join('');
     return l.map(p => {
       const pr = M.prezzo(p), rif = M.prezzoRiferimento(p);
       const sc = p.scortaMinima > 0 && (p.giacenza || 0) < p.scortaMinima;
@@ -612,6 +693,8 @@
       <input class="cerca" type="search" placeholder="Cerca un prodotto" value="${esc(ui.filtroProdotti)}" data-filtro="prodotti">
       <div class="chips"><button class="chip ${ui.prodVista !== 'fornitori' ? 'on' : ''}" data-az="prod-vista" data-v="categorie">Per categoria</button><button class="chip ${ui.prodVista === 'fornitori' ? 'on' : ''}" data-az="prod-vista" data-v="fornitori">Per fornitore</button></div>
       ${ui.prodVista === 'fornitori' ? `<div class="chips">${fornitoriConProdotti().map(x => `<button class="chip ${ui.fornProd === x.f.id ? 'on' : ''}" data-az="forn-prod" data-v="${x.f.id}">${esc(x.f.nome)} (${x.n})</button>`).join('')}</div>` : chipsReparti(PF(), 'prod-filtro', nuoviDaCompletare() ? `<button class="chip ${ui.categoria === '__nuovi' ? 'on' : ''} giallo" data-az="categoria" data-v="__nuovi">Da completare (${nuoviDaCompletare()})</button>` : '', ui.categoria === '__nuovi')}
+      ${inElimina('p') ? barraElimina('p') : `<div class="bottoni"><button class="btn piccolo" data-az="elim-inizia" data-v="p">Elimina più prodotti</button></div>`}
+      ${avvisoCestino('p')}
       <div class="card lista" id="lista">${listaProdotti()}</div>`
     };
   };
@@ -943,6 +1026,7 @@
         l.sort((a, b) => v(a) - v(b));
       }
     }
+    if (inElimina('r')) { const pp = periodoVendite(); return l.map(r => { const v = (S.periodiVendita || []).reduce((t, x) => t + (Number((r.vendite || {})[x]) || 0), 0), u = M.usatoIn('r:' + r.id).tutte.length; return rigaElimina(r.id, r.nome, `${esc(M.TIPI[r.tipo] || '')} · ${v ? qta(v) + ' venduti in tutto' : 'mai venduta'}${u ? ` · <b>usata in ${u} ${u === 1 ? 'ricetta' : 'ricette'}</b>` : ''}`); }).join(''); }
     if (ui.spostaModo) { const sel = new Set(ui.spostaSel || []); return l.map(r => `<label class="riga spunta-riga"><input type="checkbox" data-sposta="${r.id}" ${sel.has(r.id) ? 'checked' : ''}><span>${esc(r.nome)}</span></label>`).join(''); }
     return l.map(r => {
       if (r.tipo === 'semilavorato') {
@@ -964,7 +1048,8 @@
       ${ui.spostaModo ? `<div class="card evidenza sposta-barra"><b>Sposta le ricette spuntate (${(ui.spostaSel || []).length})</b>
         <label>nel gruppo<select id="sposta-in">${Object.entries(M.TIPI).filter(([k]) => k !== ui.tipoRicette).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('')}</select></label>
         <div class="bottoni"><button class="btn primario" data-az="sposta-ok">Sposta</button><button class="btn" data-az="sposta-tutte">Spunta tutte quelle visibili</button><button class="btn" data-az="sposta-fine">Annulla</button></div></div>` : ''}
-      <div class="bottoni"><button class="btn piccolo" data-az="sposta-inizia">Sposta ricette in un altro gruppo</button><a class="btn piccolo" href="#/gruppi-ricette">＋ Nuovo gruppo / gestisci i gruppi</a></div>
+      ${inElimina('r') ? barraElimina('r') : `<div class="bottoni"><button class="btn piccolo" data-az="sposta-inizia">Sposta ricette in un altro gruppo</button><button class="btn piccolo" data-az="elim-inizia" data-v="r">Elimina più ricette</button><a class="btn piccolo" href="#/gruppi-ricette">＋ Nuovo gruppo / gestisci i gruppi</a></div>`}
+      ${avvisoCestino('r')}
       <div class="bottoni"><button class="btn" data-az="riv-inizia">Rivedi ${ui.filtroRicette ? 'quelle con «' + esc(ui.filtroRicette) + '»' : 'le ' + esc(nomeScelta(ui.tipoRicette))} una per una</button></div>
       <div class="card lista" id="lista">${listaRicette()}</div>`
     };
@@ -1205,6 +1290,7 @@
       ['ordine', 'Metti in ordine i dati', 'tutti gli strumenti di sistemazione, in ordine'],
       ['foglio', 'Prodotti del foglio', 'collegali a quelli delle fatture, uno per uno'],
       ['importa', 'Importa dati', 'cassa, liste di ricette, listini dei fornitori'],
+      ['cestino', 'Cestino', 'quello che hai eliminato: si può rimettere'],
       ['impostazioni', 'Impostazioni', 'soglie, IVA, esportazione']
     ];
     return { titolo: 'Altro', html: `<div class="griglia-voci">${voci.map(v => `<a class="voce" href="#/${v[0]}"><b>${v[1]}</b><span>${v[2]}</span></a>`).join('')}</div>` };
@@ -1477,9 +1563,9 @@
   };
 
   // ---------- Disegno ----------
-  const ALTRE = [['fornitori', 'Fornitori'], ['magazzino', 'Magazzino'], ['vendite', 'Vendite'], ['costi', 'Costi del locale'], ['simulatore', 'Simulatore'], ['eventi', 'Eventi'], ['olio', 'Costo olio'], ['foglio', 'Prodotti del foglio'], ['importa', 'Importa dati'], ['impostazioni', 'Impostazioni']];
+  const ALTRE = [['fornitori', 'Fornitori'], ['magazzino', 'Magazzino'], ['vendite', 'Vendite'], ['costi', 'Costi del locale'], ['simulatore', 'Simulatore'], ['eventi', 'Eventi'], ['olio', 'Costo olio'], ['foglio', 'Prodotti del foglio'], ['importa', 'Importa dati'], ['cestino', 'Cestino'], ['impostazioni', 'Impostazioni']];
   const TAB = [['pannello', 'Pannello', 'M3 12l9-8 9 8v8a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z'], ['prodotti', 'Prodotti', 'M4 7l8-4 8 4v10l-8 4-8-4zM4 7l8 4 8-4M12 11v10'], ['ricette', 'Ricette', 'M6 3h12M8 3v6l-4 12h16L16 9V3'], ['fatture', 'Fatture', 'M6 2h9l5 5v15H6zM14 2v6h6M9 13h8M9 17h8'], ['altro', 'Altro', 'M5 12h.01M12 12h.01M19 12h.01']];
-  const SEZIONE = { mappa: 'pannello', costi: 'altro', ordine: 'pannello', 'gruppi-ricette': 'ricette', foglio: 'prodotti', doppioni: 'prodotti', importa: 'altro', 'controllo-fatture': 'fatture', controllo: 'prodotti', pulizia: 'altro', formati: 'prodotti', prodotto: 'prodotti', 'modifica-prodotto': 'prodotti', ricetta: 'ricette', 'modifica-ricetta': 'ricette', 'rivedi-ricette': 'ricette', fattura: 'fatture' };
+  const SEZIONE = { cestino: 'altro', mappa: 'pannello', costi: 'altro', ordine: 'pannello', 'gruppi-ricette': 'ricette', foglio: 'prodotti', doppioni: 'prodotti', importa: 'altro', 'controllo-fatture': 'fatture', controllo: 'prodotti', pulizia: 'altro', formati: 'prodotti', prodotto: 'prodotti', 'modifica-prodotto': 'prodotti', ricetta: 'ricette', 'modifica-ricetta': 'ricette', 'rivedi-ricette': 'ricette', fattura: 'fatture' };
   function disegna() {
     if (!S) return;
     const [, nome, arg] = (location.hash || '#/pannello').split('/');
@@ -1770,8 +1856,7 @@
     const b = ui.bozza; const uso = M.usatoIn('p:' + b.id).dirette;
     if (uso.length && !confirm(`${b.nomeBreve} è usato in ${uso.map(r => r.nome).join(', ')}. Eliminarlo lo stesso?`)) return;
     if (!uso.length && !confirm('Eliminare ' + b.nomeBreve + '?')) return;
-    S.fatture.forEach(f => f.righe.forEach(rg => { if (rg.prodottoId === b.id) { rg.prodottoId = null; rg.ignora = true; rg.automatico = true; } }));
-    S.prodotti = S.prodotti.filter(p => p.id !== b.id); ui.bozza = null; salva(); vai('#/prodotti');
+    togliProdotto(b.id); ui.bozza = null; salva(); vai('#/prodotti'); avviso('Prodotto spostato nel Cestino: da lì lo puoi rimettere.');
   };
   AZ['segna-servizi'] = (el) => {
     const forn = M.fornitore(el.dataset.id);
@@ -2393,7 +2478,7 @@
     fgDopo(prima);
   };
   AZ['fg-tieni'] = (el) => { const prima = listaFoglio(); ricorda('fg', 'fgIdx'); S.foglioTenuti = Array.from(new Set((S.foglioTenuti || []).concat(el.dataset.id))); fgDopo(prima); };
-  AZ['fg-elimina'] = (el) => { const p = M.prodotto(el.dataset.id); if (!confirm(`Elimino «${p.nomeBreve}»?`)) return; const prima = listaFoglio(); ricorda('fg', 'fgIdx'); S.prodotti = S.prodotti.filter(x => x !== p); fgDopo(prima); };
+  AZ['fg-elimina'] = (el) => { const p = M.prodotto(el.dataset.id); if (!confirm(`Elimino «${p.nomeBreve}»?`)) return; const prima = listaFoglio(); ricorda('fg', 'fgIdx'); togliProdotto(p.id); fgDopo(prima); };
   AZ['fg-prep'] = (el) => {
     const p = M.prodotto(el.dataset.id), prima = listaFoglio(); ricorda('fg', 'fgIdx');
     const costo = M.prezzo(p);
@@ -2585,7 +2670,40 @@
     else S.tipiNascosti = Array.from(new Set((S.tipiNascosti || []).concat(id)));
     M.aggiornaTipi(); if (ui.tipoRicette === id) ui.tipoRicette = dove; salva(); ridisegnaMantenendo();
   };
-  AZ['sposta-inizia'] = () => { ui.spostaModo = true; ui.spostaSel = []; ridisegnaMantenendo(); };
+  AZ['sposta-inizia'] = () => { ui.elim = null; ui.spostaModo = true; ui.spostaSel = []; ridisegnaMantenendo(); };
+  AZ['elim-inizia'] = (el) => { ui.spostaModo = false; ui.elim = { tipo: el.dataset.v, sel: [] }; ridisegnaMantenendo(); };
+  AZ['elim-fine'] = () => { ui.elim = null; ridisegnaMantenendo(); };
+  AZ['elim-nessuno'] = () => { ui.elim.sel = []; ridisegnaMantenendo(); };
+  AZ['elim-tutte'] = () => { const s2 = new Set(ui.elim.sel); document.querySelectorAll('[data-elim]').forEach(c => s2.add(c.dataset.elim)); ui.elim.sel = Array.from(s2); ridisegnaMantenendo(); };
+  AZ['elim-mai'] = () => {
+    const s2 = new Set(ui.elim.sel);
+    document.querySelectorAll('[data-elim]').forEach(c => {
+      const id = c.dataset.elim;
+      if (ui.elim.tipo === 'r') { const r = M.ricetta(id); if (r && !Object.values(r.vendite || {}).some(v => Number(v) > 0) && !M.usatoIn('r:' + id).tutte.length) s2.add(id); }
+      else if (!M.usatoIn('p:' + id).tutte.length) s2.add(id);
+    });
+    ui.elim.sel = Array.from(s2); ridisegnaMantenendo();
+  };
+  AZ['elim-ok'] = () => {
+    const t = ui.elim.tipo, sel = new Set(ui.elim.sel); if (!sel.size) { alert('Spunta almeno ' + (t === 'r' ? 'una ricetta.' : 'un prodotto.')); return; }
+    const usati = Array.from(sel).filter(id => M.usatoIn((t === 'r' ? 'r:' : 'p:') + id).tutte.some(x => !sel.has(x.id)));
+    const cos = t === 'r' ? (sel.size === 1 ? 'ricetta' : 'ricette') : (sel.size === 1 ? 'prodotto' : 'prodotti');
+    if (!confirm(`Elimino ${sel.size} ${cos}?${usati.length ? `\n\nAttenzione: ${usati.length} ${usati.length === 1 ? 'è usato' : 'sono usati'} dentro altre ricette: lì l'ingrediente resterà senza costo.` : ''}\n\nFiniscono nel Cestino: da lì li puoi rimettere.`)) return;
+    const gruppo = M.uid('g');
+    sel.forEach(id => { if (t === 'r') togliRicetta(id, gruppo); else togliProdotto(id, gruppo); });
+    ui.cestino = { tipo: t, n: sel.size, gruppo };
+    ui.elim = null; M.svuota(); salva(); ridisegnaMantenendo(); window.scrollTo(0, 0);
+  };
+  AZ['elim-rimetti'] = () => {
+    const c = ui.cestino; if (!c) return;
+    (S.cestino || []).filter(x => x.gruppo === c.gruppo).forEach(rimettiDalCestino);
+    ui.cestino = null; M.svuota(); salva(); ridisegnaMantenendo(); avviso(`Rimessi ${c.n} ${c.tipo === 'r' ? (c.n === 1 ? 'ricetta' : 'ricette') : (c.n === 1 ? 'prodotto' : 'prodotti')}.`);
+  };
+  AZ['ces-tipo'] = (el) => { ui.cestinoTipo = el.dataset.v; ridisegnaMantenendo(); };
+  AZ['ces-rimetti'] = (el) => { const c = (S.cestino || []).find(x => x.id === el.dataset.id); if (!c) return; rimettiDalCestino(c); M.svuota(); salva(); ridisegnaMantenendo(); avviso(`Rimesso: ${nomeCestino(c)}.`); };
+  AZ['ces-rimetti-gruppo'] = (el) => { const l = (S.cestino || []).filter(x => x.gruppo === el.dataset.g); l.forEach(rimettiDalCestino); M.svuota(); salva(); ridisegnaMantenendo(); avviso(`Rimessi ${l.length}.`); };
+  AZ['ces-via'] = (el) => { const c = (S.cestino || []).find(x => x.id === el.dataset.id); if (!c || !confirm(`Elimino per sempre «${nomeCestino(c)}»? Non si potrà più rimettere.`)) return; S.cestino = S.cestino.filter(x => x !== c); salva(); ridisegnaMantenendo(); };
+  AZ['ces-svuota'] = () => { if (!confirm(`Svuoto il cestino? Le ${(S.cestino || []).length} cose dentro spariscono per sempre.`)) return; S.cestino = []; salva(); ridisegnaMantenendo(); };
   AZ['sposta-fine'] = () => { ui.spostaModo = false; ui.spostaSel = []; ridisegnaMantenendo(); };
   AZ['sposta-tutte'] = () => { document.querySelectorAll('[data-sposta]').forEach(c => { c.checked = true; }); ui.spostaSel = Array.from(document.querySelectorAll('[data-sposta]')).map(c => c.dataset.sposta); ridisegnaMantenendo(); };
   AZ['sposta-ok'] = () => {
@@ -2723,15 +2841,15 @@
   AZ['elimina-ricetta'] = () => {
     const b = ui.bozza; const uso = M.usatoIn('r:' + b.id).dirette;
     if (!confirm(uso.length ? `${b.nome} è usata in ${uso.map(r => r.nome).join(', ')}. Eliminarla lo stesso?` : 'Eliminare ' + b.nome + '?')) return;
-    S.ricette = S.ricette.filter(r => r.id !== b.id); ui.bozza = null; salva(); vai('#/ricette');
+    togliRicetta(b.id); ui.bozza = null; salva(); vai('#/ricette'); avviso('Ricetta spostata nel Cestino: da lì la puoi rimettere.');
   };
   AZ['duplica-ricetta'] = (el) => { const r = JSON.parse(JSON.stringify(M.ricetta(el.dataset.id))); r.id = M.uid('r'); r.nome += ' (copia)'; r.vendite = {}; S.ricette.push(r); salva(); vai('#/modifica-ricetta/' + r.id); };
   AZ['registra-fattura'] = (el) => { const f = S.fatture.find(x => x.id === el.dataset.id); M.registraFattura(f); salva(); window.scrollTo(0, 0); disegna(); avviso('Fattura registrata: costi aggiornati.'); };
   AZ['annulla-fattura'] = (el) => { if (!confirm('Annullare la registrazione? Tolgo i prezzi di questa fattura.')) return; const f = S.fatture.find(x => x.id === el.dataset.id); M.annullaFattura(f); salva(); ridisegnaMantenendo(); };
-  AZ['elimina-fattura'] = (el) => { if (!confirm('Eliminare la fattura?')) return; const f = S.fatture.find(x => x.id === el.dataset.id); M.annullaFattura(f); S.fatture = S.fatture.filter(x => x !== f); salva(); vai('#/fatture'); };
+  AZ['elimina-fattura'] = (el) => { if (!confirm('Eliminare la fattura? Finisce nel Cestino.')) return; const f = S.fatture.find(x => x.id === el.dataset.id); nelCestino('fatture', f); M.annullaFattura(f); S.fatture = S.fatture.filter(x => x !== f); salva(); vai('#/fatture'); };
   AZ.pagata = (el) => { const f = S.fatture.find(x => x.id === el.dataset.id); f.scadenze[+el.dataset.k].pagata = el.checked; salva(); setTimeout(ridisegnaMantenendo, 150); };
   AZ['nuovo-fornitore'] = () => { const n = prompt('Nome del fornitore'); if (!n) return; const f = { id: M.uid('f'), nome: n.trim(), piva: '', telefono: '', email: '', referente: '', giorniConsegna: '', note: '' }; S.fornitori.push(f); salva(); vai('#/fornitore/' + f.id); };
-  AZ['elimina-fornitore'] = (el) => { if (!confirm('Eliminare il fornitore? Prodotti e fatture restano.')) return; S.fornitori = S.fornitori.filter(f => f.id !== el.dataset.id); salva(); vai('#/fornitori'); };
+  AZ['elimina-fornitore'] = (el) => { if (!confirm('Eliminare il fornitore? Prodotti e fatture restano. Il fornitore finisce nel Cestino.')) return; const fo = M.fornitore(el.dataset.id); if (fo) nelCestino('fornitori', fo); S.fornitori = S.fornitori.filter(f => f.id !== el.dataset.id); salva(); vai('#/fornitori'); };
   AZ['inizia-conta'] = () => { ui.conta = { rep: '', cats: [], valori: {} }; ridisegnaMantenendo(); };
   AZ['esci-conta'] = () => { ui.conta = null; ridisegnaMantenendo(); };
   AZ['conta-filtro'] = (el) => { cambiaReparti(ui.conta, el); ridisegnaMantenendo(); };
@@ -2779,7 +2897,9 @@
     ui.vendPer = n; salva(); ridisegnaMantenendo();
   };
   AZ['vend-elimina'] = () => {
-    const vec = ui.vendPer; if (!confirm(`Elimino il periodo «${vec}» e le sue vendite?`)) return;
+    const vec = ui.vendPer; if (!confirm(`Elimino il periodo «${vec}» e le sue vendite? Finisce nel Cestino.`)) return;
+    const vend = {}; S.ricette.forEach(r => { if (r.vendite && r.vendite[vec] != null) vend[r.id] = r.vendite[vec]; });
+    nelCestino('periodi', { nome: vec, date: (S.periodiDate || {})[vec] || null, cassa: S.periodiCassa[vec] || null, scaricato: S.periodiScaricati.includes(vec), vendite: vend });
     S.periodiVendita = S.periodiVendita.filter(x => x !== vec); S.periodiScaricati = S.periodiScaricati.filter(x => x !== vec);
     if (S.periodiDate) delete S.periodiDate[vec]; if (S.periodiCassa) delete S.periodiCassa[vec];
     S.ricette.forEach(r => { if (r.vendite) delete r.vendite[vec]; });
@@ -2802,7 +2922,7 @@
   AZ['sim-calcola'] = () => ridisegnaMantenendo();
   AZ['nuovo-evento'] = () => { const n = prompt('Nome dell\'evento'); if (!n) return; const e = { id: M.uid('e'), nome: n.trim(), data: M.oggi(), righe: [], extraPerPezzo: [], note: '' }; S.eventi.push(e); salva(); vai('#/evento/' + e.id); };
   AZ['ev-togli'] = (el) => { const e = S.eventi.find(x => x.id === el.dataset.id); e.righe.splice(+el.dataset.k, 1); salva(); ridisegnaMantenendo(); };
-  AZ['elimina-evento'] = (el) => { if (!confirm('Eliminare l\'evento?')) return; S.eventi = S.eventi.filter(x => x.id !== el.dataset.id); salva(); vai('#/eventi'); };
+  AZ['elimina-evento'] = (el) => { if (!confirm('Eliminare l\'evento? Finisce nel Cestino.')) return; const ev = S.eventi.find(x => x.id === el.dataset.id); if (ev) nelCestino('eventi', ev); S.eventi = S.eventi.filter(x => x.id !== el.dataset.id); salva(); vai('#/eventi'); };
   AZ['olio-da-tabella'] = () => { const o = S.impostazioni.olio; o.grammiFritti = o.dettaglio.reduce((s, d) => s + d[1] * d[2], 0); salva(); ridisegnaMantenendo(); };
   AZ['olio-riga'] = () => { S.impostazioni.olio.dettaglio.push(['Nuovo piatto', 0, 0]); salva(); ridisegnaMantenendo(); };
   AZ['esporta-excel'] = esportaExcel;
@@ -2940,6 +3060,7 @@
     if (d.panData) { const sel = ui.panSel || { tipo: 'date' }; sel[d.panData] = el.value; ui.panSel = Object.assign({ tipo: 'date' }, sel); ridisegnaMantenendo(); return; }
     if (d.catSpesa) { const f = M.fornitore(d.catSpesa); if (f) { f.catSpesa = el.value; salva(); avviso('Tipo di spesa cambiato.'); } return; }
     if (d.costiData) { const sel = Object.assign({ tipo: 'date' }, ui.costiSel || {}); sel.tipo = 'date'; sel[d.costiData] = el.value; ui.costiSel = sel; ridisegnaMantenendo(); return; }
+    if (d.elim && ui.elim) { const set = new Set(ui.elim.sel); if (el.checked) set.add(d.elim); else set.delete(d.elim); ui.elim.sel = Array.from(set); el.closest('label').classList.toggle('da-togliere', el.checked); const n = document.querySelector('[data-elim-n]'); if (n) n.textContent = set.size; return; }
     if (d.sposta) { const set = new Set(ui.spostaSel || []); if (el.checked) set.add(d.sposta); else set.delete(d.sposta); ui.spostaSel = Array.from(set); const b = document.querySelector('.sposta-barra b'); if (b) b.textContent = `Sposta le ricette spuntate (${set.size})`; return; }
     if (d.grNome) { const v = el.value.trim(); if (!v) return; const t = (S.tipiExtra || []).find(x => x.id === d.grNome); if (t) t.nome = v; else { S.nomiTipi = S.nomiTipi || {}; S.nomiTipi[d.grNome] = v; } M.aggiornaTipi(); salva(); avviso('Nome cambiato.'); return; }
     if (d.grRep) { const t = (S.tipiExtra || []).find(x => x.id === d.grRep); if (t) t.reparto = el.value; else { S.repartiTipi = S.repartiTipi || {}; S.repartiTipi[d.grRep] = el.value; } M.aggiornaTipi(); salva(); avviso('Reparto cambiato.'); return; }
@@ -3007,7 +3128,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v68';
+  const VERSIONE_APP = 'repub-v69';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
