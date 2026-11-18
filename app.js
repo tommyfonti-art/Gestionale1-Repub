@@ -59,8 +59,8 @@
     M.aggiornaTipi(); Object.keys(M.TIPI).forEach(k => { if (k !== 'semilavorato' && S.impostazioni.soglie[k] == null) S.impostazioni.soglie[k] = 3.5; });
     if (S.impostazioni.soglie.altro == null) S.impostazioni.soglie.altro = 3;
     S.periodiCassa = S.periodiCassa || {};
-    // cestino: quello che elimini resta qui 90 giorni, poi se ne va da solo
-    S.cestino = (S.cestino || []).filter(c => c && c.x && Date.now() - Date.parse(c.quando) < 90 * 864e5 && !((S[c.tipo] || []).some && (S[c.tipo] || []).some(y => y.id === c.x.id)));
+    // cestino: quello che elimini resta lì finché non lo svuoti tu (mai da solo)
+    S.cestino = (S.cestino || []).filter(c => c && c.x && !((S[c.tipo] || []).some && (S[c.tipo] || []).some(y => y.id === c.x.id)));
     const AG = window.AGGIUNTE_RICETTE;
     if (AG && (S.versioneRicette || 1) < AG.versione) {
       const nn = (x) => String(x || '').toLowerCase().normalize('NFD').replace(/[^a-z0-9]+/g, ' ').trim();
@@ -401,7 +401,7 @@
     const quando = (c) => { const d = new Date(c.quando); return dataIt(c.quando.slice(0, 10)) + ' alle ' + d.toTimeString().slice(0, 5); };
     const riga = (c) => `<div class="riga"><span>${esc(nomeCestino(c))}<small>${NOMI_CESTINO[c.tipo][0]} · ${['ricette', 'fatture'].includes(c.tipo) ? 'eliminata' : 'eliminato'} il ${quando(c)}</small></span><span class="bottoni" style="margin:0;flex-wrap:nowrap"><button class="btn piccolo" data-az="ces-rimetti" data-id="${c.id}">Rimetti</button><button class="x" data-az="ces-via" data-id="${c.id}" aria-label="Elimina per sempre">✕</button></span></div>`;
     return { titolo: 'Cestino', indietro: '#/altro', html: `
-      <p class="tenue">Qui finisce quello che elimini: ricette, prodotti, fatture, fornitori, eventi e periodi di vendite. Puoi rimetterlo com'era. Dopo 90 giorni se ne va da solo.</p>
+      <p class="tenue">Qui finisce quello che elimini: ricette, prodotti, fatture, fornitori, eventi e periodi di vendite. Puoi rimetterlo com'era. Non si svuota mai da solo: resta qui finché non lo elimini tu.</p>
       ${C.length ? `<div class="chips"><button class="chip ${!filtro ? 'on' : ''}" data-az="ces-tipo" data-v="">Tutto (${C.length})</button>${tipi.map(t => `<button class="chip ${filtro === t ? 'on' : ''}" data-az="ces-tipo" data-v="${t}">${NOMI_CESTINO[t][1].charAt(0).toUpperCase() + NOMI_CESTINO[t][1].slice(1)} (${C.filter(c => c.tipo === t).length})</button>`).join('')}</div>` : ''}
       ${blocchi.length ? blocchi.map(b => b.voci.length > 1 ? (() => { const f = ['ricette', 'fatture'].includes(b.voci[0].tipo); return `<div class="card"><div class="riga"><span><b>${b.voci.length} ${NOMI_CESTINO[b.voci[0].tipo][1]} ${f ? 'eliminate' : 'eliminati'} insieme</b><small>il ${quando(b.voci[0])}: ${esc(b.voci.slice(0, 4).map(nomeCestino).join(', '))}${b.voci.length > 4 ? '…' : ''}</small></span><button class="btn primario piccolo" data-az="ces-rimetti-gruppo" data-g="${b.gruppo}">Rimetti ${f ? 'tutte' : 'tutti'}</button></div>
           <details><summary>Vedi ${f ? 'quali sono e rimettine solo alcune' : 'quali sono e rimettine solo alcuni'}</summary>${b.voci.map(riga).join('')}</details></div>`; })() : `<div class="card lista-ces">${riga(b.voci[0])}</div>`).join('')
@@ -3128,7 +3128,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v69';
+  const VERSIONE_APP = 'repub-v70';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
