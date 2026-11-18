@@ -11,7 +11,8 @@
   M.aggiornaTipi = function () {
     Object.keys(M.TIPI).forEach(k => delete M.TIPI[k]); Object.keys(M.TIPI_SINGOLARE).forEach(k => delete M.TIPI_SINGOLARE[k]); Object.keys(M.REPARTO_TIPO).forEach(k => delete M.REPARTO_TIPO[k]);
     const nomi = (S && S.nomiTipi) || {}, rep = (S && S.repartiTipi) || {};
-    Object.keys(TIPI_BASE).forEach(k => { M.TIPI[k] = nomi[k] || TIPI_BASE[k]; M.TIPI_SINGOLARE[k] = nomi[k] ? nomi[k].toLowerCase() : SING_BASE[k]; M.REPARTO_TIPO[k] = rep[k] || REP_BASE[k]; });
+    const nascosti = (S && S.tipiNascosti) || [];
+    Object.keys(TIPI_BASE).forEach(k => { if (nascosti.includes(k) && !((S && S.ricette) || []).some(r => r.tipo === k)) return; M.TIPI[k] = nomi[k] || TIPI_BASE[k]; M.TIPI_SINGOLARE[k] = nomi[k] ? nomi[k].toLowerCase() : SING_BASE[k]; M.REPARTO_TIPO[k] = rep[k] || REP_BASE[k]; });
     ((S && S.tipiExtra) || []).forEach(t => { M.TIPI[t.id] = t.nome; M.TIPI_SINGOLARE[t.id] = t.nome.toLowerCase(); M.REPARTO_TIPO[t.id] = t.reparto || 'bar'; });
     M.TIPI.semilavorato = 'Preparazioni'; M.TIPI_SINGOLARE.semilavorato = 'preparazione';
   };

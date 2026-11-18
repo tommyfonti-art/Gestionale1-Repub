@@ -331,3 +331,5 @@ label.spunta input { flex: none; margin-top: 1px; }
 .form label.btn.primario { color: #fff; }
 .costo-cat summary .costo-nome { color: var(--testo); }
 @media (max-width: 520px) { h1 { font-size: 17px; } }
+/* tante categorie: su iPad e Mac le scelte vanno a capo invece di scorrere di lato */
+@media (min-width: 700px) { .chips { flex-wrap: wrap; overflow-x: visible; } }
