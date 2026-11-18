@@ -10,7 +10,7 @@
   const $ = (s, el) => (el || document).querySelector(s);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const n2 = (n, d) => (n == null || isNaN(n)) ? '—' : Number(n).toLocaleString('it-IT', { useGrouping: 'always', minimumFractionDigits: d == null ? 2 : d, maximumFractionDigits: d == null ? 2 : d });
-  const euro = (n, d) => (n == null || isNaN(n)) ? '—' : n2(n, d) + ' €';
+  const euro = (n, d) => (n == null || isNaN(n)) ? '—' : n2(n, d == null ? 2 : Math.min(d, 2)) + ' €';
   const perc = (n, d) => (n == null || isNaN(n)) ? '—' : n2(n * 100, d == null ? 1 : d) + '%';
   const qta = (n) => n == null ? '—' : Number(n).toLocaleString('it-IT', { maximumFractionDigits: 3 });
   const dataIt = (d) => d ? d.split('-').reverse().join('/') : '—';
@@ -511,7 +511,7 @@
   PAGINE.pannello = function () {
     const conVendite = S.periodiVendita.filter(pp => S.ricette.some(r => (r.vendite || {})[pp]));
     const SEL = selezionePannello(), pers = SEL.pers, per = SEL.etichetta;
-    const gruppoScelto = ui.panGruppo || 'tutto', gruppo = tipiPannello();
+    const gruppo = tipiPannello();
     const aumenti = [];
     S.prodotti.forEach(p => {
       const l = (p.prezzi || []).slice().sort((a, b) => a.data < b.data ? -1 : 1);
@@ -784,19 +784,19 @@
         <label>Categoria<input list="cat-list" data-b="categoria" value="${esc(b.categoria)}"><datalist id="cat-list">${categorie().map(c => `<option value="${esc(c)}">`).join('')}</datalist></label>
         <div class="due">
           <label>Unità<select data-b="unita">${['ml', 'g', 'pz'].map(u => `<option ${b.unita === u ? 'selected' : ''}>${u}</option>`).join('')}</select></label>
-          ${campo('Contenuto della confezione', 'contenuto', 'number', 'step="any" inputmode="decimal"')}
+          ${campo('Contenuto della confezione', 'contenuto', 'text', 'inputmode="decimal" autocomplete="off"')}
         </div>
         <div class="due">
           ${campo('Tipo di confezione', 'confezione')}
-          ${campo('IVA %', 'iva', 'number', 'step="any" inputmode="decimal"')}
+          ${campo('IVA %', 'iva', 'text', 'inputmode="decimal" autocomplete="off"')}
         </div>
         <label>Fornitore principale<select data-b="fornitoreId"><option value="">Fatto in casa / nessuno</option>${S.fornitori.slice().sort((a, c) => a.nome.localeCompare(c.nome)).map(f => `<option value="${f.id}" ${b.fornitoreId === f.id ? 'selected' : ''}>${esc(f.nome)}</option>`).join('')}</select></label>
-        ${id === 'nuovo' ? campo('Prezzo della confezione senza IVA', '_prezzo', 'number', 'step="any" inputmode="decimal"') : ''}
+        ${id === 'nuovo' ? campo('Prezzo della confezione senza IVA', '_prezzo', 'text', 'inputmode="decimal" autocomplete="off"') : ''}
         <div class="due">
-          ${campo('In casa (confezioni)', 'giacenza', 'number', 'step="any" inputmode="decimal"')}
-          ${campo('Scorta minima', 'scortaMinima', 'number', 'step="any" inputmode="decimal"')}
+          ${campo('In casa (confezioni)', 'giacenza', 'text', 'inputmode="decimal" autocomplete="off"')}
+          ${campo('Scorta minima', 'scortaMinima', 'text', 'inputmode="decimal" autocomplete="off"')}
         </div>
-        ${campo('Resa % (scarto, calo in cottura)', 'resa', 'number', 'step="any" inputmode="decimal"')}
+        ${campo('Resa % (scarto, calo in cottura)', 'resa', 'text', 'inputmode="decimal" autocomplete="off"')}
       </div>
       ${pezziInFattura(b)}
       <div class="card form"><h3>Allergeni</h3><div class="chips">${M.ALLERGENI.map(a => `<button class="chip ${(b.allergeni || []).includes(a) ? 'on' : ''}" data-az="allergene" data-v="${esc(a)}">${esc(a)}</button>`).join('')}</div></div>
@@ -804,9 +804,9 @@
         <label class="interruttore"><input type="checkbox" data-az="vd-attiva" ${b.venditaDiretta ? 'checked' : ''}> Lo vendo anche così com'è (al calice, liscio…)</label>
         ${b.venditaDiretta ? `<div class="due">
           <label>Nome della porzione<input data-vd="nomePorzione" value="${esc(vd.nomePorzione || '')}"></label>
-          <label>Porzione (${esc(b.unita)})<input type="number" step="any" inputmode="decimal" data-vd="porzione" value="${esc(vd.porzione || '')}"></label></div>
-          <div class="due"><label>Prezzo della porzione<input type="number" step="any" inputmode="decimal" data-vd="prezzoPorzione" value="${esc(vd.prezzoPorzione || '')}"></label>
-          <label>Prezzo della confezione intera<input type="number" step="any" inputmode="decimal" data-vd="prezzoIntero" value="${esc(vd.prezzoIntero || '')}"></label></div>` : ''}
+          <label>Porzione (${esc(b.unita)})<input type="text" inputmode="decimal" autocomplete="off" data-vd="porzione" value="${esc(vd.porzione || '')}"></label></div>
+          <div class="due"><label>Prezzo della porzione<input type="text" inputmode="decimal" autocomplete="off" data-vd="prezzoPorzione" value="${esc(vd.prezzoPorzione || '')}"></label>
+          <label>Prezzo della confezione intera<input type="text" inputmode="decimal" autocomplete="off" data-vd="prezzoIntero" value="${esc(vd.prezzoIntero || '')}"></label></div>` : ''}
       </div>
       <div class="card form"><label>Note<textarea data-b="note" rows="3">${esc(b.note)}</textarea></label></div>
       <div class="bottoni"><button class="btn primario" data-az="salva-prodotto">Salva</button>${id !== 'nuovo' ? '<button class="btn pericolo" data-az="elimina-prodotto">Elimina</button>' : ''}</div>`
@@ -869,7 +869,7 @@
           <label>Confezione<input data-ctrl="${p.id}" data-k="confezione" value="${esc(p.confezione)}"></label>
         </div>
         <div class="due">
-          <label>Contiene<input type="number" step="any" inputmode="decimal" data-ctrl="${p.id}" data-k="contenuto" value="${esc(p.contenuto)}"></label>
+          <label>Contiene<input type="text" inputmode="decimal" autocomplete="off" data-ctrl="${p.id}" data-k="contenuto" value="${esc(p.contenuto)}"></label>
           <label>Unità<select data-ctrl="${p.id}" data-k="unita">${['ml', 'g', 'pz'].map(u => `<option ${p.unita === u ? 'selected' : ''}>${u}</option>`).join('')}</select></label>
         </div>
         <p class="tenue piccolo">Esempi: bottiglia da 700 ml · kg da 1000 g · pezzo da 1 pz · fusto da 30000 ml.</p>
@@ -933,7 +933,7 @@
     const conto = ur ? `<div class="card form"><h3>Livello in più: quanti «${esc(p.confezione)}» ci sono in ogni ${esc(ur.rg.um || 'confezione')} di fattura</h3>
         <p>In fattura${ur.f.fornitoreNome ? ' di <b>' + esc(forn ? forn.nome : ur.f.fornitoreNome) + '</b>' : ''} del ${dataIt(ur.f.data)}:<br><b>${esc(ur.rg.descrizione)}</b><br>${qta(ur.rg.quantita)} ${esc(ur.rg.um || '')} a ${euro(ur.rg.prezzoUnitario, 3)}</p>
         ${cartoneSospetto(p) ? `<p class="msg giallo">In fattura c'è scritto <b>${esc(ur.rg.um)}</b>, ma adesso è contato come un pezzo solo. Scrivi quanti pezzi ci sono dentro e premi Invio.</p>` : ''}
-        <label>1 ${esc(ur.rg.um || 'pezzo')} di fattura = quanti «${esc(p.confezione)}»? (es. cartone da 12 bottiglie: scrivi 12)<input type="number" step="any" inputmode="decimal" data-fmt-righe="${p.id}" data-fattura="${ur.f.id}" value="${esc(perRiga)}"></label>
+        <label>1 ${esc(ur.rg.um || 'pezzo')} di fattura = quanti «${esc(p.confezione)}»? (es. cartone da 12 bottiglie: scrivi 12)<input type="text" inputmode="decimal" autocomplete="off" data-fmt-righe="${p.id}" data-fattura="${ur.f.id}" value="${esc(perRiga)}"></label>
         <p class="msg grigio"><b>Riassunto:</b> 1 ${esc(ur.rg.um || 'confezione')} di fattura = ${qta(perRiga)} ${esc(p.confezione)} · 1 ${esc(p.confezione)} = ${qta(p.contenuto)} ${esc(p.unita)}</p>
         <p class="msg grigio">${pr != null ? `Quindi: <b>${euro(pr, 3)}</b> a ${esc(p.confezione)} · ${esc(p.confezione)} da ${qta(p.contenuto)} ${esc(p.unita)} · <b>${rif ? n2(rif.valore) + ' ' + rif.etichetta : ''}</b>` : 'Senza prezzo.'}</p>
       </div>` : `<div class="card"><h3>Prezzo</h3><p>${pr != null ? `${euro(pr, 3)} a ${esc(p.confezione)} · <b>${rif ? n2(rif.valore) + ' ' + rif.etichetta : ''}</b>` : 'Senza prezzo.'}</p><p class="tenue piccolo">Non arriva da nessuna fattura: il prezzo è quello del foglio o messo a mano.</p></div>`;
@@ -950,7 +950,7 @@
         </div>
         <label>Si compra a<input data-ctrl="${p.id}" data-k="confezione" value="${esc(p.confezione)}" placeholder="bottiglia, kg, cartone…"></label>
         <div class="due">
-          <label>Che contiene<input type="number" step="any" inputmode="decimal" data-ctrl="${p.id}" data-k="contenuto" value="${esc(p.contenuto)}"></label>
+          <label>Che contiene<input type="text" inputmode="decimal" autocomplete="off" data-ctrl="${p.id}" data-k="contenuto" value="${esc(p.contenuto)}"></label>
           <label>Unità<select data-ctrl="${p.id}" data-k="unita">${['ml', 'g', 'pz'].map(u => `<option ${p.unita === u ? 'selected' : ''}>${u}</option>`).join('')}</select></label>
         </div>
         <p class="tenue piccolo">Esempi: bottiglia da 700 ml · kg da 1000 g · cartone da 24 pz · fusto da 30000 ml.</p>
@@ -1143,12 +1143,12 @@
         <h2>${esc(b.nome)}${r.rivista ? ' <span class="badge verde">già riveduta</span>' : ''}</h2>
         ${periodoVendite() ? `<p class="tenue piccolo">Venduti nel periodo «${esc(periodoVendite())}»: <b>${qta(vendutiDi(r, periodoVendite()))}</b></p>` : ''}
         ${b.note ? `<p class="msg ${/^Ricetta da completare/.test(b.note) ? 'giallo' : 'grigio'}">${esc(b.note)}</p>` : ''}
-        ${semi ? `<div class="due"><label>Quanto ne viene<input type="number" step="any" inputmode="decimal" data-b="resa" value="${esc(b.resa)}"></label><label>Unità<select data-b="unita">${['ml', 'g', 'pz'].map(u => `<option ${b.unita === u ? 'selected' : ''}>${u}</option>`).join('')}</select></label></div>`
-          : `<label>Prezzo di vendita (con IVA)<input type="number" step="any" inputmode="decimal" data-b="prezzo" value="${esc(b.prezzo)}"></label>`}
+        ${semi ? `<div class="due"><label>Quanto ne viene<input type="text" inputmode="decimal" autocomplete="off" data-b="resa" value="${esc(b.resa)}"></label><label>Unità<select data-b="unita">${['ml', 'g', 'pz'].map(u => `<option ${b.unita === u ? 'selected' : ''}>${u}</option>`).join('')}</select></label></div>`
+          : `<label>Prezzo di vendita (con IVA)<input type="text" inputmode="decimal" autocomplete="off" data-b="prezzo" value="${esc(b.prezzo)}"></label>`}
         <h3>Ingredienti</h3>
         ${!semi ? `<label class="spunta"><input type="checkbox" data-media="1" ${b.media ? 'checked' : ''}> <span>Il cliente ne sceglie uno (amari, rum, grappe…): il costo è la <b>media</b> degli ingredienti, non la somma</span></label>` : ''}
         ${b.righe.map((rg, k) => `<div class="riga-ed">${campoIngrediente(rg, k)}
-          <input type="number" step="any" inputmode="decimal" data-r="${k}" data-k="quantita" value="${esc(rg.quantita)}" placeholder="dose"><span class="u">${esc(M.unitaRif(rg.rif))}</span>
+          <input type="text" inputmode="decimal" autocomplete="off" data-r="${k}" data-k="quantita" value="${esc(rg.quantita)}" placeholder="dose"><span class="u">${esc(M.unitaRif(rg.rif))}</span>
           <button class="x" data-az="togli-riga" data-k="${k}" aria-label="Togli">✕</button></div>`).join('')}
         <button class="btn piccolo" data-az="aggiungi-riga">＋ Aggiungi ingrediente</button>
         <p class="anteprima">Costo: <b>${euro(c, 3)}</b>${!semi && pr && c ? ` · moltiplicatore × ${n2(pr / c)}` : ''}</p>
@@ -1176,24 +1176,24 @@
       <div class="card form">
         <label>Nome<input data-b="nome" value="${esc(b.nome)}"></label>
         <div class="due"><label>Tipo<select data-b="tipo" data-ridisegna="1">${Object.entries(M.TIPI_SINGOLARE).map(([k, v]) => `<option value="${k}" ${b.tipo === k ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></label>
-        ${semi ? `<label>Quanto ne viene<input type="number" step="any" inputmode="decimal" data-b="resa" value="${esc(b.resa)}"></label>` : `<label>Prezzo di vendita<input type="number" step="any" inputmode="decimal" data-b="prezzo" value="${esc(b.prezzo)}"></label>`}</div>
+        ${semi ? `<label>Quanto ne viene<input type="text" inputmode="decimal" autocomplete="off" data-b="resa" value="${esc(b.resa)}"></label>` : `<label>Prezzo di vendita<input type="text" inputmode="decimal" autocomplete="off" data-b="prezzo" value="${esc(b.prezzo)}"></label>`}</div>
         ${semi ? `<label>Unità della preparazione<select data-b="unita">${['ml', 'g', 'pz'].map(u => `<option ${b.unita === u ? 'selected' : ''}>${u}</option>`).join('')}</select></label>` : ''}
       </div>
       <div class="card form"><h3>Ingredienti</h3>
         ${b.tipo !== 'semilavorato' ? `<label class="spunta"><input type="checkbox" data-media="1" ${b.media ? 'checked' : ''}> <span>Il cliente ne sceglie uno (amari, rum, grappe…): il costo è la <b>media</b> degli ingredienti, non la somma</span></label>` : ''}
         ${b.righe.map((rg, k) => `<div class="riga-ed">${campoIngrediente(rg, k)}
-          <input type="number" step="any" inputmode="decimal" data-r="${k}" data-k="quantita" value="${esc(rg.quantita)}" placeholder="dose"><span class="u">${esc(M.unitaRif(rg.rif))}</span>
+          <input type="text" inputmode="decimal" autocomplete="off" data-r="${k}" data-k="quantita" value="${esc(rg.quantita)}" placeholder="dose"><span class="u">${esc(M.unitaRif(rg.rif))}</span>
           <button class="x" data-az="togli-riga" data-k="${k}" aria-label="Togli">✕</button></div>`).join('')}
         <button class="btn piccolo" data-az="aggiungi-riga">＋ Aggiungi ingrediente</button>
         <p class="anteprima">Costo: <b>${euro(anteprima.totale, 3)}</b>${!semi && b.prezzo && anteprima.totale ? ` · moltiplicatore × ${n2(b.prezzo / anteprima.totale)}` : ''}</p>
       </div>
       <div class="card form"><h3>Costi fissi (guarnizioni, sale…)</h3>
-        ${(b.costiExtra || []).map((e, k) => `<div class="riga-ed"><input data-e="${k}" data-k="nome" value="${esc(e.nome)}" placeholder="nome"><input type="number" step="any" inputmode="decimal" data-e="${k}" data-k="costo" value="${esc(e.costo)}" placeholder="€"><button class="x" data-az="togli-extra" data-k="${k}">✕</button></div>`).join('')}
+        ${(b.costiExtra || []).map((e, k) => `<div class="riga-ed"><input data-e="${k}" data-k="nome" value="${esc(e.nome)}" placeholder="nome"><input type="text" inputmode="decimal" autocomplete="off" data-e="${k}" data-k="costo" value="${esc(e.costo)}" placeholder="€"><button class="x" data-az="togli-extra" data-k="${k}">✕</button></div>`).join('')}
         <button class="btn piccolo" data-az="aggiungi-extra">＋ Aggiungi costo fisso</button></div>
       ${!semi ? `<div class="card form"><h3>Da asporto</h3>
-        ${(b.asporto || []).map((a, k) => `<div class="riga-ed"><select data-a="${k}" data-k="rif">${opzioniProdotti(a.rif, p => p.categoria === 'Non alimentare')}</select><input type="number" step="any" inputmode="decimal" data-a="${k}" data-k="quantita" value="${esc(a.quantita)}"><button class="x" data-az="togli-asporto" data-k="${k}">✕</button></div>`).join('')}
+        ${(b.asporto || []).map((a, k) => `<div class="riga-ed"><select data-a="${k}" data-k="rif">${opzioniProdotti(a.rif, p => p.categoria === 'Non alimentare')}</select><input type="text" inputmode="decimal" autocomplete="off" data-a="${k}" data-k="quantita" value="${esc(a.quantita)}"><button class="x" data-az="togli-asporto" data-k="${k}">✕</button></div>`).join('')}
         <button class="btn piccolo" data-az="aggiungi-asporto">＋ Aggiungi materiale da asporto</button></div>
-      <div class="card form"><h3>Vendite</h3><div class="due">${S.periodiVendita.map(pp => `<label>${esc(pp)}<input type="number" inputmode="numeric" data-v="${esc(pp)}" value="${esc((b.vendite || {})[pp] || '')}"></label>`).join('')}</div></div>` : ''}
+      <div class="card form"><h3>Vendite</h3><div class="due">${S.periodiVendita.map(pp => `<label>${esc(pp)}<input type="text" inputmode="numeric" autocomplete="off" data-v="${esc(pp)}" value="${esc((b.vendite || {})[pp] || '')}"></label>`).join('')}</div></div>` : ''}
       <div class="card form"><label>Note<textarea data-b="note" rows="3">${esc(b.note)}</textarea></label></div>
       <div class="bottoni"><button class="btn primario" data-az="salva-ricetta">Salva</button>${id !== 'nuovo' ? '<button class="btn pericolo" data-az="elimina-ricetta">Elimina</button>' : ''}</div>`
     };
@@ -1209,7 +1209,7 @@
     if ((mm = q.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/))) md = `${mm[3]}-${mm[2].padStart(2, '0')}-${mm[1].padStart(2, '0')}`;
     else if ((mm = q.match(/^(\d{1,2})[\/.-](\d{4})$/))) md = `${mm[2]}-${mm[1].padStart(2, '0')}`;
     else if ((mm = q.match(/^([a-z]+)\s+(\d{4})$/)) && meseDa(mm[1]) >= 0) md = `${mm[2]}-${String(meseDa(mm[1]) + 1).padStart(2, '0')}`;
-    else if ((mm = q.match(/^(\d{4})$/))) md = mm[1];
+    else if ((mm = q.match(/^(20\d{2})$/))) md = mm[1];
     const l = S.fatture.filter(f => (!st || (st === 'reg' ? f.stato === 'registrata' : st === 'nc' ? f.tipoDoc === 'TD04' : f.stato !== 'registrata'))).map(f => {
       if (md) return (f.data || '').startsWith(md) ? { f } : null;
       if (!t.length) return { f };
@@ -1278,7 +1278,7 @@
           <option value="__nuovo">＋ Crea un prodotto nuovo</option>
           <option value="__ignora" ${rg.ignora ? 'selected' : ''}>Non è merce (trasporto, cauzione…): ignora</option>
           <optgroup label="Prodotti">${S.prodotti.slice().sort((a, b) => a.nomeBreve.localeCompare(b.nomeBreve)).map(x => `<option value="${x.id}" ${rg.prodottoId === x.id ? 'selected' : ''}>${esc(x.nomeBreve)}</option>`).join('')}</optgroup></select>
-        ${p ? `<div class="conv"><label>1 ${esc(rg.um || 'unità')} in fattura =<input type="number" step="any" inputmode="decimal" data-fr="${k}" data-k="confezioniPerUnita" value="${esc(rg.confezioniPerUnita)}"> ${esc(p.confezione)} da ${qta(p.contenuto)} ${esc(p.unita)}</label>
+        ${p ? `<div class="conv"><label>1 ${esc(rg.um || 'unità')} in fattura =<input type="text" inputmode="decimal" autocomplete="off" data-fr="${k}" data-k="confezioniPerUnita" value="${esc(rg.confezioniPerUnita)}"> ${esc(p.confezione)} da ${qta(p.contenuto)} ${esc(p.unita)}</label>
         <div class="tenue piccolo">${rg.totale > 0 ? `${euro(prConf)} a ${esc(p.confezione)}` : 'omaggio'}${att != null && rg.totale > 0 ? ` · prima ${euro(att)}` : ''}${v != null ? ` <span class="badge ${Math.abs(v) < (S.impostazioni.sogliaAumento || 3) ? 'grigio' : v > 0 ? 'rosso' : 'verde'}">${v > 0 ? '+' : ''}${n2(v, 1)}%</span>` : ''}${rg.automatico ? ' · riconosciuto in automatico' : ''}</div></div>` : ''}`;
       return `<div class="fr ${!rg.prodottoId && !rg.ignora && !reg ? 'da-fare' : ''}"><div class="fr-testa"><b>${esc(rg.descrizione)}</b><span>${euro(rg.totale)}</span></div>
         <div class="tenue piccolo">${rg.codice ? 'cod. ' + esc(rg.codice) + ' · ' : ''}${qta(rg.quantita)} ${esc(rg.um)} × ${euro(rg.prezzoUnitario)}${rg.sconto ? ' · sconto ' + n2(rg.sconto, 0) + '%' : ''}${rg.totale === 0 ? ' · <b>omaggio</b>' : ''}</div>
@@ -1373,7 +1373,7 @@
         <p class="tenue">Scrivi quante confezioni ci sono davvero (anche a metà: 0,5). Quelle che non tocchi restano come sono.</p>
         ${chipsReparti(c, 'conta-filtro')}
         <div class="card">${lista.map(p => { const v = c.valori[p.id]; return `<div class="conta ${v != null ? 'toccato' : ''}"><span>${esc(p.nomeBreve)}<small>${esc(p.confezione)} · in app ${qta(p.giacenza)}</small></span>
-          <button class="tondo" data-az="conta-meno" data-id="${p.id}">−</button><input type="number" step="any" inputmode="decimal" data-conta="${p.id}" value="${v != null ? v : ''}" placeholder="${qta(p.giacenza)}"><button class="tondo" data-az="conta-piu" data-id="${p.id}">＋</button></div>`; }).join('')}</div>
+          <button class="tondo" data-az="conta-meno" data-id="${p.id}">−</button><input type="text" inputmode="decimal" autocomplete="off" data-conta="${p.id}" value="${v != null ? v : ''}" placeholder="${qta(p.giacenza)}"><button class="tondo" data-az="conta-piu" data-id="${p.id}">＋</button></div>`; }).join('')}</div>
         <div class="bottoni"><button class="btn primario" data-az="salva-conta">Salva la conta (${Object.keys(c.valori).length})</button><button class="btn" data-az="esci-conta">Annulla</button></div>`
       };
     }
@@ -1488,10 +1488,10 @@
       <div class="chips"><button class="chip ${sm.modo === 'prodotto' ? 'on' : ''}" data-az="sim-modo" data-v="prodotto">Cambia il prezzo di un prodotto</button><button class="chip ${sm.modo === 'ricetta' ? 'on' : ''}" data-az="sim-modo" data-v="ricetta">Cambia il prezzo di vendita</button></div>
       <div class="card form">${sm.modo === 'prodotto' ? `
         <label>Prodotto<select data-sim="prodottoId"><option value="">Scegli…</option>${S.prodotti.filter(p => !p.speciale && M.usatoIn('p:' + p.id).tutte.length).sort((a, b) => a.nomeBreve.localeCompare(b.nomeBreve)).map(p => `<option value="${p.id}" ${sm.prodottoId === p.id ? 'selected' : ''}>${esc(p.nomeBreve)} (ora ${euro(M.prezzo(p))})</option>`).join('')}</select></label>
-        <div class="due"><label>${sm.inPercentuale ? 'Aumento in %' : 'Nuovo prezzo (senza IVA)'}<input type="number" step="any" inputmode="decimal" data-sim="valore" value="${esc(sm.valore)}"></label>
+        <div class="due"><label>${sm.inPercentuale ? 'Aumento in %' : 'Nuovo prezzo (senza IVA)'}<input type="text" inputmode="decimal" autocomplete="off" data-sim="valore" value="${esc(sm.valore)}"></label>
         <label class="interruttore"><input type="checkbox" data-az="sim-perc" ${sm.inPercentuale ? 'checked' : ''}> in percentuale</label></div>` : `
         <label>Ricetta<select data-sim="ricettaId"><option value="">Scegli…</option>${S.ricette.filter(r => r.tipo !== 'semilavorato').sort((a, b) => a.nome.localeCompare(b.nome)).map(r => `<option value="${r.id}" ${sm.ricettaId === r.id ? 'selected' : ''}>${esc(r.nome)} (ora ${euro(r.prezzo)})</option>`).join('')}</select></label>
-        <label>Nuovo prezzo di vendita<input type="number" step="any" inputmode="decimal" data-sim="prezzo" value="${esc(sm.prezzo)}"></label>`}
+        <label>Nuovo prezzo di vendita<input type="text" inputmode="decimal" autocomplete="off" data-sim="prezzo" value="${esc(sm.prezzo)}"></label>`}
         <button class="btn primario" data-az="sim-calcola">Calcola</button></div>
       ${ris}`
     };
@@ -1513,7 +1513,7 @@
       const r = M.ricetta(rg.ricettaId); const c = (M.costo(r) || 0) + extra;
       incasso += rg.prezzo * rg.previsti; costi += c * rg.previsti;
       return `<div class="fr evento"><div class="fr-testa"><b>${esc(r ? r.nome : '?')}</b><button class="x" data-az="ev-togli" data-id="${id}" data-k="${k}">✕</button></div>
-        <div class="due"><label>Prezzo<input type="number" step="any" inputmode="decimal" data-ev="${id}" data-k="${k}" data-c="prezzo" value="${esc(rg.prezzo)}"></label><label>Pezzi previsti<input type="number" inputmode="numeric" data-ev="${id}" data-k="${k}" data-c="previsti" value="${esc(rg.previsti)}"></label></div>
+        <div class="due"><label>Prezzo<input type="text" inputmode="decimal" autocomplete="off" data-ev="${id}" data-k="${k}" data-c="prezzo" value="${esc(rg.prezzo)}"></label><label>Pezzi previsti<input type="text" inputmode="numeric" autocomplete="off" data-ev="${id}" data-k="${k}" data-c="previsti" value="${esc(rg.previsti)}"></label></div>
         <div class="tenue piccolo">Costo ${euro(c)} con il bicchiere · moltiplicatore <span class="badge ${rg.prezzo / c < ((S.impostazioni.soglie || {})[r && r.tipo] || 0) ? 'rosso' : 'verde'}">× ${n2(rg.prezzo / c)}</span></div></div>`;
     }).join('');
     return {
@@ -1537,12 +1537,12 @@
     return {
       titolo: 'Costo dell\'olio', indietro: '#/altro', html: `
       <p class="tenue">Il tuo metodo: quanto spendi di olio in un anno, diviso i grammi di cibo che friggi in un anno. Viene il costo dell'olio per ogni grammo fritto, che entra nelle ricette dei fritti.</p>
-      <div class="kpi-griglia">${kpi('Per grammo fritto', euro(c, 5))}${kpi('Su 255 g di patatine', euro(c * 255, 3))}</div>
-      <div class="card form"><label>Spesa per l'olio in un anno (€)<input type="number" step="any" inputmode="decimal" data-olio="spesaAnnua" value="${esc(o.spesaAnnua)}"></label>
-        <label>Grammi fritti in un anno<input type="number" inputmode="numeric" data-olio="grammiFritti" value="${esc(o.grammiFritti)}"></label>
+      <div class="kpi-griglia">${kpi('Per kg fritto', euro(c * 1000))}${kpi('Su 255 g di patatine', euro(c * 255))}</div>
+      <div class="card form"><label>Spesa per l'olio in un anno (€)<input type="text" inputmode="decimal" autocomplete="off" data-olio="spesaAnnua" value="${esc(o.spesaAnnua)}"></label>
+        <label>Grammi fritti in un anno<input type="text" inputmode="numeric" autocomplete="off" data-olio="grammiFritti" value="${esc(o.grammiFritti)}"></label>
         ${tot ? `<button class="btn piccolo" data-az="olio-da-tabella">Usa il totale della tabella (${qta(tot)} g)</button>` : ''}</div>
       <div class="card scorri"><h3>Da dove vengono i grammi</h3><table class="tab"><tr><th>Piatto</th><th class="n">Porzioni</th><th class="n">Grammi</th><th class="n">Totale</th></tr>
-        ${(o.dettaglio || []).map((d, k) => `<tr><td><input class="mini largo" data-od="${k}" data-c="0" value="${esc(d[0])}"></td><td class="n"><input class="mini" type="number" data-od="${k}" data-c="1" value="${esc(d[1])}"></td><td class="n"><input class="mini" type="number" data-od="${k}" data-c="2" value="${esc(d[2])}"></td><td class="n">${qta(d[1] * d[2])}</td></tr>`).join('')}
+        ${(o.dettaglio || []).map((d, k) => `<tr><td><input class="mini largo" data-od="${k}" data-c="0" value="${esc(d[0])}"></td><td class="n"><input class="mini" type="text" inputmode="decimal" data-od="${k}" data-c="1" value="${esc(d[1])}"></td><td class="n"><input class="mini" type="text" inputmode="decimal" data-od="${k}" data-c="2" value="${esc(d[2])}"></td><td class="n">${qta(d[1] * d[2])}</td></tr>`).join('')}
         <tr class="totale"><td>Totale</td><td></td><td></td><td class="n">${qta(tot)}</td></tr></table>
         <button class="btn piccolo" data-az="olio-riga">＋ Aggiungi piatto</button></div>`
     };
@@ -1554,12 +1554,12 @@
     return {
       titolo: 'Impostazioni', indietro: '#/altro', html: `
       <div class="card form"><h3>Soglie del moltiplicatore</h3><p class="tenue piccolo">Sotto questo numero la ricetta diventa rossa.</p>
-        <div class="due">${Object.keys(M.TIPI).filter(t => t !== 'semilavorato').map(t => `<label>${esc(M.TIPI[t])}<input type="number" step="any" inputmode="decimal" data-soglia="${t}" value="${esc((im.soglie || {})[t])}"></label>`).join('')}</div></div>
+        <div class="due">${Object.keys(M.TIPI).filter(t => t !== 'semilavorato').map(t => `<label>${esc(M.TIPI[t])}<input type="text" inputmode="decimal" autocomplete="off" data-soglia="${t}" value="${esc((im.soglie || {})[t])}"></label>`).join('')}</div></div>
       <div class="card"><h3>Dati dalla cassa</h3><p class="tenue piccolo">Listino dei prodotti in vendita e venduto di un periodo, dai file esportati da Cassa in Cloud.</p><a class="btn" href="#/importa">Importa dalla cassa</a></div>
       <div class="card form"><h3>Prezzi</h3>
-        <label>IVA sul prezzo di vendita (%)<input type="number" step="any" data-imp="ivaVendita" value="${esc(im.ivaVendita)}"></label>
+        <label>IVA sul prezzo di vendita (%)<input type="text" inputmode="decimal" autocomplete="off" data-imp="ivaVendita" value="${esc(im.ivaVendita)}"></label>
         <label>Quando un prodotto arriva da più fornitori, usa<select data-imp="metodoPrezzo">${[['ultimo', 'l\'ultimo prezzo pagato'], ['minimo', 'il prezzo più basso'], ['media', 'la media tra i fornitori']].map(([k, v]) => `<option value="${k}" ${im.metodoPrezzo === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
-        <label>Segnala gli aumenti a partire da (%)<input type="number" step="any" data-imp="sogliaAumento" value="${esc(im.sogliaAumento)}"></label></div>
+        <label>Segnala gli aumenti a partire da (%)<input type="text" inputmode="decimal" autocomplete="off" data-imp="sogliaAumento" value="${esc(im.sogliaAumento)}"></label></div>
       <div class="card form"><h3>Fatture</h3>
         <label class="interruttore"><input type="checkbox" data-az="imp-bool" data-k="autoCrea" ${im.autoCrea !== false ? 'checked' : ''}> Crea in automatico i prodotti nuovi che arrivano dalle fatture</label>
         <label class="interruttore"><input type="checkbox" data-az="imp-bool" data-k="autoRegistra" ${im.autoRegistra !== false ? 'checked' : ''}> Registra subito le fatture complete (i prezzi si aggiornano da soli)</label>
@@ -1818,7 +1818,7 @@
         <label>Nome completo<input id="np-nc" value="${esc(rg.descrizione)}"></label>
         <label>Categoria<input id="np-cat" list="np-cats" value=""><datalist id="np-cats">${categorie().map(c => `<option value="${esc(c)}">`).join('')}</datalist></label>
         <div class="due"><label>Unità<select id="np-u">${['ml', 'g', 'pz'].map(u => `<option ${u === unita ? 'selected' : ''}>${u}</option>`).join('')}</select></label>
-        <label>Contenuto di una confezione<input id="np-cont" type="number" step="any" value="${cont}"></label></div>
+        <label>Contenuto di una confezione<input id="np-cont" type="text" inputmode="decimal" autocomplete="off" value="${cont}"></label></div>
         <label>Tipo di confezione<input id="np-conf" value="${um === 'KG' ? 'kg' : um === 'LT' ? 'litro' : 'pezzo'}"></label>
       </div>
       <div class="bottoni"><button class="btn primario" id="np-ok">Crea e collega</button><button class="btn" id="np-no">Annulla</button></div>`);
@@ -1835,7 +1835,7 @@
   function caricaScript(src) { return new Promise((ok, ko) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => ko(new Error('Serve la connessione per esportare.')); document.head.appendChild(s); }); }
   async function esportaExcel() {
     try {
-      if (!window.XLSX) await caricaScript('https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js');
+      if (!window.XLSX) { try { await caricaScript('xlsx.full.min.js'); } catch (e) { await caricaScript('https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js'); } }
       const X = window.XLSX; const wb = X.utils.book_new();
       const r2 = (n) => n == null ? '' : Math.round(n * 1000) / 1000;
       X.utils.book_append_sheet(wb, X.utils.json_to_sheet(S.prodotti.map(p => ({ 'Nome breve': p.nomeBreve, 'Nome completo': p.nomeCompleto, Categoria: p.categoria, Fornitore: (M.fornitore(p.fornitoreId) || {}).nome || '', Confezione: p.confezione, Contenuto: p.contenuto, Unità: p.unita, 'Prezzo senza IVA': r2(M.prezzo(p)), 'IVA %': p.iva, 'In casa': p.giacenza, 'Valore': r2(M.valoreGiacenza(p)), 'Scorta minima': p.scortaMinima, Allergeni: (p.allergeni || []).join(', ') }))), 'Prodotti');
@@ -1904,7 +1904,7 @@
     const u = (ui['st_' + chiave] || []).pop();
     if (!u) ui[idxKey] = Math.max(0, (ui[idxKey] || 0) - 1);
     else {
-      if (u.dati) { const d = JSON.parse(u.dati); S.prodotti = d.p; S.ricette = d.r; S.fornitori = d.fo; S.ignorati = d.ig; if (d.f) S.fatture = d.f; M.svuota(); salva(); avviso('Ho annullato l\'ultima scelta: puoi rifarla.'); }
+      if (u.dati) { const d = JSON.parse(u.dati); S.prodotti = d.p; S.ricette = d.r; S.fornitori = d.fo; S.ignorati = d.ig; if (d.f) S.fatture = d.f; S.cestino = (S.cestino || []).filter(c => !((S[c.tipo] || []).some && S[c.tipo].some(y => y.id === c.x.id))); M.svuota(); salva(); avviso('Ho annullato l\'ultima scelta: puoi rifarla.'); }
       ui[idxKey] = u.idx;
     }
     ridisegnaMantenendo(); window.scrollTo(0, 0);
@@ -1998,7 +1998,7 @@
   AZ['prezzo-mano'] = (el) => {
     const p = M.prodotto(el.dataset.id);
     modale(`<h3>Prezzo a mano · ${esc(p.nomeBreve)}</h3><div class="form">
-      <label>Prezzo della ${esc(p.confezione)} senza IVA<input id="pm-p" type="number" step="any" inputmode="decimal"></label>
+      <label>Prezzo della ${esc(p.confezione)} senza IVA<input id="pm-p" type="text" inputmode="decimal" autocomplete="off"></label>
       <label>Data<input id="pm-d" type="date" value="${M.oggi()}"></label>
       <label>Fornitore<select id="pm-f"><option value="">—</option>${S.fornitori.map(f => `<option value="${f.id}" ${f.id === p.fornitoreId ? 'selected' : ''}>${esc(f.nome)}</option>`).join('')}</select></label></div>
       <div class="bottoni"><button class="btn primario" id="pm-ok">Aggiungi</button><button class="btn" id="pm-no">Annulla</button></div>`);
@@ -2584,7 +2584,7 @@
     let h = `<div class="card form"><h3>4. Listino di un fornitore</h3>
       <p class="tenue piccolo">Per i prodotti del tuo foglio che non hanno ancora una fattura: prendo i prezzi dal listino (senza IVA). Solo quelli che hai già, gli altri del listino restano fuori. Quando arriverà una fattura, il suo prezzo prenderà il posto di questo.</p>
       <label>Fornitore<select data-lf="forn"><option value="">scegli…</option>${S.fornitori.slice().sort((a, b) => a.nome.localeCompare(b.nome)).map(f => `<option value="${f.id}" ${fid === f.id ? 'selected' : ''}>${esc(f.nome)}</option>`).join('')}</select></label>
-      <div class="due"><label>Data del listino<input type="date" data-lf="data" value="${esc(ui.lfData || M.oggi())}"></label><label>Vostro sconto (%)<input type="number" step="any" inputmode="decimal" data-lf="sconto" value="${esc(ui.lfSconto || '')}" placeholder="0"></label></div>
+      <div class="due"><label>Data del listino<input type="date" data-lf="data" value="${esc(ui.lfData || M.oggi())}"></label><label>Vostro sconto (%)<input type="text" inputmode="decimal" autocomplete="off" data-lf="sconto" value="${esc(ui.lfSconto || '')}" placeholder="0"></label></div>
       <label class="btn">Scegli il file del listino (Excel)<input type="file" accept=".xlsx" data-carica="listino-fornitore" hidden></label></div>`;
     if (!ui.lfProd) return h;
     const voci = ui.lfVoci, sc = numDa(ui.lfSconto) || 0;
@@ -2656,7 +2656,7 @@
       <p class="tenue piccolo">Se in fattura c'è un cartone (o una cassa, un fardello) scrivi quanti pezzi ci sono dentro: il prezzo diventa quello di un pezzo. Il pezzo è quello qui sopra: ${esc(b.confezione)} da ${qta(b.contenuto)} ${esc(b.unita)}.</p>
       ${l.map(({ f, rg }) => { const n = Number(rg.confezioniPerUnita) || 1; const pu = rg.totale / (rg.quantita || 1);
         return `<div class="pz-riga"><div><b>${esc(rg.descrizione)}</b><small>${esc((M.fornitore(f.fornitoreId) || {}).nome || f.fornitoreNome)} · ${dataIt(f.data)} · ${qta(rg.quantita)} ${esc(rg.um || 'pz')} a ${euro(pu)}</small></div>
-          <label>1 ${esc(rg.um || 'pezzo')} di fattura = quanti pezzi?<input type="number" step="any" inputmode="decimal" data-pzr="${f.id}" value="${n}"></label>
+          <label>1 ${esc(rg.um || 'pezzo')} di fattura = quanti pezzi?<input type="text" inputmode="decimal" autocomplete="off" data-pzr="${f.id}" value="${n}"></label>
           ${(() => { const m = String(rg.descrizione).match(/\bx\s*(\d{1,3})\b/i); return n === 1 && m && +m[1] > 1 ? `<button class="btn piccolo" data-az="pz-suggerito" data-f="${f.id}" data-n="${m[1]}">In descrizione c'è «x ${m[1]}»: metti ${m[1]} pezzi</button>` : ''; })()}
           <p class="piccolo">= <b>${euro(pu / n)}</b> a ${esc(b.confezione)}${b.contenuto ? ` · ${euro(pu / n / b.contenuto * (b.unita === 'pz' ? 1 : 1000))}${b.unita === 'g' ? ' al kg' : b.unita === 'ml' ? ' al litro' : ' al pezzo'}` : ''}</p></div>`; }).join('')}</div>`;
   }
@@ -3164,7 +3164,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v73';
+  const VERSIONE_APP = 'repub-v74';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;

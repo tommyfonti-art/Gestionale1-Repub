@@ -395,7 +395,7 @@
     const avvisi = [];
     f.righe.forEach(rg => {
       const atteso = rg.quantita * (rg.prezzoUnitario * (1 - (rg.sconto || 0) / 100) - (rg.scontoImporto || 0));
-      if (rg.totale && Math.abs(atteso - rg.totale) > 0.05) avvisi.push({ tipo: 'attenzione', testo: `Riga ${rg.n} «${rg.descrizione}»: il totale scritto (${rg.totale.toFixed(2)} €) non torna con quantità, prezzo e sconto (${atteso.toFixed(2)} €).` });
+      if (rg.totale && Math.abs(atteso - rg.totale) > 0.05) avvisi.push({ tipo: 'attenzione', testo: `Riga ${rg.n} «${rg.descrizione}»: il totale scritto (${rg.totale.toFixed(2).replace('.', ',')} €) non torna con quantità, prezzo e sconto (${atteso.toFixed(2).replace('.', ',')} €).` });
       if (!rg.prodottoId || rg.ignora) return;
       const p = M.prodotto(rg.prodottoId); if (!p) return;
       const conf = rg.quantita * (Number(rg.confezioniPerUnita) || 1);
@@ -420,7 +420,7 @@
       const ultimoFatt = precFatt[precFatt.length - 1];
       if (!nota && ultimoFatt && ultimoFatt.sconto > 0 && !x.sconto && ultimoFatt.fornitoreId === f.fornitoreId) avvisi.push({ tipo: 'attenzione', testo: `${p.nomeBreve}: l'ultima volta c'era uno sconto del ${ultimoFatt.sconto}%, in questa fattura no.` });
       const qPrec = precFatt.map(e => e.confezioni).filter(Boolean);
-      if (qPrec.length) { const media = qPrec.reduce((a, b) => a + b, 0) / qPrec.length; if (x.confezioni > media * 3) avvisi.push({ tipo: 'attenzione', testo: `${p.nomeBreve}: quantità insolita (${x.confezioni} contro una media di ${media.toFixed(1)}).` }); }
+      if (qPrec.length) { const media = qPrec.reduce((a, b) => a + b, 0) / qPrec.length; if (x.confezioni > media * 3) avvisi.push({ tipo: 'attenzione', testo: `${p.nomeBreve}: quantità insolita (${x.confezioni} contro una media di ${media.toFixed(1).replace('.', ',')}).` }); }
       return Object.assign(x, { nuovo, listino, ultimo: ultimo ? ultimo.prezzo : null, variazione });
     });
     return { prodotti, avvisi, nota };
