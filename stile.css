@@ -72,7 +72,7 @@ details summary { cursor: pointer; color: var(--accento); margin-top: 8px; }
 .bottoni { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 12px; }
 .bottoni.colonna { flex-direction: column; }
 .form label { display: block; font-size: 13px; color: var(--tenue); margin-bottom: 10px; }
-.form input, .form select, .form textarea, .fr select, .fr input, .riga-ed input, .riga-ed select, .modale input, .modale select { display: block; width: 100%; margin-top: 4px; padding: 10px 12px; border: 1px solid var(--linea); border-radius: 10px; font: inherit; font-size: 16px; color: var(--testo); background: #fbfaf7; }
+.form input, .form select, .form textarea, .fr select, .fr input, .riga-ed input, .riga-ed select, .modale input, .modale select { display: block; width: 100%; margin-top: 4px; padding: 10px 12px; border: 1px solid var(--linea); border-radius: 10px; font: inherit; font-size: 16px; color: var(--testo); background-color: #fbfaf7; }
 .form label.interruttore, label.interruttore { display: flex; align-items: center; gap: 10px; color: var(--testo); font-size: 15px; }
 label.interruttore input { width: auto; margin: 0; }
 .riga.interruttore input { width: 22px; height: 22px; flex: none; }
@@ -185,7 +185,7 @@ input.mini.largo { width: 140px; text-align: left; }
 .ctrl-scelte .btn { width: 100%; }
 .ctrl-scelte .bottoni .btn { width: auto; }
 .unisci { font-size: 13px; color: var(--tenue); }
-.unisci select { display: block; width: 100%; margin-top: 4px; padding: 10px 12px; border: 1px solid var(--linea); border-radius: 10px; font: inherit; font-size: 16px; background: #fbfaf7; }
+.unisci select { display: block; width: 100%; margin-top: 4px; }
 @media (min-width: 900px) { .ctrl { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; align-items: start; } }
 .grande-t { font-size: 22px; margin-bottom: 4px; }
 .righe-esempio { margin: 0; padding-left: 18px; color: var(--testo); font-size: 14px; }
@@ -269,3 +269,65 @@ label.spunta input { width: auto; margin-top: 3px; }
 .costo-val { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
 .costo-cat .riga.piccola { padding-left: 18px; font-size: 14px; }
 @media (max-width: 520px) { .costo-cat summary, .costo-riga { grid-template-columns: 1fr 80px; } .costo-barra { grid-column: 1 / -1; grid-row: 2; } }
+
+/* ---------- rifinitura: tutti i campi uguali, su telefono, iPad e Mac ---------- */
+/* base comune: stesso bordo, stessi angoli, stesso sfondo, niente aspetto di sistema */
+:where(input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]):not([type=color]), select, textarea) {
+  font: inherit; font-size: 16px; color: var(--testo); background-color: #fbfaf7; border: 1px solid var(--linea); border-radius: 10px; padding: 10px 12px;
+  -webkit-appearance: none; appearance: none; transition: border-color .15s, box-shadow .15s, background-color .15s; max-width: 100%;
+}
+input[type=search]::-webkit-search-decoration, input[type=search]::-webkit-search-results-decoration { -webkit-appearance: none; }
+/* le tendine: freccina disegnata da noi, così sono identiche agli altri campi anche in Safari */
+select:not([multiple]) {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%237a746a' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 13px center; background-size: 12px 8px; padding-right: 36px !important; cursor: pointer;
+  text-overflow: ellipsis; white-space: nowrap; overflow: hidden;
+}
+/* stessa altezza per campi, tendine e ricerche dentro i moduli */
+.form input:not([type=checkbox]):not([type=radio]):not([type=file]), .form select, .fr select, .fr input:not([type=checkbox]),
+.riga-ed input, .riga-ed select, .modale input:not([type=checkbox]):not([type=radio]), .modale select, .unisci select,
+.tendina-cerca .cerca-rif, .scegli-rif .cerca-rif, .lf-scelta select, .gr-riga select, .gr-riga input, select[data-cat-spesa] {
+  min-height: 46px; line-height: 1.3;
+}
+.tendina-cerca, .form .scegli-rif { margin-top: 4px; }
+.tendina-cerca .cerca-rif, .scegli-rif .cerca-rif { width: 100%; padding: 10px 12px; background-color: #fbfaf7; border: 1px solid var(--linea); border-radius: 10px; font-size: 16px; }
+/* la ricerca che sostituisce una tendina ha anch'essa la freccina, così si capisce che è una scelta */
+.tendina-cerca .cerca-rif {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%237a746a' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 13px center; background-size: 12px 8px; padding-right: 36px;
+}
+textarea { min-height: 90px; resize: vertical; line-height: 1.4; }
+/* quando tocchi un campo: bordo verde e alone leggero */
+:where(input, select, textarea):focus { outline: none; }
+:where(input:not([type=checkbox]):not([type=radio]), select, textarea):focus { border-color: var(--accento); box-shadow: 0 0 0 3px rgba(31, 95, 74, .14); background-color: #fff; }
+@media (hover: hover) { :where(input:not([type=checkbox]):not([type=radio]), select, textarea):hover:not(:focus) { border-color: #d6cebf; } }
+input::placeholder, textarea::placeholder { color: #a9a296; opacity: 1; }
+input:disabled, select:disabled, textarea:disabled, input[readonly] { background-color: #f1eee8; color: var(--tenue); }
+input[type=checkbox], input[type=radio] { accent-color: var(--accento); width: 18px; height: 18px; }
+/* le etichette sopra i campi: tutte uguali, e i campi affiancati allineati in basso anche se un'etichetta va a capo */
+.form label, .modale label, .unisci { font-size: 13px; font-weight: 500; color: var(--tenue); letter-spacing: .1px; }
+.due, .filtri3 { align-items: end; }
+.due > label, .filtri3 > label { min-width: 0; }
+.form h3 + label, .card.form > label:first-of-type { margin-top: 2px; }
+/* bottoni e caselle: altezze coerenti */
+.btn { min-height: 44px; line-height: 1.2; }
+.btn.piccolo { min-height: 36px; }
+.chip { line-height: 1.2; }
+.card { border: 1px solid rgba(0, 0, 0, .035); }
+.card.evidenza { border-width: 2px; }
+.card.form h3 { margin-bottom: 12px; }
+.x { display: inline-flex; align-items: center; justify-content: center; }
+.riga-ed { align-items: stretch; }
+.riga-ed .u { align-self: center; }
+.riga-ed .x { align-self: center; }
+/* le tendine con il testo lungo non devono allargare la pagina */
+select { min-width: 0; }
+.riga-ed .scegli-rif { margin-top: 0; }
+label.spunta { color: var(--testo); line-height: 1.4; }
+label.spunta input { flex: none; margin-top: 1px; }
+.gr-riga input, .gr-riga select { width: 100%; min-width: 0; margin: 0; }
+@media (max-width: 520px) { .gr-riga { grid-template-columns: minmax(0, 1fr) 108px 36px; } }
+.form label.btn { font-size: 15px; font-weight: 600; color: var(--testo); letter-spacing: 0; margin-bottom: 0; }
+.form label.btn.primario { color: #fff; }
+.costo-cat summary .costo-nome { color: var(--testo); }
+@media (max-width: 520px) { h1 { font-size: 17px; } }

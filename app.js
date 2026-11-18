@@ -9,7 +9,7 @@
   // ---------- Utilità ----------
   const $ = (s, el) => (el || document).querySelector(s);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const n2 = (n, d) => (n == null || isNaN(n)) ? '—' : Number(n).toLocaleString('it-IT', { minimumFractionDigits: d == null ? 2 : d, maximumFractionDigits: d == null ? 2 : d });
+  const n2 = (n, d) => (n == null || isNaN(n)) ? '—' : Number(n).toLocaleString('it-IT', { useGrouping: 'always', minimumFractionDigits: d == null ? 2 : d, maximumFractionDigits: d == null ? 2 : d });
   const euro = (n, d) => (n == null || isNaN(n)) ? '—' : n2(n, d) + ' €';
   const perc = (n, d) => (n == null || isNaN(n)) ? '—' : n2(n * 100, d == null ? 1 : d) + '%';
   const qta = (n) => n == null ? '—' : Number(n).toLocaleString('it-IT', { maximumFractionDigits: 3 });
@@ -770,7 +770,7 @@
         <p class="msg grigio">${pr != null ? `Quindi: <b>${euro(pr, 3)}</b> a ${esc(p.confezione)} · ${esc(p.confezione)} da ${qta(p.contenuto)} ${esc(p.unita)} · <b>${rif ? n2(rif.valore) + ' ' + rif.etichetta : ''}</b>` : 'Senza prezzo.'}</p>
       </div>` : `<div class="card"><h3>Prezzo</h3><p>${pr != null ? `${euro(pr, 3)} a ${esc(p.confezione)} · <b>${rif ? n2(rif.valore) + ' ' + rif.etichetta : ''}</b>` : 'Senza prezzo.'}</p><p class="tenue piccolo">Non arriva da nessuna fattura: il prezzo è quello del foglio o messo a mano.</p></div>`;
     return {
-      titolo: `Ricontrollo formati · ${ui.fmtIdx + 1} di ${lista.length}`, indietro: '#/prodotti', html: chips + `
+      titolo: `Formati · ${ui.fmtIdx + 1} di ${lista.length}`, indietro: '#/prodotti', html: chips + `
       <div class="ctrl">
       <div class="card form">
         <h3 class="grande-t">${esc(p.nomeBreve)}${p.formatoOk ? ' <span class="badge verde">ricontrollato</span>' : ''}</h3>
@@ -964,7 +964,7 @@
         ${semi ? `<div class="due"><label>Quanto ne viene<input type="number" step="any" inputmode="decimal" data-b="resa" value="${esc(b.resa)}"></label><label>Unità<select data-b="unita">${['ml', 'g', 'pz'].map(u => `<option ${b.unita === u ? 'selected' : ''}>${u}</option>`).join('')}</select></label></div>`
           : `<label>Prezzo di vendita (con IVA)<input type="number" step="any" inputmode="decimal" data-b="prezzo" value="${esc(b.prezzo)}"></label>`}
         <h3>Ingredienti</h3>
-        ${!semi ? `<label class="spunta"><input type="checkbox" data-media="1" ${b.media ? 'checked' : ''}> Il cliente ne sceglie uno (amari, rum, grappe…): il costo è la <b>media</b> degli ingredienti, non la somma</label>` : ''}
+        ${!semi ? `<label class="spunta"><input type="checkbox" data-media="1" ${b.media ? 'checked' : ''}> <span>Il cliente ne sceglie uno (amari, rum, grappe…): il costo è la <b>media</b> degli ingredienti, non la somma</span></label>` : ''}
         ${b.righe.map((rg, k) => `<div class="riga-ed">${campoIngrediente(rg, k)}
           <input type="number" step="any" inputmode="decimal" data-r="${k}" data-k="quantita" value="${esc(rg.quantita)}" placeholder="dose"><span class="u">${esc(M.unitaRif(rg.rif))}</span>
           <button class="x" data-az="togli-riga" data-k="${k}" aria-label="Togli">✕</button></div>`).join('')}
@@ -998,7 +998,7 @@
         ${semi ? `<label>Unità della preparazione<select data-b="unita">${['ml', 'g', 'pz'].map(u => `<option ${b.unita === u ? 'selected' : ''}>${u}</option>`).join('')}</select></label>` : ''}
       </div>
       <div class="card form"><h3>Ingredienti</h3>
-        ${b.tipo !== 'semilavorato' ? `<label class="spunta"><input type="checkbox" data-media="1" ${b.media ? 'checked' : ''}> Il cliente ne sceglie uno (amari, rum, grappe…): il costo è la <b>media</b> degli ingredienti, non la somma</label>` : ''}
+        ${b.tipo !== 'semilavorato' ? `<label class="spunta"><input type="checkbox" data-media="1" ${b.media ? 'checked' : ''}> <span>Il cliente ne sceglie uno (amari, rum, grappe…): il costo è la <b>media</b> degli ingredienti, non la somma</span></label>` : ''}
         ${b.righe.map((rg, k) => `<div class="riga-ed">${campoIngrediente(rg, k)}
           <input type="number" step="any" inputmode="decimal" data-r="${k}" data-k="quantita" value="${esc(rg.quantita)}" placeholder="dose"><span class="u">${esc(M.unitaRif(rg.rif))}</span>
           <button class="x" data-az="togli-riga" data-k="${k}" aria-label="Togli">✕</button></div>`).join('')}
@@ -2888,7 +2888,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v61';
+  const VERSIONE_APP = 'repub-v62';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
