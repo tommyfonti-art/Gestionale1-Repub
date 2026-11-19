@@ -2139,7 +2139,9 @@
     // salvare vuol dire «l'ho sistemata»: l'avviso automatico «Ricetta da completare…» se ne va
     if (/^Ricetta da completare/.test(b.note || '')) b.note = '';
     if (nuovo) S.ricette.push(b); else { const i = S.ricette.findIndex(r => r.id === b.id); if (i >= 0) S.ricette[i] = b; else S.ricette.push(b); }
-    ui.bozza = null; if (!daRivedi) ui.tipoRicette = b.tipo; salva(); return b;
+    // la scelta dell'elenco (Tutte, Bar, un gruppo…) resta quella di prima: tornando indietro ritrovi l'elenco com'era
+    if (nuovo && !daRivedi && !tipiScelti(ui.tipoRicette).includes(b.tipo)) ui.tipoRicette = b.tipo;
+    ui.bozza = null; salva(); return b;
   }
   // ---------- Importa dalla cassa (Cassa in Cloud) ----------
   // Legge un file Excel (.xlsx) senza librerie esterne oltre a quella per gli zip: restituisce { nomeFoglio: righe[][] }
@@ -3390,7 +3392,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v85';
+  const VERSIONE_APP = 'repub-v86';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
