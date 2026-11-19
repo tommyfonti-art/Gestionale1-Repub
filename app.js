@@ -186,6 +186,17 @@
 
   // ---------- Salvataggio online (Firebase) ----------
   let db = null, utente = null, ultimoSalvato = new Map(), timerCloud = null, inVolo = 0, ultimoTimbro = null;
+  // finché non ho controllato che la copia sul dispositivo sia ancora quella online, non scrivo niente online
+  let attesaCloud = Promise.resolve();
+  // copia dei dati sul dispositivo (IndexedDB): all'avvio l'app parte subito da qui, poi controlla online se è cambiato qualcosa
+  const COPIA = {
+    apri() { return new Promise((ok, ko) => { const r = indexedDB.open('gestionaleRepub', 1); r.onupgradeneeded = () => r.result.createObjectStore('c'); r.onsuccess = () => ok(r.result); r.onerror = () => ko(r.error); }); },
+    async leggi() { try { const bd = await COPIA.apri(); return await new Promise(ok => { const t = bd.transaction('c').objectStore('c').get('cloud'); t.onsuccess = () => ok(t.result || null); t.onerror = () => ok(null); }); } catch (e) { return null; } },
+    async scrivi(v) { try { const bd = await COPIA.apri(); await new Promise(ok => { const t = bd.transaction('c', 'readwrite'); t.objectStore('c').put(v, 'cloud'); t.oncomplete = ok; t.onerror = ok; t.onabort = ok; }); } catch (e) { /* niente copia: pazienza */ } },
+    timer: null,
+    // quello che c'è online (documenti salvati) + il timbro
+    aggiorna() { clearTimeout(COPIA.timer); COPIA.timer = setTimeout(() => { if (utente) COPIA.scrivi({ email: utente.email || '', timbro: ultimoTimbro, docs: [...ultimoSalvato] }); }, 1500); }
+  };
   const COLL = ['prodotti', 'ricette', 'fatture', 'fornitori'];
   function documenti(stato) {
     const m = new Map(); const resto = {};
@@ -199,6 +210,7 @@
   }
   function salvaCloud() { clearTimeout(timerCloud); timerCloud = setTimeout(scriviCloud, 400); }
   async function scriviCloud() {
+    await attesaCloud;
     timerCloud = null;
     const nuovi = documenti(S); const ops = [];
     nuovi.forEach((v, k) => { if (ultimoSalvato.get(k) !== v) ops.push([k, v]); });
@@ -213,7 +225,7 @@
       const parte = ops.slice(i, i + 400);
       parte.forEach(([k, v]) => { const ref = db.doc(k); if (v == null) b.delete(ref); else b.set(ref, Object.assign({ json: v, da: utente.email || '', quando: Date.now() }, k === 'dati/generale' ? { timbro } : {})); });
       inVolo++;
-      b.commit().then(() => { inVolo--; }, e => {
+      b.commit().then(() => { inVolo--; COPIA.aggiorna(); }, e => {
         inVolo--;
         // al prossimo salvataggio questi documenti vengono rimandati
         parte.forEach(([k, v]) => { if (v == null) ultimoSalvato.set(k, '(da cancellare)'); else ultimoSalvato.delete(k); });
@@ -221,21 +233,30 @@
       });
     }
   }
+  // dai documenti online (o dalla copia sul dispositivo) ricostruisco lo stato
+  function statoDaDocumenti(docs) {
+    const g = docs.get('dati/generale'); if (!g) return null;
+    const stato = JSON.parse(g);
+    const ces = (stato.cestino || []).slice();
+    COLL.forEach(c => { stato[c] = []; });
+    docs.forEach((v, k) => {
+      const c = k.slice(0, k.indexOf('/')); if (!COLL.includes(c) || v == null || v === '(da cancellare)') return;
+      const x = JSON.parse(v);
+      if (x._cestino) { const m = x._cestino; delete x._cestino; ces.push({ id: m.id, tipo: c, quando: m.quando, gruppo: m.gruppo, righe: m.righe, x }); }
+      else stato[c].push(x);
+    });
+    stato.cestino = ces.sort((a, b) => a.quando < b.quando ? 1 : -1);
+    return stato;
+  }
   async function caricaCloud() {
     const gen = await db.doc('dati/generale').get();
     if (!gen.exists) return null;
-    const stato = JSON.parse(gen.data().json);
     ultimoTimbro = gen.data().timbro || null;
-    const ces = (stato.cestino || []).slice();
-    for (const c of COLL) {
-      const snap = await db.collection(c).get();
-      stato[c] = snap.docs.map(d => JSON.parse(d.data().json)).filter(x => {
-        if (!x._cestino) return true;
-        const m = x._cestino; delete x._cestino; ces.push({ id: m.id, tipo: c, quando: m.quando, gruppo: m.gruppo, righe: m.righe, x }); return false;
-      });
-    }
-    stato.cestino = ces.sort((a, b) => a.quando < b.quando ? 1 : -1);
-    return stato;
+    const docs = new Map([['dati/generale', gen.data().json]]);
+    // tutte le raccolte insieme, non una dopo l'altra
+    const snaps = await Promise.all(COLL.map(c => db.collection(c).get()));
+    snaps.forEach((snap, i) => snap.docs.forEach(d => docs.set(COLL[i] + '/' + d.id, d.data().json)));
+    return statoDaDocumenti(docs);
   }
   function caricaScriptOrdinati(lista) { return lista.reduce((p, src) => p.then(() => caricaScript(src)), Promise.resolve()); }
   function datiDelDispositivo() { try { const t = localStorage.getItem(CHIAVE); return t ? JSON.parse(t) : null; } catch (e) { return null; } }
@@ -293,12 +314,36 @@
     firebase.auth().onAuthStateChanged(async u => {
       utente = u;
       if (!u) { schermataAccesso(); return; }
+      // 1) parto subito dalla copia sul dispositivo, se è dello stesso account
+      const copia = await COPIA.leggi();
+      if (copia && copia.docs && copia.email === (u.email || '') && !partito) {
+        try {
+          const docs = new Map(copia.docs), stato = statoDaDocumenti(docs);
+          if (stato) {
+            ultimoSalvato = documenti(stato); ultimoTimbro = copia.timbro || null;
+            let fine; attesaCloud = new Promise(r => { fine = r; });
+            prepara(stato); partito = true; partenza(); salva();
+            // 2) controllo online: se il timbro è lo stesso ho già tutto; se no ricarico e ridisegno
+            (async () => {
+              try {
+                const g = await db.doc('dati/generale').get();
+                if (g.exists && (!g.data().timbro || g.data().timbro !== ultimoTimbro)) {
+                  const nuovo = await caricaCloud();
+                  if (nuovo) { ultimoSalvato = documenti(nuovo); const bozza = ui.bozza; prepara(nuovo); ui.bozza = bozza; COPIA.aggiorna(); ridisegnaMantenendo(); }
+                }
+              } catch (e) { avviso('Non riesco a controllare i dati online: uso quelli sul dispositivo.'); }
+              fine();
+            })();
+            return;
+          }
+        } catch (e) { /* copia rovinata: carico online */ }
+      }
       $('#contenuto').innerHTML = '<p class="tenue centro">Carico i dati…</p><div class="rotella"></div>';
       try {
         let stato = await caricaCloud();
         if (stato) ultimoSalvato = documenti(stato);
         else { stato = await sceltaPrimoAvvio(); ultimoSalvato = new Map(); }
-        prepara(stato); salva();
+        prepara(stato); salva(); COPIA.aggiorna();
         if (!partito) { partito = true; partenza(); } else disegna();
       } catch (e) {
         $('#contenuto').innerHTML = `<p class="msg rosso">${/permission/i.test(e.message) ? 'Questo account non ha il permesso di vedere i dati del gestionale.' : 'Errore nel caricare i dati: ' + esc(e.message)}</p><button class="btn" onclick="firebase.auth().signOut()">Esci</button>`;
@@ -314,7 +359,7 @@
         const stato = await caricaCloud(); if (!stato) return;
         const nuovi = documenti(stato);
         if (JSON.stringify([...nuovi]) === JSON.stringify([...ultimoSalvato])) return;
-        ultimoSalvato = nuovi; prepara(stato); ridisegnaMantenendo();
+        ultimoSalvato = nuovi; prepara(stato); COPIA.aggiorna(); ridisegnaMantenendo();
       } catch (e) { /* riprovo la prossima volta */ }
     });
   }
@@ -3337,7 +3382,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v82';
+  const VERSIONE_APP = 'repub-v83';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
