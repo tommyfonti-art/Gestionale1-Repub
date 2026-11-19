@@ -456,6 +456,15 @@
     return null;
   }
   // tiene solo i periodi che non sono già dentro un altro scelto (es. «Mar-ago 2025» dentro «2025»), così non conta due volte
+  // periodi che si accavallano solo in parte (nessuno dei due contiene l'altro): i giorni in comune verrebbero contati due volte
+  function accavallati(pers) {
+    const d = pers.map(p => ({ p, x: dateDiPeriodo(p) })).filter(a => a.x), out = [];
+    d.forEach((a, i) => d.slice(i + 1).forEach(b => {
+      const comune = a.x.dal <= b.x.al && b.x.dal <= a.x.al, dentro = (a.x.dal <= b.x.dal && a.x.al >= b.x.al) || (b.x.dal <= a.x.dal && b.x.al >= a.x.al);
+      if (comune && !dentro) out.push([a.p, b.p]);
+    }));
+    return out;
+  }
   function senzaDoppi(pers) {
     const d = pers.map(p => ({ p, x: dateDiPeriodo(p) }));
     return d.filter(a => !a.x || !d.some(b => b !== a && b.x && b.x.dal <= a.x.dal && b.x.al >= a.x.al && (b.x.dal < a.x.dal || b.x.al > a.x.al || d.indexOf(b) < d.indexOf(a)))).map(a => a.p);
@@ -482,6 +491,7 @@
       const anni = Array.from(new Set(conVendite.map(p => dateDiPeriodo(p)).filter(Boolean).flatMap(x => { const l = []; for (let a = +x.dal.slice(0, 4); a <= +x.al.slice(0, 4); a++) l.push(a); return l; }))).sort();
       return `<div class="chips"><button class="chip ${sel.tipo === 'tutto' ? 'on' : ''}" data-az="pan-sel" data-tipo="tutto">Tutto</button>${anni.map(a => `<button class="chip ${sel.tipo === 'anno' && sel.anno == a ? 'on' : ''}" data-az="pan-sel" data-tipo="anno" data-v="${a}">${a}</button>`).join('')}${conVendite.filter(pp => { const x = dateDiPeriodo(pp); return !(x && x.dal.slice(5) === '01-01' && x.al.slice(5) === '12-31' && x.dal.slice(0, 4) === x.al.slice(0, 4)); }).map(pp => `<button class="chip ${sel.tipo === 'periodo' && pers[0] === pp ? 'on' : ''}" data-az="pan-sel" data-tipo="periodo" data-v="${esc(pp)}">${esc(pp)}</button>`).join('')}<button class="chip ${sel.tipo === 'date' ? 'on' : ''}" data-az="pan-sel" data-tipo="date">📅 Scegli le date</button></div>
         ${sel.tipo === 'date' ? `<div class="card form date-pan"><div class="due"><label>Dal<input type="date" data-pan-data="dal" value="${esc(sel.dal || '')}"></label><label>Al<input type="date" data-pan-data="al" value="${esc(sel.al || '')}"></label></div></div>` : ''}
+        ${(() => { const acc = accavallati(pers); return acc.length ? `<p class="msg rosso">Attenzione: ${acc.slice(0, 3).map(([a, b]) => `«${esc(a)}» e «${esc(b)}»`).join(', ')} hanno dei giorni in comune, quindi le vendite di quei giorni sono contate due volte. In Vendite elimina uno dei due, oppure ricarica i file con date che non si accavallano.</p>` : ''; })()}
         ${sel.tipo !== 'periodo' ? `<p class="tenue piccolo">${pers.length ? `Conto i periodi: ${pers.map(esc).join(', ')}.` : 'Nessun periodo caricato cade tutto in queste date.'}${SEL.esclusi.length ? ` Non conto ${SEL.esclusi.map(esc).join(', ')}: ${SEL.esclusi.length === 1 ? 'è' : 'sono'} solo in parte dentro le date. Le vendite si caricano per periodi: per guardare pochi giorni, carica dalla cassa periodi più corti (es. un mese alla volta).` : ''}</p>` : ''}
         <div class="chips sotto">${[['tutto', 'Tutto il locale'], ['bar', 'Bar'], ['cucina', 'Cucina'], ['scelte', 'Scegli le categorie']].map(([k, v]) => `<button class="chip ${(ui.panGruppo || 'tutto') === k ? 'on' : ''}" data-az="pan-gruppo" data-v="${k}">${v}</button>`).join('')}</div>
         ${(ui.panGruppo || 'tutto') === 'scelte' ? (() => {
@@ -2324,6 +2334,13 @@
     if (ui.ccAl < ui.ccDal) { alert('La data «Al» è prima di «Dal».'); return; }
     const nome = nomeDaDate(ui.ccDal, ui.ccAl); if (!nome) return;
     if (S.periodiVendita.includes(nome) && !confirm(`Il periodo «${nome}» esiste già: sostituisco i suoi numeri con quelli della cassa?`)) return;
+    if (!S.periodiVendita.includes(nome)) {
+      const nuovo = { dal: ui.ccDal, al: ui.ccAl }, altri = S.periodiVendita.map(p => ({ p, x: dateDiPeriodo(p) })).filter(a => a.x);
+      const parz = altri.filter(a => a.x.dal <= nuovo.al && nuovo.dal <= a.x.al && !((a.x.dal <= nuovo.dal && a.x.al >= nuovo.al) || (nuovo.dal <= a.x.dal && nuovo.al >= a.x.al)));
+      const contiene = altri.filter(a => nuovo.dal <= a.x.dal && nuovo.al >= a.x.al), dentroA = altri.filter(a => a.x.dal <= nuovo.dal && a.x.al >= nuovo.al);
+      if (parz.length && !confirm(`Attenzione: queste date si accavallano in parte con ${parz.map(a => '«' + a.p + '»').join(', ')}.\n\nI giorni in comune verrebbero contati due volte quando guardi insieme i due periodi. Meglio caricare file con date che non si accavallano (per esempio un file per mese).\n\nCarico lo stesso?`)) return;
+      if (!parz.length && (contiene.length || dentroA.length)) alert(`Nessun doppione: ${contiene.length ? `questo periodo contiene già ${contiene.map(a => '«' + a.p + '»').join(', ')}` : `questo periodo sta dentro «${dentroA[0].p}»`}. In «Tutto» conto solo il periodo più grande; per un anno o per delle date uso solo i periodi che ci stanno dentro per intero.`);
+    }
     if (!S.periodiVendita.includes(nome)) S.periodiVendita.push(nome);
     S.periodiDate = S.periodiDate || {}; S.periodiDate[nome] = { dal: ui.ccDal, al: ui.ccAl };
     S.ricette.forEach(r => { if (r.vendite) delete r.vendite[nome]; });
@@ -3277,7 +3294,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v77';
+  const VERSIONE_APP = 'repub-v78';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
