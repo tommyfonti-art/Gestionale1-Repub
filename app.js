@@ -816,7 +816,7 @@
   PAGINE['modifica-prodotto'] = function (id) {
     if (!ui.bozza || ui.bozza._per !== 'p:' + id) {
       const base = id === 'nuovo' ? { id: M.uid('p'), nomeBreve: '', nomeCompleto: '', categoria: PF().cats.length === 1 ? PF().cats[0] : '', unita: 'ml', contenuto: 1000, confezione: 'bottiglia', iva: 22, giacenza: 0, scortaMinima: 0, resa: 100, allergeni: [], venditaDiretta: null, fornitoreId: '', articoli: [], prezzi: [], note: '' } : JSON.parse(JSON.stringify(M.prodotto(id)));
-      base._per = 'p:' + id; base._prezzo = M.prezzo(base) == null ? '' : '';
+      base._per = 'p:' + id; const pr0 = id === 'nuovo' ? null : M.prezzo(M.prodotto(id)); base._prezzo = pr0 == null ? '' : n2(pr0); base._prezzoPrima = pr0;
       ui.bozza = base;
     }
     const b = ui.bozza;
@@ -824,6 +824,7 @@
     const vd = b.venditaDiretta || {};
     return {
       titolo: id === 'nuovo' ? 'Nuovo prodotto' : 'Modifica ' + b.nomeBreve, indietro: id === 'nuovo' ? '#/prodotti' : '#/prodotto/' + id, html: `
+      <div class="due-colonne"><div class="colonna">
       <div class="card form">
         ${campo('Nome breve (quello delle ricette)', 'nomeBreve')}
         ${campo('Nome completo', 'nomeCompleto')}
@@ -833,11 +834,12 @@
           ${campo('Contenuto della confezione', 'contenuto', 'text', 'inputmode="decimal" autocomplete="off"')}
         </div>
         <div class="due">
-          ${campo('Tipo di confezione', 'confezione')}
+          <label>Tipo di confezione<input list="conf-list" data-b="confezione" value="${esc(b.confezione)}" autocomplete="off"><datalist id="conf-list">${['bottiglia', 'fusto', 'lattina', 'cartone', 'cassa', 'confezione', 'sacco', 'barattolo', 'busta', 'vaschetta', 'pezzo', 'kg', 'litro'].map(c => `<option value="${c}">`).join('')}</datalist></label>
           ${campo('IVA %', 'iva', 'text', 'inputmode="decimal" autocomplete="off"')}
         </div>
         <label>Fornitore principale<select data-b="fornitoreId"><option value="">Fatto in casa / nessuno</option>${S.fornitori.slice().sort((a, c) => a.nome.localeCompare(c.nome)).map(f => `<option value="${f.id}" ${b.fornitoreId === f.id ? 'selected' : ''}>${esc(f.nome)}</option>`).join('')}</select></label>
-        ${id === 'nuovo' ? campo('Prezzo della confezione senza IVA', '_prezzo', 'text', 'inputmode="decimal" autocomplete="off"') : ''}
+        ${campo('Prezzo della confezione senza IVA (€)', '_prezzo', 'text', 'inputmode="decimal" autocomplete="off"')}
+        ${id !== 'nuovo' ? '<p class="tenue piccolo" style="margin-top:-4px">Se lo cambi, lo segno come prezzo scritto a mano con la data di oggi. Quando arriva una fattura più nuova vale quella.</p>' : ''}
         <div class="due">
           ${campo('In casa (confezioni)', 'giacenza', 'text', 'inputmode="decimal" autocomplete="off"')}
           ${campo('Scorta minima', 'scortaMinima', 'text', 'inputmode="decimal" autocomplete="off"')}
@@ -845,6 +847,7 @@
         ${campo('Resa % (scarto, calo in cottura)', 'resa', 'text', 'inputmode="decimal" autocomplete="off"')}
       </div>
       ${pezziInFattura(b)}
+      </div><div class="colonna">
       <div class="card form"><h3>Allergeni</h3><div class="chips">${M.ALLERGENI.map(a => `<button class="chip ${(b.allergeni || []).includes(a) ? 'on' : ''}" data-az="allergene" data-v="${esc(a)}">${esc(a)}</button>`).join('')}</div></div>
       <div class="card form"><h3>Vendita diretta</h3>
         <label class="interruttore"><input type="checkbox" data-az="vd-attiva" ${b.venditaDiretta ? 'checked' : ''}> Lo vendo anche così com'è (al calice, liscio…)</label>
@@ -855,6 +858,7 @@
           <label>Prezzo della confezione intera<input type="text" inputmode="decimal" autocomplete="off" data-vd="prezzoIntero" value="${esc(vd.prezzoIntero || '')}"></label></div>` : ''}
       </div>
       <div class="card form"><label>Note<textarea data-b="note" rows="3">${esc(b.note)}</textarea></label></div>
+      </div></div>
       <div class="bottoni"><button class="btn primario" data-az="salva-prodotto">Salva</button>${id !== 'nuovo' ? '<button class="btn pericolo" data-az="elimina-prodotto">Elimina</button>' : ''}</div>`
     };
   };
@@ -1927,13 +1931,15 @@
     ['contenuto', 'iva', 'giacenza', 'scortaMinima', 'resa'].forEach(k => { b[k] = numDa(b[k]) || 0; });
     if (!b.contenuto) b.contenuto = 1; if (!b.resa) b.resa = 100;
     if (b.venditaDiretta) ['porzione', 'prezzoPorzione', 'prezzoIntero'].forEach(k => { b.venditaDiretta[k] = numDa(b.venditaDiretta[k]); });
-    const pr = numDa(b._prezzo);
+    const pr = numDa(b._prezzo), prima = b._prezzoPrima;
     const nuovo = b._per === 'p:nuovo';
-    delete b._per; delete b._prezzo;
+    delete b._per; delete b._prezzo; delete b._prezzoPrima;
+    b.prezzi = b.prezzi || [];
+    if (!nuovo && pr != null && pr > 0 && (prima == null || Math.abs(pr - prima) > 0.004)) b.prezzi.push({ data: M.oggi(), fornitoreId: b.fornitoreId || null, prezzo: pr, origine: 'a mano' });
     b.daCompletare = false;
     if (nuovo) { if (pr != null) b.prezzi.push({ data: M.oggi(), fornitoreId: b.fornitoreId, prezzo: pr, origine: 'a mano' }); b.interno = !b.fornitoreId; S.prodotti.push(b); }
-    else { const i = S.prodotti.findIndex(p => p.id === b.id); S.prodotti[i] = b; }
-    ui.bozza = null; salva(); vai('#/prodotto/' + b.id);
+    else { const i = S.prodotti.findIndex(p => p.id === b.id); if (i >= 0) S.prodotti[i] = b; else S.prodotti.push(b); }
+    ui.bozza = null; M.svuota(); salva(); vai('#/prodotto/' + b.id);
   };
   AZ['elimina-prodotto'] = () => {
     const b = ui.bozza; const uso = M.usatoIn('p:' + b.id).dirette;
@@ -3158,7 +3164,7 @@
     const fn = AZ[el.dataset.az]; if (!fn) return;
     if (el.type !== 'checkbox') e.preventDefault();
     const prima = location.hash;
-    fn(el, e);
+    try { fn(el, e); } catch (err) { console.error(err); alert('Qualcosa non ha funzionato (' + (el.dataset.az || '') + '): ' + (err && err.message || err) + '\nFai una foto di questo messaggio e mandala a Claude.'); return; }
     // un collegamento che prepara qualcosa (filtri, posizione) e poi deve comunque aprire la sua pagina
     const h = el.tagName === 'A' && el.getAttribute('href');
     if (h && h.startsWith('#') && el.dataset.az !== 'indietro' && location.hash === prima && h !== prima) vai(h);
@@ -3331,7 +3337,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v81';
+  const VERSIONE_APP = 'repub-v82';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
