@@ -190,8 +190,8 @@
   let attesaCloud = Promise.resolve();
   // copia dei dati sul dispositivo (IndexedDB): all'avvio l'app parte subito da qui, poi controlla online se è cambiato qualcosa
   const COPIA = {
-    apri() { return new Promise((ok, ko) => { const r = indexedDB.open('gestionaleRepub', 1); r.onupgradeneeded = () => r.result.createObjectStore('c'); r.onsuccess = () => ok(r.result); r.onerror = () => ko(r.error); }); },
-    async leggi() { try { const bd = await COPIA.apri(); return await new Promise(ok => { const t = bd.transaction('c').objectStore('c').get('cloud'); t.onsuccess = () => ok(t.result || null); t.onerror = () => ok(null); }); } catch (e) { return null; } },
+    apri() { return new Promise((ok, ko) => { const t = setTimeout(() => ko(new Error('copia lenta')), 2000); try { const r = indexedDB.open('gestionaleRepub', 1); r.onupgradeneeded = () => r.result.createObjectStore('c'); r.onsuccess = () => { clearTimeout(t); ok(r.result); }; r.onerror = () => { clearTimeout(t); ko(r.error); }; r.onblocked = () => { clearTimeout(t); ko(new Error('copia bloccata')); }; } catch (e) { clearTimeout(t); ko(e); } }); },
+    async leggi() { try { const bd = await COPIA.apri(); return await new Promise(ok => { setTimeout(() => ok(null), 4000); const t = bd.transaction('c').objectStore('c').get('cloud'); t.onsuccess = () => ok(t.result || null); t.onerror = () => ok(null); }); } catch (e) { return null; } },
     async scrivi(v) { try { const bd = await COPIA.apri(); await new Promise(ok => { const t = bd.transaction('c', 'readwrite'); t.objectStore('c').put(v, 'cloud'); t.oncomplete = ok; t.onerror = ok; t.onabort = ok; }); } catch (e) { /* niente copia: pazienza */ } },
     timer: null,
     // quello che c'è online (documenti salvati) + il timbro
@@ -253,9 +253,13 @@
     if (!gen.exists) return null;
     ultimoTimbro = gen.data().timbro || null;
     const docs = new Map([['dati/generale', gen.data().json]]);
-    // tutte le raccolte insieme, non una dopo l'altra
-    const snaps = await Promise.all(COLL.map(c => db.collection(c).get()));
-    snaps.forEach((snap, i) => snap.docs.forEach(d => docs.set(COLL[i] + '/' + d.id, d.data().json)));
+    const fatti = [];
+    const mostra = () => { const x = document.getElementById('carico-passi'); if (x) x.textContent = fatti.length ? 'Fatto: ' + fatti.join(', ') : ''; };
+    for (const c of COLL) {
+      const snap = await db.collection(c).get();
+      snap.docs.forEach(d => docs.set(c + '/' + d.id, d.data().json));
+      fatti.push(c + ' ' + snap.docs.length); mostra();
+    }
     return statoDaDocumenti(docs);
   }
   function caricaScriptOrdinati(lista) { return lista.reduce((p, src) => p.then(() => caricaScript(src)), Promise.resolve()); }
@@ -338,7 +342,8 @@
           }
         } catch (e) { /* copia rovinata: carico online */ }
       }
-      $('#contenuto').innerHTML = '<p class="tenue centro">Carico i dati…</p><div class="rotella"></div>';
+      $('#contenuto').innerHTML = '<p class="tenue centro">Carico i dati…</p><div class="rotella"></div><p class="tenue centro piccolo" id="carico-passi"></p><div class="bottoni" id="carico-riprova" hidden style="justify-content:center"><button class="btn" onclick="location.reload()">Ci mette troppo: riprova</button></div>';
+      setTimeout(() => { const r = document.getElementById('carico-riprova'); if (r) r.hidden = false; }, 45000);
       try {
         let stato = await caricaCloud();
         if (stato) ultimoSalvato = documenti(stato);
@@ -3382,7 +3387,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v83';
+  const VERSIONE_APP = 'repub-v84';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
