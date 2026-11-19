@@ -128,6 +128,18 @@
       });
       S.correzioneOmaggi = true; M.svuota();
     }
+    // una volta: i prodotti del foglio scambiati con quelli delle fatture riprendono il nome della fattura (il nome del foglio resta per la ricerca)
+    if (!S.nomiDaFattura) {
+      const nn = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+      const base = [].concat(((window.DATI_INIZIALI || {}).prodotti) || [], ((window.AGGIUNTE_RICETTE || {}).prodotti) || []);
+      const nomiFoglio = new Set(base.filter(x => (x.prezzi || []).some(e => /^Foglio/.test(e.origine || ''))).map(x => nn(x.nomeBreve)));
+      S.prodotti.forEach(x => {
+        if (!x.nomeCompleto || M.daFoglio(x) || !(x.prezzi || []).some(e => e.fatturaId) || !nomiFoglio.has(nn(x.nomeBreve))) return;
+        const nuovo = M.indovinaProdotto({ descrizione: x.nomeCompleto, um: '' }).nomeBreve;
+        if (nuovo && nn(nuovo) !== nn(x.nomeBreve)) { x.nomeFoglio = x.nomeBreve; x.nomeBreve = nuovo; }
+      });
+      S.nomiDaFattura = true; M.svuota();
+    }
     // una volta: i prezzi del foglio di Tommi erano IVA compresa (pagati al banco); i costi si fanno senza IVA, come in fattura
     if (!S.ivaFoglioTolta) {
       S.prodotti.forEach(p => (p.prezzi || []).forEach(e => { if (/^Foglio/.test(e.origine || '') && !e.ivaTolta) { e.prezzo = Math.round(e.prezzo / (1 + (p.iva != null ? p.iva : 22) / 100) * 10000) / 10000; e.ivaTolta = true; } }));
@@ -670,7 +682,7 @@
   function listaProdotti() {
     const f = ui.filtroProdotti.toLowerCase();
     const perForn = ui.prodVista === 'fornitori';
-    const l = S.prodotti.filter(p => (perForn ? (!ui.fornProd || diFornitore(p, ui.fornProd)) : (ui.categoria === '__nuovi' ? p.daCompletare : passaReparti(p, PF()))) && (!f || (p.nomeBreve + ' ' + p.nomeCompleto).toLowerCase().includes(f)))
+    const l = S.prodotti.filter(p => (perForn ? (!ui.fornProd || diFornitore(p, ui.fornProd)) : (ui.categoria === '__nuovi' ? p.daCompletare : passaReparti(p, PF()))) && (!f || (p.nomeBreve + ' ' + p.nomeCompleto + ' ' + (p.nomeFoglio || '')).toLowerCase().includes(f)))
       .sort((a, b) => a.nomeBreve.localeCompare(b.nomeBreve));
     if (!l.length) return '<p class="tenue centro">Nessun prodotto.</p>';
     if (inElimina('p')) return l.map(p => { const u = M.usatoIn('p:' + p.id).tutte.length; return rigaElimina(p.id, p.nomeBreve, `${esc((M.fornitore(p.fornitoreId) || {}).nome || 'senza fornitore')} · ${u ? `<b>usato in ${u} ${u === 1 ? 'ricetta' : 'ricette'}</b>` : 'non usato'}`); }).join('');
@@ -2377,7 +2389,7 @@
     const t = normCassa(testo); if (!t) return [];
     const parole = t.split(' ');
     const trova = (s) => { const n = normCassa(s); return parole.every(w => n.includes(w)); };
-    const prod = S.prodotti.filter(p => trova(p.nomeBreve + ' ' + p.nomeCompleto + ' ' + ((M.fornitore(p.fornitoreId) || {}).nome || '')))
+    const prod = S.prodotti.filter(p => trova(p.nomeBreve + ' ' + p.nomeCompleto + ' ' + (p.nomeFoglio || '') + ' ' + ((M.fornitore(p.fornitoreId) || {}).nome || '')))
       .map(p => { const f = M.fornitore(p.fornitoreId), pr = M.prezzo(p), rf = M.prezzoRiferimento(p);
         return { rif: 'p:' + p.id, nome: p.nomeBreve, inizia: normCassa(p.nomeBreve).startsWith(t),
           info: [f ? f.nome : '', p.nomeCompleto && normCassa(p.nomeCompleto) !== normCassa(p.nomeBreve) ? p.nomeCompleto : '', `${p.confezione} da ${qta(p.contenuto)} ${p.unita}`, pr != null ? euro(pr) : 'senza prezzo', rf ? n2(rf.valore) + ' ' + rf.etichetta : ''].filter(Boolean).join(' · ') }; });
@@ -3265,7 +3277,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v76';
+  const VERSIONE_APP = 'repub-v77';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;

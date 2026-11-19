@@ -685,7 +685,9 @@
       // la fattura non sapeva il formato: vale quello del foglio (1 confezione della fattura = 1 confezione del foglio)
       ve.unita = fo.unita; ve.contenuto = fo.contenuto; ve.confezione = fo.confezione;
     }
-    ['nomeBreve', 'categoria', 'reparto', 'resa', 'scortaMinima', 'venditaDiretta', 'note'].forEach(c => { if (fo[c] != null && fo[c] !== '' && !(c === 'resa' && fo[c] === 100)) ve[c] = fo[c]; });
+    // il nome resta quello della fattura; quello del foglio si tiene per ritrovarlo cercando
+    if (fo.nomeBreve && fo.nomeBreve !== ve.nomeBreve) ve.nomeFoglio = fo.nomeBreve;
+    ['categoria', 'reparto', 'resa', 'scortaMinima', 'venditaDiretta', 'note'].forEach(c => { if (fo[c] != null && fo[c] !== '' && !(c === 'resa' && fo[c] === 100)) ve[c] = fo[c]; });
     (fo.allergeni || []).forEach(x => { if (!(ve.allergeni || []).includes(x)) (ve.allergeni = ve.allergeni || []).push(x); });
     S.ricette.forEach(r => { (r.righe || []).forEach(rg => { if (rg.rif === 'p:' + foglioId) rg.rif = 'p:' + veroId; }); (r.asporto || []).forEach(x => { if (x.rif === 'p:' + foglioId) x.rif = 'p:' + veroId; }); });
     S.fatture.forEach(f => f.righe.forEach(rg => { if (rg.prodottoId === foglioId) rg.prodottoId = veroId; }));
