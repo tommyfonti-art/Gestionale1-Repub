@@ -1115,17 +1115,23 @@
   const SCELTE_REP = { '*tutto': 'Tutte', '*bar': 'Bar', '*cucina': 'Cucina' };
   const tipiScelti = (t) => t === '*tutto' ? Object.keys(M.TIPI).filter(k => k !== 'semilavorato') : t === '*bar' ? M.tipiDi('bar') : t === '*cucina' ? M.tipiDi('cucina') : [t];
   const nomeScelta = (t) => t === '*tutto' ? 'ricette' : t === '*bar' ? 'ricette del bar' : t === '*cucina' ? 'ricette della cucina' : (M.TIPI[t] || 'ricette').toLowerCase();
-  function chipsGruppi(az) {
+  const daCompletareR = (r) => { if (!(r.righe || []).length || /^Ricetta da completare/.test(r.note || '')) return true; const c = M.costoRicetta(r); return !!c.mancanti.length || !(c.totale > 0); };
+  function chipsGruppi(az, conDaCompletare) {
     const t = ui.tipoRicette, rep = ui.repRicette || (SCELTE_REP[t] ? t : '*tutto');
     const gruppi = Object.keys(M.TIPI).filter(k => k !== 'semilavorato' && (rep === '*tutto' || M.REPARTO_TIPO[k] === rep.slice(1)));
-    return `<div class="chips">${Object.entries(SCELTE_REP).map(([k, v]) => `<button class="chip ${t === k ? 'on' : rep === k && !SCELTE_REP[t] && t !== 'semilavorato' ? 'giallo' : ''}" data-az="${az}" data-v="${k}">${v}</button>`).join('')}<button class="chip ${t === 'semilavorato' ? 'on' : ''}" data-az="${az}" data-v="semilavorato">Preparazioni</button></div>
-      <div class="chips sotto">${gruppi.map(k => `<button class="chip ${t === k ? 'on' : ''}" data-az="${az}" data-v="${k}">${esc(M.TIPI[k])} <span class="${t === k ? '' : 'tenue'}">${S.ricette.filter(r => r.tipo === k).length}</span></button>`).join('')}</div>`;
+    const nDc = conDaCompletare ? S.ricette.filter(r => tipiScelti(t).includes(r.tipo) && daCompletareR(r)).length : 0;
+    const segm = [['*tutto', 'Tutte'], ['*bar', 'Bar'], ['*cucina', 'Cucina'], ['semilavorato', 'Preparazioni']];
+    return `<div class="filtri-ric">
+      <div class="segmentato">${segm.map(([k, v]) => `<button class="${t === k || (rep === k && !SCELTE_REP[t] && t !== 'semilavorato') ? 'on' : ''}" data-az="${az}" data-v="${k}">${v}</button>`).join('')}</div>
+      ${conDaCompletare ? `<button class="chip giallo ${ui.ricDaComp ? 'on' : ''}" data-az="ric-dacomp">${ui.ricDaComp ? '✓ ' : ''}Da completare (${nDc})</button>` : ''}
+    </div>
+    ${t !== 'semilavorato' ? `<div class="striscia-gruppi"><span class="tenue piccolo">Gruppo</span>${SCELTE_REP[t] ? `<button class="chip piccola on" data-az="${az}" data-v="${rep}">Tutti</button>` : `<button class="chip piccola" data-az="${az}" data-v="${rep}">Tutti</button>`}${gruppi.map(k => { const n = S.ricette.filter(r => r.tipo === k).length; return `<button class="chip piccola ${t === k ? 'on' : ''} ${n ? '' : 'vuoto'}" data-az="${az}" data-v="${k}">${esc(M.TIPI[k])} <span class="${t === k ? '' : 'tenue'}">${n}</span></button>`; }).join('')}</div>` : ''}`;
   }
   function listaRicette() {
     const f = ui.filtroRicette.toLowerCase();
     const scelti = tipiScelti(ui.tipoRicette), conGruppo = scelti.length > 1;
-    const l = S.ricette.filter(r => scelti.includes(r.tipo) && (!f || r.nome.toLowerCase().includes(f))).sort((a, b) => a.nome.localeCompare(b.nome));
-    if (!l.length) return '<p class="tenue centro">Nessuna ricetta.</p>';
+    const l = S.ricette.filter(r => scelti.includes(r.tipo) && (!f || r.nome.toLowerCase().includes(f)) && (!ui.ricDaComp || daCompletareR(r))).sort((a, b) => a.nome.localeCompare(b.nome));
+    if (!l.length) return `<p class="tenue centro">${ui.ricDaComp ? 'Nessuna ricetta da completare qui. Ottimo!' : 'Nessuna ricetta.'}</p>`;
     // ordinamento: dal guadagno più basso, o dal moltiplicatore più basso (così i problemi stanno in cima)
     const ord = ui.ordineRicette || 'nome';
     if (ord !== 'nome' && l[0].tipo !== 'semilavorato') {
@@ -1152,15 +1158,15 @@
   PAGINE.ricette = function () {
     return {
       titolo: 'Ricette', azione: '<a class="btn-top" href="#/modifica-ricetta/nuovo">＋ Nuova</a>', html: `
-      <input class="cerca" type="search" placeholder="Cerca una ricetta" value="${esc(ui.filtroRicette)}" data-filtro="ricette">
-      ${chipsGruppi('tipo-ricette')}
-      ${ui.tipoRicette !== 'semilavorato' ? `<div class="chips sotto"><span class="tenue piccolo">Ordina per:</span>${[['nome', 'Nome'], ['vendute', 'Più vendute'], ['guadagno', 'Guadagno più basso'], ['molt', 'Moltiplicatore più basso']].map(([k, v]) => `<button class="chip ${(ui.ordineRicette || 'nome') === k ? 'on' : ''}" data-az="ordine-ricette" data-v="${k}">${v}</button>`).join('')}</div>` : ''}
+      <div class="cerca-riga"><input class="cerca" type="search" placeholder="Cerca una ricetta" value="${esc(ui.filtroRicette)}" data-filtro="ricette">
+        ${ui.tipoRicette !== 'semilavorato' ? `<label class="ordina">Ordina<select data-ord-ricette="1">${[['nome', 'per nome'], ['vendute', 'più vendute prima'], ['guadagno', 'guadagno più basso'], ['molt', 'moltiplicatore più basso']].map(([k, v]) => `<option value="${k}" ${(ui.ordineRicette || 'nome') === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>` : ''}</div>
+      ${chipsGruppi('tipo-ricette', true)}
       ${ui.spostaModo ? `<div class="card evidenza sposta-barra"><b>Sposta le ricette spuntate (${(ui.spostaSel || []).length})</b>
         <label>nel gruppo<select id="sposta-in">${Object.entries(M.TIPI).filter(([k]) => k !== ui.tipoRicette).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('')}</select></label>
         <div class="bottoni"><button class="btn primario" data-az="sposta-ok">Sposta</button><button class="btn" data-az="sposta-tutte">Spunta tutte quelle visibili</button><button class="btn" data-az="sposta-fine">Annulla</button></div></div>` : ''}
-      ${inElimina('r') ? barraElimina('r') : `<div class="bottoni"><button class="btn piccolo" data-az="sposta-inizia">Sposta ricette in un altro gruppo</button><button class="btn piccolo" data-az="elim-inizia" data-v="r">Elimina più ricette</button><a class="btn piccolo" href="#/gruppi-ricette">＋ Nuovo gruppo / gestisci i gruppi</a></div>`}
+      ${inElimina('r') ? barraElimina('r') : `<div class="azioni-riga"><button class="btn primario piccolo" data-az="riv-inizia">Rivedi ${ui.ricDaComp ? 'quelle da completare' : ui.filtroRicette ? 'quelle con «' + esc(ui.filtroRicette) + '»' : 'le ' + esc(nomeScelta(ui.tipoRicette))} una per una</button>
+        <details class="menu-azioni"><summary class="btn piccolo">Altro ▾</summary><div class="menu-azioni-voci"><button class="btn piccolo" data-az="sposta-inizia">Sposta ricette in un altro gruppo</button><button class="btn piccolo" data-az="elim-inizia" data-v="r">Elimina più ricette</button><a class="btn piccolo" href="#/gruppi-ricette">＋ Nuovo gruppo / gestisci i gruppi</a></div></details></div>`}
       ${avvisoCestino('r')}
-      <div class="bottoni"><button class="btn" data-az="riv-inizia">Rivedi ${ui.filtroRicette ? 'quelle con «' + esc(ui.filtroRicette) + '»' : 'le ' + esc(nomeScelta(ui.tipoRicette))} una per una</button></div>
       <div class="card lista" id="lista">${listaRicette()}</div>`
     };
   };
@@ -1222,7 +1228,7 @@
     const cerca = (ui.filtroRicette || '').toLowerCase();
     const ord = ui.rivOrdine || 'nome', pp = periodoVendite();
     const sceltiR = tipiScelti(ui.tipoRicette);
-    const l = S.ricette.filter(r => sceltiR.includes(r.tipo) && (!cerca || r.nome.toLowerCase().includes(cerca)) && (filtro === 'tutte' || r.id === ui.rivFisso || (filtro === 'incomplete' ? /^Ricetta da completare/.test(r.note || '') || (!(r.righe || []).length && !r.rivista) : !r.rivista)))
+    const l = S.ricette.filter(r => sceltiR.includes(r.tipo) && (!cerca || r.nome.toLowerCase().includes(cerca)) && (filtro === 'tutte' || r.id === ui.rivFisso || (filtro === 'incomplete' ? /^Ricetta da completare/.test(r.note || '') || (!r.rivista && daCompletareR(r)) : !r.rivista)))
       .sort((a, b) => a.nome.localeCompare(b.nome));
     if (ord === 'piu') l.sort((a, b) => vendutiDi(b, pp) - vendutiDi(a, pp));
     if (ord === 'meno') l.sort((a, b) => vendutiDi(a, pp) - vendutiDi(b, pp));
@@ -3042,7 +3048,8 @@
   };
   AZ['costi-sel'] = (el) => { const t = el.dataset.tipo, p = ui.costiSel || {}; ui.costiSel = t === 'anno' ? { tipo: t, anno: el.dataset.v } : t === 'date' ? { tipo: t, dal: p.dal || '', al: p.al || '' } : { tipo: t }; ridisegnaMantenendo(); };
   AZ['ordine-ricette'] = (el) => { ui.ordineRicette = el.dataset.v; ridisegnaMantenendo(); };
-  AZ['riv-inizia'] = () => { ui.rivIdx = 0; ui.rivStorico = []; ui.rivFisso = null; ui.rivFiltro = ui.rivFiltro || 'darivedere'; ui.bozza = null; vai('#/rivedi-ricette'); };
+  AZ['ric-dacomp'] = () => { ui.ricDaComp = !ui.ricDaComp; ridisegnaMantenendo(); };
+  AZ['riv-inizia'] = () => { ui.rivIdx = 0; ui.rivStorico = []; ui.rivFisso = null; ui.rivFiltro = ui.ricDaComp ? 'incomplete' : (ui.rivFiltro || 'darivedere'); ui.bozza = null; vai('#/rivedi-ricette'); };
   AZ['riv-tipo'] = (el) => { ui.tipoRicette = el.dataset.v; if (SCELTE_REP[el.dataset.v]) ui.repRicette = el.dataset.v; ui.rivIdx = 0; ui.rivFisso = null; ui.rivStorico = []; ui.bozza = null; ridisegnaMantenendo(); };
   AZ['riv-filtro'] = (el) => { ui.rivFiltro = el.dataset.v; ui.rivIdx = 0; ui.rivFisso = null; ui.rivStorico = []; ui.bozza = null; ridisegnaMantenendo(); };
   AZ['riv-ordine'] = (el) => { ui.rivOrdine = el.dataset.v; ui.rivIdx = 0; ui.rivFisso = null; ui.rivStorico = []; ui.bozza = null; ridisegnaMantenendo(); };
@@ -3315,6 +3322,7 @@
       delete p.dubbio; delete ui.bozza.dubbio; M.svuota(); salva(); ridisegnaMantenendo(); avviso('Fatto: prezzo per pezzo aggiornato, anche nelle ricette.'); return;
     }
     if (d.panData) { const sel = ui.panSel || { tipo: 'date' }; sel[d.panData] = el.value; ui.panSel = Object.assign({ tipo: 'date' }, sel); ridisegnaMantenendo(); return; }
+    if (d.ordRicette) { ui.ordineRicette = el.value; ridisegnaMantenendo(); return; }
     if (d.catSpesa) { const f = M.fornitore(d.catSpesa); if (f) { f.catSpesa = el.value; salva(); avviso('Tipo di spesa cambiato.'); } return; }
     if (d.costiData) { const sel = Object.assign({ tipo: 'date' }, ui.costiSel || {}); sel.tipo = 'date'; sel[d.costiData] = el.value; ui.costiSel = sel; ridisegnaMantenendo(); return; }
     if (d.fgnome) { const p = M.prodotto(d.fgnome), v = el.value.trim(); if (p && v && v !== p.nomeBreve) { p.nomeBreve = v; salva(); avviso('Nome cambiato.'); } return; }
@@ -3393,7 +3401,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v87';
+  const VERSIONE_APP = 'repub-v88';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
