@@ -757,6 +757,7 @@
   }
   const avvisoCestino = (t) => ui.cestino && ui.cestino.tipo === t ? `<div class="msg grigio casella"><div>${ui.cestino.n} ${t === 'r' ? (ui.cestino.n === 1 ? 'ricetta spostata' : 'ricette spostate') : (ui.cestino.n === 1 ? 'prodotto spostato' : 'prodotti spostati')} nel <a href="#/cestino">Cestino</a>.</div><button class="btn piccolo" data-az="elim-rimetti">Rimetti</button></div>` : '';
   // il fornitore in breve: senza S.R.L., SNC DI…, S.P.A. e simili
+  const nomeFornBreve = (nome) => { const n = String(nome || '').replace(/[,\s]+(S\.?\s?N\.?\s?C\.?|S\.?\s?R\.?\s?L\.?(\s?S\.?)?|S\.?\s?P\.?\s?A\.?|S\.?\s?A\.?\s?S\.?|S\.?\s?A\.?\s?R\.?\s?L\.?|S\.a\.? r\.l\.?|SOC\.?\s|SOCIET[AÀ]\s).*$/i, '').trim(); return n || nome; };
   function fornitoreBreve(p) {
     const fo = M.fornitore(p.fornitoreId);
     if (!fo) return p.interno ? 'fatto in casa' : M.daFoglio(p) ? 'dal tuo foglio' : 'senza fornitore';
@@ -844,7 +845,7 @@
       ${(p.allergeni || []).length ? `<div class="card"><h3>Allergeni</h3><div class="chips">${p.allergeni.map(a => `<span class="chip on">${esc(a)}</span>`).join('')}</div></div>` : ''}
       ${p.speciale ? '' : `<div class="card"><h3>Storico dei prezzi</h3>
         ${grafico(storico.map(e => ({ data: e.data, y: e.prezzo })), 'Prezzo')}
-        ${(() => { const rigaP = e => `<tr><td>${dataIt(e.data)}</td><td>${esc((M.fornitore(e.fornitoreId) || {}).nome || '—')}</td><td class="n">${euro(e.prezzo)}${e.sconto ? `<small>sconto ${n2(e.sconto, 0)}%</small>` : ''}</td><td>${e.fatturaId ? `<a href="#/fattura/${e.fatturaId}">${esc(e.origine)}</a>` : esc(e.origine || 'a mano')}</td></tr>`;
+        ${(() => { const rigaP = e => `<tr><td>${dataIt(e.data)}</td><td>${esc(nomeFornBreve((M.fornitore(e.fornitoreId) || {}).nome) || '—')}</td><td class="n">${euro(e.prezzo)}${e.sconto ? `<small>sconto ${n2(e.sconto, 0)}%</small>` : ''}${e.raddoppiato ? '<small>cassa ×2</small>' : ''}</td><td>${e.fatturaId ? `<a href="#/fattura/${e.fatturaId}">${esc(String(e.origine || '').replace(/^Fattura /, 'n. '))}</a>` : esc(e.origine || 'a mano')}</td></tr>`;
           const testa = '<tr><th>Data</th><th>Fornitore</th><th class="n">Prezzo</th><th>Da</th></tr>', l = storico.slice().reverse();
           return `<table class="tab">${testa}${l.slice(0, 8).map(rigaP).join('')}</table>${l.length > 8 ? `<details><summary>Vedi tutti i ${l.length} prezzi</summary><table class="tab">${l.slice(8).map(rigaP).join('')}</table></details>` : ''}`; })()}
         <button class="btn piccolo" data-az="prezzo-mano" data-id="${p.id}">＋ Aggiungi un prezzo a mano</button></div>`}
@@ -3392,7 +3393,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v86';
+  const VERSIONE_APP = 'repub-v87';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
