@@ -390,9 +390,23 @@
   M.daAbbinare = (f) => f.righe.filter(r => !r.prodottoId && !r.ignora).length;
 
   // Analisi della fattura: nuovi prezzi per prodotto e avvisi
+  // fornitori che in fattura scrivono le casse a metà prezzo (accordo con la frutteria): quelle righe le conto il doppio
+  const PESO_UM = /^(KG|KGM|KGS|GR|G|LT|L|LTR)$/;
+  M.prodottiACassa = function (fid) {
+    const set = new Set();
+    S.fatture.forEach(f => { if (f.fornitoreId === fid) f.righe.forEach(rg => { if (rg.prodottoId && /\bCASS[AE]\b/i.test(rg.descrizione || '')) set.add(rg.prodottoId); }); });
+    return set;
+  };
+  M.moltiplicaRiga = function (f, rg, cassa) {
+    const fo = M.fornitore(f.fornitoreId); if (!fo || !fo.casseAMeta) return 1;
+    if (PESO_UM.test(String(rg.um || '').toUpperCase().replace(/\./g, ''))) return 1;
+    const set = cassa || M.prodottiACassa(fo.id);
+    return /\bCASS[AE]\b/i.test(rg.descrizione || '') || (rg.prodottoId && set.has(rg.prodottoId)) ? 2 : 1;
+  };
   M.analizzaFattura = function (f) {
     const per = {};
     const avvisi = [];
+    const fo0 = M.fornitore(f.fornitoreId), cassa = fo0 && fo0.casseAMeta ? M.prodottiACassa(fo0.id) : null;
     f.righe.forEach(rg => {
       const atteso = rg.quantita * (rg.prezzoUnitario * (1 - (rg.sconto || 0) / 100) - (rg.scontoImporto || 0));
       if (rg.totale && Math.abs(atteso - rg.totale) > 0.05) avvisi.push({ tipo: 'attenzione', testo: `Riga ${rg.n} «${rg.descrizione}»: il totale scritto (${rg.totale.toFixed(2).replace('.', ',')} €) non torna con quantità, prezzo e sconto (${atteso.toFixed(2).replace('.', ',')} €).` });
@@ -400,8 +414,10 @@
       const p = M.prodotto(rg.prodottoId); if (!p) return;
       const conf = rg.quantita * (Number(rg.confezioniPerUnita) || 1);
       const x = per[p.id] || (per[p.id] = { prodottoId: p.id, confezioni: 0, spesa: 0, confPagate: 0, spesaPagata: 0, omaggio: 0, sconto: 0, righe: [] });
-      x.confezioni += conf; x.spesa += rg.totale; x.righe.push(rg);
-      if (rg.totale > 0) { x.confPagate += conf; x.spesaPagata += rg.totale; x.sconto = Math.max(x.sconto, rg.sconto || 0); } else x.omaggio += conf;
+      const k = cassa ? M.moltiplicaRiga(f, rg, cassa) : 1, tot = rg.totale * k;
+      if (k !== 1) x.raddoppiata = true;
+      x.confezioni += conf; x.spesa += tot; x.righe.push(rg);
+      if (rg.totale > 0) { x.confPagate += conf; x.spesaPagata += tot; x.sconto = Math.max(x.sconto, rg.sconto || 0); } else x.omaggio += conf;
     });
     const nota = f.tipoDoc === 'TD04';
     if (nota) avvisi.push({ tipo: 'info', testo: 'È una nota di credito: scala la merce resa dal magazzino e non cambia i prezzi.' });
@@ -734,7 +750,7 @@
     const prezziPrima = {}; an.prodotti.forEach(x => { prezziPrima[x.prodottoId] = M.prezzo(M.prodotto(x.prodottoId)); });
     an.prodotti.forEach(x => {
       const p = M.prodotto(x.prodottoId);
-      if (!an.nota && x.nuovo != null) p.prezzi.push({ data: f.data, fornitoreId: f.fornitoreId, prezzo: x.nuovo, listino: x.listino, sconto: x.sconto, confezioni: x.confezioni, fatturaId: f.id, origine: 'Fattura ' + f.numero });
+      if (!an.nota && x.nuovo != null) p.prezzi.push(Object.assign({ data: f.data, fornitoreId: f.fornitoreId, prezzo: x.nuovo, listino: x.listino, sconto: x.sconto, confezioni: x.confezioni, fatturaId: f.id, origine: 'Fattura ' + f.numero }, x.raddoppiata ? { raddoppiato: true } : {}));
       if (tocca) p.giacenza = Math.round(((Number(p.giacenza) || 0) + (an.nota ? -1 : 1) * x.confezioni) * 1000) / 1000;
       if (!p.fornitoreId) p.fornitoreId = f.fornitoreId;
     });
