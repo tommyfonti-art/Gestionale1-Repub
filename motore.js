@@ -648,7 +648,13 @@
     return null;
   };
   // ---------- Dati del foglio contro dati delle fatture ----------
-  M.daFoglio = (p) => !p.speciale && (p.prezzi || []).some(e => /^Foglio/.test(e.origine || '')) && !(p.prezzi || []).some(e => e.fatturaId);
+  // del foglio: ha solo prezzi del foglio, oppure il prezzo che conta adesso (il più recente) è ancora quello del foglio
+  M.daFoglio = (p) => {
+    if (p.speciale) return false;
+    const l = p.prezzi || []; if (!l.some(e => /^Foglio/.test(e.origine || ''))) return false;
+    if (!l.some(e => e.fatturaId)) return true;
+    let u = l[0]; l.forEach(e => { if (e.data >= u.data) u = e; }); return /^Foglio/.test(u.origine || '');
+  };
   M.daFattura = (p) => !p.speciale && (!!p.creatoDa || (p.prezzi || []).some(e => e.fatturaId));
   const VUOTE = new Set(['con', 'per', 'del', 'della', 'dei', 'alla', 'allo', 'al', 'bottiglia', 'litro', 'litri', 'confezione', 'cartone', 'fatto', 'fatta', 'casa', 'chilo', 'pezzo', 'pezzi', 'busta', 'vetro', 'pet', 'kg', 'cl', 'ml', 'lt', 'gr', 'ct', 'cf', 'pz', 'bt', 'conf', 'fus', 'fusto']);
   const parole = (s) => norm(s).split(' ').filter(w => w.length >= 3 && !/\d/.test(w) && !VUOTE.has(w));

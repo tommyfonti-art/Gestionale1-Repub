@@ -966,6 +966,15 @@
   };
 
 
+  // da dove viene il prezzo che uso: fattura, listino, tuo foglio o scritto a mano
+  function fontePrezzo(p) {
+    const v = M.prezzoVoce(p); if (!v) return '';
+    if (v.fatturaId) return `<small class="fonte">prezzo dalla fattura del ${dataIt(v.data)}</small>`;
+    if (/^Listino/.test(v.origine || '')) return `<small class="fonte">prezzo dal ${esc(v.origine.toLowerCase())}</small>`;
+    if (/^Foglio/.test(v.origine || '')) return `<small class="fonte giallo-t">prezzo dal tuo foglio${/mano/.test(v.origine) ? ', corretto a mano' : ''}</small>`;
+    return `<small class="fonte">prezzo scritto a mano il ${dataIt(v.data)}</small>`;
+  }
+  const provvisoriaDaFoglio = (r) => r && r.tipo === 'semilavorato' && (r.costiExtra || []).some(e => /foglio/i.test(e.nome || ''));
   // ----- Pulizia: i prodotti del foglio diventano quelli veri delle fatture -----
   function coppieFoglio() {
     const fatt = S.prodotti.filter(p => M.daFattura(p));
@@ -1070,7 +1079,8 @@
       const o = M.rif(rg.rif);
       const link = rg.rif.startsWith('p:') ? '#/prodotto/' + rg.rif.slice(2) : '#/ricetta/' + rg.rif.slice(2);
       const quota = rg.costo != null && cr.totale ? rg.costo / cr.totale : null;
-      return `<tr><td><a href="${link}">${esc(M.nomeRif(rg.rif))}</a>${rg.nota ? `<small>${esc(rg.nota)}</small>` : ''}</td><td class="n">${qta(rg.quantita)} ${esc(M.unitaRif(rg.rif))}</td><td class="n">${rg.costo == null ? '<span class="badge rosso">manca</span>' : euro(rg.costo, 3)}</td><td class="n tenue">${perc(quota, 0)}</td></tr>`;
+      const fonte = rg.rif.startsWith('p:') ? (o ? fontePrezzo(o) : '') : provvisoriaDaFoglio(o) ? '<small class="fonte giallo-t">preparazione con il costo provvisorio del tuo foglio</small>' : '';
+      return `<tr><td><a href="${link}">${esc(M.nomeRif(rg.rif))}</a>${rg.nota ? `<small>${esc(rg.nota)}</small>` : ''}${fonte}</td><td class="n">${qta(rg.quantita)} ${esc(M.unitaRif(rg.rif))}</td><td class="n">${rg.costo == null ? '<span class="badge rosso">manca</span>' : euro(rg.costo, 3)}</td><td class="n tenue">${perc(quota, 0)}</td></tr>`;
     }).join('') + (r.costiExtra || []).map(e => `<tr><td>${esc(e.nome)}</td><td></td><td class="n">${euro(e.costo, 3)}</td><td class="n tenue">${perc(cr.totale ? e.costo / cr.totale : null, 0)}</td></tr>`).join('');
     return {
       titolo: r.nome, indietro: '#/ricette', azione: `<a class="btn-top" href="#/modifica-ricetta/${r.id}">Modifica</a>`, html: `
@@ -2506,7 +2516,11 @@
     const fornF = {}; tutti.forEach(p => { const k = p.fornitoreId || '__nessuno'; fornF[k] = (fornF[k] || 0) + 1; });
     const chips = `<div class="chips">${[['dafare', 'Da decidere'], ['usati', 'Usati nelle ricette'], ['nonusati', 'Non usati'], ['tutti', 'Tutti (' + tutti.length + ')']].map(([k, v]) => `<button class="chip ${filtro === k ? 'on' : ''}" data-az="fg-filtro" data-v="${k}">${v}</button>`).join('')}</div>
       <div class="chips sotto"><button class="chip ${!ui.fgForn ? 'on' : ''}" data-az="fg-forn" data-v="">Tutti i fornitori</button>${Object.entries(fornF).sort((a, b) => b[1] - a[1]).map(([k, n]) => `<button class="chip ${ui.fgForn === k ? 'on' : ''}" data-az="fg-forn" data-v="${k}">${esc(k === '__nessuno' ? 'Fatti da noi / senza fornitore' : (M.fornitore(k) || {}).nome || '?')} (${n})</button>`).join('')}</div>`;
-    const chipsE = chips.replace('</div>', `<button class="chip ${ui.fgElenco ? 'on' : 'giallo'}" data-az="fg-elenco" data-v="${ui.fgElenco ? '' : '1'}">${ui.fgElenco ? '✓ Tutti insieme' : 'Vedi tutti insieme'}</button></div>`);
+    let chipsE = chips.replace('</div>', `<button class="chip ${ui.fgElenco ? 'on' : 'giallo'}" data-az="fg-elenco" data-v="${ui.fgElenco ? '' : '1'}">${ui.fgElenco ? '✓ Tutti insieme' : 'Vedi tutti insieme'}</button></div>`);
+    const prov = S.ricette.filter(provvisoriaDaFoglio);
+    const tenuti = (S.foglioTenuti || []).filter(id => M.prodotto(id) && M.daFoglio(M.prodotto(id))).length;
+    const spiega = `<p class="tenue piccolo">Qui ci sono i prodotti che hanno ancora il prezzo del tuo foglio: ${tutti.length} in tutto${tenuti ? `, di cui ${tenuti} che avevi deciso di tenere (li vedi in «Tutti»)` : ''}. Non ci sono quelli già scambiati con un prodotto delle fatture (hanno tenuto il tuo nome, ma il prezzo lo fanno le fatture) né quelli col prezzo del listino di Zonzini.${prov.length ? ` Ci sono anche <a href="#/ricette" data-az="tipo-ricette" data-v="semilavorato">${prov.length} preparazioni</a> (blend, cordial…) che hanno ancora il costo provvisorio del foglio: per sistemarle metti i loro ingredienti.` : ''} In ogni ricetta, sotto ogni ingrediente, è scritto da dove viene il prezzo.</p>`;
+    chipsE = chipsE + spiega;
     if (ui.fgElenco) return elencoFoglio(chipsE, tutti);
     if (!l.length) { return { titolo: 'Prodotti del foglio', indietro: '#/prodotti', html: chipsE + `<div class="card evidenza"><h3>Finito</h3><p>Nessun prodotto del foglio in questo elenco. Restano ${tutti.length} prodotti del foglio, di cui ${fatti} li hai tenuti apposta.</p></div>` }; }
     if (ui.fgIdx == null || ui.fgIdx >= l.length) ui.fgIdx = 0;
@@ -3251,7 +3265,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v75';
+  const VERSIONE_APP = 'repub-v76';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
