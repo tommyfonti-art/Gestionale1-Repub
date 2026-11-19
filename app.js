@@ -706,6 +706,13 @@
       <p class="tenue piccolo">Usa la ricerca e i filtri qui sopra per trovarli; le spunte restano anche se cambi filtro. Quelli eliminati finiscono nel Cestino.</p></div>`;
   }
   const avvisoCestino = (t) => ui.cestino && ui.cestino.tipo === t ? `<div class="msg grigio casella"><div>${ui.cestino.n} ${t === 'r' ? (ui.cestino.n === 1 ? 'ricetta spostata' : 'ricette spostate') : (ui.cestino.n === 1 ? 'prodotto spostato' : 'prodotti spostati')} nel <a href="#/cestino">Cestino</a>.</div><button class="btn piccolo" data-az="elim-rimetti">Rimetti</button></div>` : '';
+  // il fornitore in breve: senza S.R.L., SNC DI…, S.P.A. e simili
+  function fornitoreBreve(p) {
+    const fo = M.fornitore(p.fornitoreId);
+    if (!fo) return p.interno ? 'fatto in casa' : M.daFoglio(p) ? 'dal tuo foglio' : 'senza fornitore';
+    const n = String(fo.nome || '').replace(/[,\s]+(S\.?\s?N\.?\s?C\.?|S\.?\s?R\.?\s?L\.?(\s?S\.?)?|S\.?\s?P\.?\s?A\.?|S\.?\s?A\.?\s?S\.?|S\.?\s?A\.?\s?R\.?\s?L\.?|S\.a\.? r\.l\.?|SOC\.?\s|SOCIET[AÀ]\s).*$/i, '').trim();
+    return n || fo.nome;
+  }
   function listaProdotti() {
     const f = ui.filtroProdotti.toLowerCase();
     const perForn = ui.prodVista === 'fornitori';
@@ -716,7 +723,7 @@
     return l.map(p => {
       const pr = M.prezzo(p), rif = M.prezzoRiferimento(p);
       const sc = p.scortaMinima > 0 && (p.giacenza || 0) < p.scortaMinima;
-      return `<a class="riga" href="#/prodotto/${p.id}"><span>${esc(p.nomeBreve)}<small>${esc(p.nomeCompleto)}</small></span>
+      return `<a class="riga" href="#/prodotto/${p.id}"><span>${esc(p.nomeBreve)}<small>${esc(p.nomeCompleto)}</small><small class="forn-riga">${esc(fornitoreBreve(p))}</small></span>
         <span class="destra">${p.speciale ? euro(rif && rif.valore, 2) + '<small>' + esc(rif ? rif.etichetta : '') + '</small>' : euro(pr) + `<small>${rif ? n2(rif.valore) + ' ' + rif.etichetta : 'senza prezzo'}</small>`}${sc ? '<span class="badge rosso">scorta</span>' : ''}${p.daCompletare ? '<span class="badge giallo">da completare</span>' : ''}</span></a>`;
     }).join('');
   }
@@ -1423,7 +1430,7 @@
         titolo: 'Inventario', indietro: '#/magazzino', html: `
         <p class="tenue">Scrivi quante confezioni ci sono davvero (anche a metà: 0,5). Quelle che non tocchi restano come sono.</p>
         ${chipsReparti(c, 'conta-filtro')}
-        <div class="card">${lista.map(p => { const v = c.valori[p.id]; return `<div class="conta ${v != null ? 'toccato' : ''}"><span>${esc(p.nomeBreve)}<small>${esc(p.confezione)} · in app ${qta(p.giacenza)}</small></span>
+        <div class="card">${lista.map(p => { const v = c.valori[p.id]; return `<div class="conta ${v != null ? 'toccato' : ''}"><span>${esc(p.nomeBreve)}<small>${esc(fornitoreBreve(p))} · ${esc(p.confezione)} · in app ${qta(p.giacenza)}</small></span>
           <button class="tondo" data-az="conta-meno" data-id="${p.id}">−</button><input type="text" inputmode="decimal" autocomplete="off" data-conta="${p.id}" value="${v != null ? v : ''}" placeholder="${qta(p.giacenza)}"><button class="tondo" data-az="conta-piu" data-id="${p.id}">＋</button></div>`; }).join('')}</div>
         <div class="bottoni"><button class="btn primario" data-az="salva-conta">Salva la conta (${Object.keys(c.valori).length})</button><button class="btn" data-az="esci-conta">Annulla</button></div>`
       };
@@ -3324,7 +3331,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v80';
+  const VERSIONE_APP = 'repub-v81';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
