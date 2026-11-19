@@ -385,3 +385,15 @@ details.menu-azioni > summary { list-style: none; cursor: pointer; }
 details.menu-azioni > summary::-webkit-details-marker { display: none; }
 .menu-azioni-voci { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 @media (min-width: 900px) { .striscia-gruppi { flex-wrap: wrap; overflow: visible; row-gap: 6px; } }
+/* barre mese per mese: sul telefono, se i mesi sono tanti, scorrono di lato invece di allargare la pagina */
+.barre { overflow-x: auto; }
+.barra { min-width: 30px; }
+.barra small, .barra span { white-space: nowrap; }
+/* su telefono e iPad (dita, non mouse) le etichette sono alte abbastanza da toccarle bene */
+@media (pointer: coarse) {
+  .chip { min-height: 36px; display: inline-flex; align-items: center; }
+  .chip.piccola { min-height: 34px; }
+  .segmentato button { padding: 9px 14px; }
+}
+/* sul telefono l'iPhone ingrandisce la pagina se il testo di un campo è sotto i 16 px: li tengo a 16 */
+@media (pointer: coarse) { input.mini, select.mini, textarea.mini { font-size: 16px; } }
