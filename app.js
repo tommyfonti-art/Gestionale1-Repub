@@ -1204,7 +1204,7 @@
         <p class="tenue piccolo">Margine senza IVA, con il costo di oggi.</p></div>` : ''}
       <div class="card"><h3>Andamento del costo</h3>${grafico(and.map(x => ({ data: x.data, y: x.costo })), 'Costo')}</div>
       ${uso.tutte.length ? `<div class="card"><h3>Usata in</h3>${uso.tutte.map(x => `<a class="riga" href="#/ricetta/${x.id}"><span>${esc(x.nome)}</span><span>${euro(M.costo(x))}</span></a>`).join('')}</div>` : ''}
-      ${r.note ? `<div class="card"><h3>Note</h3><p>${esc(r.note)}</p></div>` : ''}
+      ${r.note ? `<div class="card"><div class="riga" style="border:0;padding:0"><h3 style="margin:0">Note</h3><button class="x" data-az="nota-via" data-id="${r.id}" aria-label="Togli la nota" title="Togli la nota">✕</button></div><p>${esc(r.note)}</p></div>` : ''}
       <div class="bottoni">${!semi ? `<button class="btn" data-az="simula-ricetta" data-id="${r.id}">Simula un altro prezzo</button>` : ''}<button class="btn" data-az="duplica-ricetta" data-id="${r.id}">Duplica</button></div>`
     };
   };
@@ -1221,7 +1221,7 @@
     const cerca = (ui.filtroRicette || '').toLowerCase();
     const ord = ui.rivOrdine || 'nome', pp = periodoVendite();
     const sceltiR = tipiScelti(ui.tipoRicette);
-    const l = S.ricette.filter(r => sceltiR.includes(r.tipo) && (!cerca || r.nome.toLowerCase().includes(cerca)) && (filtro === 'tutte' || r.id === ui.rivFisso || (filtro === 'incomplete' ? /^Ricetta da completare/.test(r.note || '') || !(r.righe || []).length : !r.rivista)))
+    const l = S.ricette.filter(r => sceltiR.includes(r.tipo) && (!cerca || r.nome.toLowerCase().includes(cerca)) && (filtro === 'tutte' || r.id === ui.rivFisso || (filtro === 'incomplete' ? /^Ricetta da completare/.test(r.note || '') || (!(r.righe || []).length && !r.rivista) : !r.rivista)))
       .sort((a, b) => a.nome.localeCompare(b.nome));
     if (ord === 'piu') l.sort((a, b) => vendutiDi(b, pp) - vendutiDi(a, pp));
     if (ord === 'meno') l.sort((a, b) => vendutiDi(a, pp) - vendutiDi(b, pp));
@@ -1252,7 +1252,7 @@
       <div class="card form">
         <h2>${esc(b.nome)}${r.rivista ? ' <span class="badge verde">già riveduta</span>' : ''}</h2>
         ${periodoVendite() ? `<p class="tenue piccolo">Venduti nel periodo «${esc(periodoVendite())}»: <b>${qta(vendutiDi(r, periodoVendite()))}</b></p>` : ''}
-        ${b.note ? `<p class="msg ${/^Ricetta da completare/.test(b.note) ? 'giallo' : 'grigio'}">${esc(b.note)}</p>` : ''}
+        ${b.note ? `<div class="msg ${/^Ricetta da completare/.test(b.note) ? 'giallo' : 'grigio'} casella"><div>${esc(b.note)}</div><button class="x" data-az="nota-via" data-id="${r.id}" aria-label="Togli la nota" title="Togli la nota">✕</button></div>` : ''}
         ${semi ? `<div class="due"><label>Quanto ne viene<input type="text" inputmode="decimal" autocomplete="off" data-b="resa" value="${esc(b.resa)}"></label><label>Unità<select data-b="unita">${['ml', 'g', 'pz'].map(u => `<option ${b.unita === u ? 'selected' : ''}>${u}</option>`).join('')}</select></label></div>`
           : `<label>Prezzo di vendita (con IVA)<input type="text" inputmode="decimal" autocomplete="off" data-b="prezzo" value="${esc(b.prezzo)}"></label>`}
         <h3>Ingredienti</h3>
@@ -2130,18 +2130,16 @@
   AZ['salva-ricetta'] = () => { const b = salvaBozzaRicetta(); if (b) vai('#/ricetta/' + b.id); };
   function salvaBozzaRicetta() {
     const b = ui.bozza; if (!b.nome.trim()) { alert('Scrivi il nome.'); return null; }
-    delete b._rivedi;
     b.righe = b.righe.filter(rg => rg.rif).map(rg => Object.assign(rg, { quantita: numDa(rg.quantita) || 0 }));
     b.costiExtra = (b.costiExtra || []).filter(e => e.nome || e.costo).map(e => Object.assign(e, { costo: numDa(e.costo) || 0 }));
     b.asporto = (b.asporto || []).filter(a => a.rif).map(a => Object.assign(a, { quantita: numDa(a.quantita) || 1 }));
     b.prezzo = numDa(b.prezzo); b.resa = numDa(b.resa);
     const nuovo = b._per === 'r:nuovo'; delete b._per;
-    // se ha aggiunto ingredienti a una ricetta segnata come incompleta, tolgo l'avviso
-    const prima = nuovo ? null : M.ricetta(b.id);
-    const doseOk = b.righe.length && b.righe.every(rg => rg.quantita > 0) && (b.tipo !== 'semilavorato' || b.resa > 0);
-    if (prima && /^Ricetta da completare/.test(b.note || '') && (b.righe.length > (prima.righe || []).length || doseOk)) b.note = String(b.note).replace(/^Ricetta da completare[^.]*\.\s*/, '');
-    if (nuovo) S.ricette.push(b); else S.ricette[S.ricette.findIndex(r => r.id === b.id)] = b;
-    ui.bozza = null; ui.tipoRicette = b.tipo; salva(); return b;
+    const daRivedi = b._rivedi; delete b._rivedi;
+    // salvare vuol dire «l'ho sistemata»: l'avviso automatico «Ricetta da completare…» se ne va
+    if (/^Ricetta da completare/.test(b.note || '')) b.note = '';
+    if (nuovo) S.ricette.push(b); else { const i = S.ricette.findIndex(r => r.id === b.id); if (i >= 0) S.ricette[i] = b; else S.ricette.push(b); }
+    ui.bozza = null; if (!daRivedi) ui.tipoRicette = b.tipo; salva(); return b;
   }
   // ---------- Importa dalla cassa (Cassa in Cloud) ----------
   // Legge un file Excel (.xlsx) senza librerie esterne oltre a quella per gli zip: restituisce { nomeFoglio: righe[][] }
@@ -3046,6 +3044,11 @@
   AZ['riv-filtro'] = (el) => { ui.rivFiltro = el.dataset.v; ui.rivIdx = 0; ui.rivFisso = null; ui.rivStorico = []; ui.bozza = null; ridisegnaMantenendo(); };
   AZ['riv-ordine'] = (el) => { ui.rivOrdine = el.dataset.v; ui.rivIdx = 0; ui.rivFisso = null; ui.rivStorico = []; ui.bozza = null; ridisegnaMantenendo(); };
   AZ['riv-per'] = (el) => { ui.rivPer = el.dataset.v; ui.rivIdx = 0; ui.rivFisso = null; ui.rivStorico = []; ui.bozza = null; ridisegnaMantenendo(); };
+  AZ['nota-via'] = (el) => {
+    const r = M.ricetta(el.dataset.id); if (!r) return;
+    r.note = ''; if (ui.bozza && ui.bozza._per === 'r:' + r.id) ui.bozza.note = '';
+    salva(); ridisegnaMantenendo();
+  };
   AZ['riv-salta'] = () => {
     const l = listaRivedi(), cor = l[ui.rivIdx || 0];
     if (cor) (ui.rivStorico = ui.rivStorico || []).push({ id: cor.id });
@@ -3387,7 +3390,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v84';
+  const VERSIONE_APP = 'repub-v85';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
