@@ -400,8 +400,8 @@
   M.moltiplicaRiga = function (f, rg, cassa) {
     const fo = M.fornitore(f.fornitoreId); if (!fo || !fo.casseAMeta) return 1;
     if (PESO_UM.test(String(rg.um || '').toUpperCase().replace(/\./g, ''))) return 1;
-    const set = cassa || M.prodottiACassa(fo.id);
-    return /\bCASS[AE]\b/i.test(rg.descrizione || '') || (rg.prodottoId && set.has(rg.prodottoId)) ? 2 : 1;
+    // solo le righe dove c'è scritto CASSA
+    return /\bCASS[AE]\b/i.test(rg.descrizione || '') ? 2 : 1;
   };
   M.analizzaFattura = function (f) {
     const per = {};

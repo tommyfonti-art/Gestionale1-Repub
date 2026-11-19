@@ -133,11 +133,17 @@
       S.fornitori.forEach(fo => { if (fo.piva === '04686340409' || /frutteria/i.test(fo.nome || '')) fo.casseAMeta = true; });
       S.casseFrutteria = true;
     }
-    S.fornitori.filter(fo => fo.casseAMeta).forEach(fo => {
+    // i prezzi delle fatture di questi fornitori seguono la regola: doppio solo dove la riga dice CASSA (rifaccio il conto se è cambiato)
+    S.fornitori.filter(fo => fo.casseAMeta || fo.casseRicontrollo !== 2).forEach(fo => {
       S.fatture.filter(f => f.fornitoreId === fo.id && f.stato === 'registrata').forEach(f => {
         const an = M.analizzaFattura(f);
-        an.prodotti.forEach(x => { if (!x.raddoppiata || x.nuovo == null) return; const p = M.prodotto(x.prodottoId); const e = p && (p.prezzi || []).find(v => v.fatturaId === f.id); if (e && !e.raddoppiato) { e.prezzo = x.nuovo; e.listino = x.listino; e.raddoppiato = true; } });
+        an.prodotti.forEach(x => {
+          const p = M.prodotto(x.prodottoId); const e = p && (p.prezzi || []).find(v => v.fatturaId === f.id); if (!e || x.nuovo == null) return;
+          if (x.raddoppiata && (!e.raddoppiato || Math.abs(e.prezzo - x.nuovo) > 0.0001)) { e.prezzo = x.nuovo; e.listino = x.listino; e.raddoppiato = true; }
+          else if (!x.raddoppiata && e.raddoppiato) { e.prezzo = x.nuovo; e.listino = x.listino; delete e.raddoppiato; }
+        });
       });
+      fo.casseRicontrollo = 2;
     });
     // una volta: i prodotti del foglio scambiati con quelli delle fatture riprendono il nome della fattura (il nome del foglio resta per la ricerca)
     if (!S.nomiDaFattura) {
@@ -1390,8 +1396,8 @@
       <div class="kpi-griglia">${kpi('Prodotti', prod.length)}${kpi('Fatture registrate', fatt.filter(x => x.stato === 'registrata').length)}</div>
       ${prod.length && !f.servizi ? `<a class="btn primario largo" href="#/formati" data-az="fmt-fornitore" data-id="${id}">Ricontrolla i formati di tutto quello che compriamo da ${esc(f.nome)}</a>` : ''}
       <div class="card form"><label class="interruttore"><input type="checkbox" data-az="toggle-servizi" data-id="${id}" ${f.servizi ? 'checked' : ''}> Non vende merce (bollette, banca, pagamenti, servizi): le sue fatture restano in archivio e non creano prodotti</label></div>
-      ${!f.servizi ? `<div class="card form"><label class="interruttore"><input type="checkbox" data-az="toggle-casse" data-id="${id}" ${f.casseAMeta ? 'checked' : ''}> In fattura le casse hanno il prezzo a metà: le conto il doppio (solo le righe a cassa o a pezzo, non quelle a peso)</label>
-        ${f.casseAMeta ? (() => { const l = Array.from(M.prodottiACassa(id)).map(M.prodotto).filter(Boolean); return `<p class="tenue piccolo">Prodotti a cassa raddoppiati: ${l.length ? l.map(p => `<a href="#/prodotto/${p.id}">${esc(p.nomeBreve)}</a> (ora ${euro(M.prezzo(p))} a ${esc(p.confezione)})`).join(', ') : 'nessuno'}. Riconosco «a cassa» quando nella riga c'è scritto CASSA.</p>`; })() : ''}</div>` : ''}
+      ${!f.servizi ? `<div class="card form"><label class="interruttore"><input type="checkbox" data-az="toggle-casse" data-id="${id}" ${f.casseAMeta ? 'checked' : ''}> In fattura le casse hanno il prezzo a metà: le conto il doppio (solo le righe dove c'è scritto CASSA)</label>
+        ${f.casseAMeta ? (() => { const l = Array.from(M.prodottiACassa(id)).map(M.prodotto).filter(Boolean); return `<p class="tenue piccolo">Prodotti a cassa raddoppiati: ${l.length ? l.map(p => `<a href="#/prodotto/${p.id}">${esc(p.nomeBreve)}</a> (ora ${euro(M.prezzo(p))} a ${esc(p.confezione)})`).join(', ') : 'nessuno'}. Conto il doppio solo le righe dove c'è scritto CASSA; le altre righe dello stesso prodotto restano come in fattura.</p>`; })() : ''}</div>` : ''}
       <div class="card form"><h3>Tipo di spesa</h3><p class="tenue piccolo">Serve per «Costi del locale». ${f.catSpesa ? '' : 'Ora è indovinato dal nome: cambialo se è sbagliato.'}</p>
         <select data-cat-spesa="${id}">${Object.entries(CAT_SPESA).map(([k, v]) => `<option value="${k}" ${categoriaSpesa(f) === k ? 'selected' : ''}>${v[0]}</option>`).join('')}</select></div>
       <div class="card form"><h3>Contatti</h3>${campo('Nome', 'nome')}${campo('Partita IVA', 'piva')}${campo('Referente', 'referente')}${campo('Telefono', 'telefono', 'tel')}${campo('Email', 'email', 'email')}${campo('Giorni di consegna', 'giorniConsegna')}
@@ -3318,7 +3324,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v79';
+  const VERSIONE_APP = 'repub-v80';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
