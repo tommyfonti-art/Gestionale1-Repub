@@ -2455,13 +2455,60 @@
     if (ui.fgForn) l = l.filter(p => p.fornitoreId === ui.fgForn || (ui.fgForn === '__nessuno' && !p.fornitoreId));
     return l.sort((a, b) => usi(b) - usi(a) || a.nomeBreve.localeCompare(b.nomeBreve));
   }
+  // tutti i prodotti del foglio insieme: proposta dalle fatture, quante ricette li usano, e scelte in blocco
+  function propostaFoglio(p, fatt) {
+    const s0 = M.somiglianti(p, fatt)[0]; if (!s0) return null;
+    const a = M.prezzoRiferimento(p), b = M.prezzoRiferimento(s0.p);
+    const rapp = a && b && a.valore && b.valore ? b.valore / a.valore : null;
+    // sicura: nome molto simile, stessa unità e prezzo al litro/chilo/pezzo non troppo diverso
+    return { p: s0.p, punti: s0.punti, rapp, sicura: s0.punti >= 1 && s0.p.unita === p.unita && rapp != null && rapp > 0.5 && rapp < 1.8 };
+  }
+  function elencoFoglio(chips, tutti) {
+    const l = listaFoglio(), fatt = S.prodotti.filter(x => M.daFattura(x)), sel = new Set(ui.fgSel || []);
+    const righe = l.map(p => ({ p, uso: M.usatoIn('p:' + p.id).dirette.length, pr: propostaFoglio(p, fatt) }));
+    ui.fgProposte = Object.fromEntries(righe.filter(x => x.pr).map(x => [x.p.id, x.pr.p.id]));
+    const nSicure = righe.filter(x => x.pr && x.pr.sicura).length, nNonUsati = righe.filter(x => !x.uso).length;
+    return { titolo: 'Prodotti del foglio · tutti insieme', indietro: '#/prodotti', html: chips + `
+      <div class="card evidenza sposta-barra"><b>${l.length} prodotti del foglio in questo elenco · spuntati: <span data-fgsel-n>${sel.size}</span></b>
+        <div class="bottoni">
+          <button class="btn primario" data-az="fg-blocco-collega">Collega gli spuntati alla proposta</button>
+          <button class="btn pericolo" data-az="fg-blocco-elimina">Elimina gli spuntati</button>
+          <button class="btn" data-az="fg-spunta" data-v="sicure">Spunta le proposte sicure (${nSicure})</button>
+          <button class="btn" data-az="fg-spunta" data-v="nonusati">Spunta i non usati (${nNonUsati})</button>
+          <button class="btn" data-az="fg-spunta" data-v="tutti">Spunta tutti</button>
+          ${sel.size ? '<button class="btn" data-az="fg-spunta" data-v="">Togli le spunte</button>' : ''}
+          <button class="btn" data-az="fg-elenco" data-v="">Uno per uno</button>
+        </div>
+        <p class="tenue piccolo">«Collega» fa passare le ricette al prodotto delle fatture, che darà il prezzo giusto; il prodotto del foglio sparisce. «Elimina» lo mette nel Cestino: se era in qualche ricetta, lì l'ingrediente resta senza costo finché non lo cambi. Per scegliere un prodotto diverso dalla proposta tocca il nome e lo fai uno per uno.</p></div>
+      <div class="card lista">${righe.length ? righe.map(({ p, uso, pr }) => {
+        const a = M.prezzoRiferimento(p), on = sel.has(p.id);
+        return `<div class="riga fg-riga ${on ? 'da-togliere' : ''}"><input type="checkbox" data-fgsel="${p.id}" ${on ? 'checked' : ''} aria-label="Spunta ${esc(p.nomeBreve)}">
+          <span><button type="button" class="link-nome" data-az="fg-modifica" data-id="${p.id}"><b>${esc(p.nomeBreve)}</b> <span class="tenue piccolo">${ui.fgApri === p.id ? '▲ chiudi' : '✎ modifica'}</span></button><small>foglio: ${a ? euro(a.valore) + ' ' + a.etichetta.replace('€/', 'al ') : 'senza prezzo'} · ${uso ? `<b>in ${uso} ${uso === 1 ? 'ricetta' : 'ricette'}</b>` : 'in nessuna ricetta'}</small></span>
+          <span class="fg-prop">${pr ? `<span class="${pr.sicura ? 'verde-t' : ''}">→ ${esc(pr.p.nomeBreve)}</span><small>${esc((M.fornitore(pr.p.fornitoreId) || {}).nome || '')} · ${(() => { const b = M.prezzoRiferimento(pr.p); return b ? euro(b.valore) + ' ' + b.etichetta.replace('€/', 'al ') : '—'; })()}${pr.rapp != null && (pr.rapp > 1.8 || pr.rapp < 0.5) ? ' · <b class="rosso-t">prezzo molto diverso</b>' : ''}</small>` : '<small class="tenue">nessuna proposta dalle fatture</small>'}</span></div>`
+      + (ui.fgApri === p.id ? schedaFoglio(p, pr, uso) : ''); }).join('') : '<p class="tenue centro">Nessun prodotto del foglio in questo elenco.</p>'}</div>` };
+  }
+  // la scheda che si apre sotto la riga: nome, prezzo, scambio con un prodotto delle fatture, eliminazione
+  function schedaFoglio(p, pr, uso) {
+    const prezzo = M.prezzo(p);
+    return `<div class="fg-scheda form">
+      <div class="due"><label>Nome<input data-fgnome="${p.id}" value="${esc(p.nomeBreve)}" autocomplete="off"></label>
+        <label>Prezzo della ${esc(p.confezione || 'confezione')} senza IVA (€)<input type="text" inputmode="decimal" autocomplete="off" data-fgprezzo="${p.id}" value="${prezzo != null ? n2(prezzo) : ''}"></label></div>
+      <p class="tenue piccolo">Formato: ${esc(p.confezione)} da ${qta(p.contenuto)} ${esc(p.unita)}. <a href="#/modifica-prodotto/${p.id}">Cambia il formato</a></p>
+      <p class="piccolo" style="margin:12px 0 4px"><b>Scambialo con un prodotto delle fatture</b> (le ricette passano a quello, e il prezzo lo faranno le fatture):</p>
+      ${pr ? `<button class="btn scelta-lunga" data-az="fg-collega" data-da="${p.id}" data-a="${pr.p.id}"><b>È ${esc(pr.p.nomeBreve)}</b><small>${esc((M.fornitore(pr.p.fornitoreId) || {}).nome || '')} · ${esc(pr.p.nomeCompleto)} · ${descrPrezzo(pr.p)}</small></button>` : ''}
+      <div class="scegli-rif"><input class="cerca-rif" data-fg-cerca="${p.id}" autocomplete="off" placeholder="Cerca tra i prodotti delle fatture: es. campari"><div class="sugg" id="sugg-fg"></div></div>
+      <div class="bottoni"><button class="btn pericolo" data-az="fg-elimina-uno" data-id="${p.id}">Elimina${uso ? ` (è in ${uso} ${uso === 1 ? 'ricetta' : 'ricette'})` : ''}</button><button class="btn" data-az="fg-modifica" data-id="${p.id}">Chiudi</button></div>
+    </div>`;
+  }
   PAGINE.foglio = function () {
     const l = listaFoglio(), filtro = ui.fgFiltro || 'dafare';
     const tutti = S.prodotti.filter(p => M.daFoglio(p)), fatti = (S.foglioTenuti || []).filter(id => M.prodotto(id) && M.daFoglio(M.prodotto(id))).length;
     const fornF = {}; tutti.forEach(p => { const k = p.fornitoreId || '__nessuno'; fornF[k] = (fornF[k] || 0) + 1; });
     const chips = `<div class="chips">${[['dafare', 'Da decidere'], ['usati', 'Usati nelle ricette'], ['nonusati', 'Non usati'], ['tutti', 'Tutti (' + tutti.length + ')']].map(([k, v]) => `<button class="chip ${filtro === k ? 'on' : ''}" data-az="fg-filtro" data-v="${k}">${v}</button>`).join('')}</div>
       <div class="chips sotto"><button class="chip ${!ui.fgForn ? 'on' : ''}" data-az="fg-forn" data-v="">Tutti i fornitori</button>${Object.entries(fornF).sort((a, b) => b[1] - a[1]).map(([k, n]) => `<button class="chip ${ui.fgForn === k ? 'on' : ''}" data-az="fg-forn" data-v="${k}">${esc(k === '__nessuno' ? 'Fatti da noi / senza fornitore' : (M.fornitore(k) || {}).nome || '?')} (${n})</button>`).join('')}</div>`;
-    if (!l.length) { return { titolo: 'Prodotti del foglio', indietro: '#/prodotti', html: chips + `<div class="card evidenza"><h3>Finito</h3><p>Nessun prodotto del foglio in questo elenco. Restano ${tutti.length} prodotti del foglio, di cui ${fatti} li hai tenuti apposta.</p></div>` }; }
+    const chipsE = chips.replace('</div>', `<button class="chip ${ui.fgElenco ? 'on' : 'giallo'}" data-az="fg-elenco" data-v="${ui.fgElenco ? '' : '1'}">${ui.fgElenco ? '✓ Tutti insieme' : 'Vedi tutti insieme'}</button></div>`);
+    if (ui.fgElenco) return elencoFoglio(chipsE, tutti);
+    if (!l.length) { return { titolo: 'Prodotti del foglio', indietro: '#/prodotti', html: chipsE + `<div class="card evidenza"><h3>Finito</h3><p>Nessun prodotto del foglio in questo elenco. Restano ${tutti.length} prodotti del foglio, di cui ${fatti} li hai tenuti apposta.</p></div>` }; }
     if (ui.fgIdx == null || ui.fgIdx >= l.length) ui.fgIdx = 0;
     const p = l[ui.fgIdx];
     const uso = M.usatoIn('p:' + p.id).dirette;
@@ -2469,7 +2516,7 @@
     const sim = M.somiglianti(p, fatt).slice(0, 3);
     const forn = M.fornitore(p.fornitoreId);
     return {
-      titolo: `Prodotti del foglio · ${ui.fgIdx + 1} di ${l.length}`, indietro: '#/prodotti', html: chips + `
+      titolo: `Prodotti del foglio · ${ui.fgIdx + 1} di ${l.length}`, indietro: '#/prodotti', html: chipsE + `
       <div class="ctrl">
       <div class="card"><h3 class="grande-t">${esc(p.nomeBreve)}</h3>
         <div class="sottotitolo">Dal tuo foglio${forn ? ' · ' + esc(forn.nome) : ' · senza fornitore'} · ${esc(p.confezione)} da ${qta(p.contenuto)} ${esc(p.unita)}</div>
@@ -2490,6 +2537,37 @@
     };
   };
   const fgDopo = (prima) => { const ora = listaFoglio(); if (ora.length >= prima.length) ui.fgIdx = (ui.fgIdx || 0) + 1; ui.fgFisso = null; M.svuota(); salva(); ridisegnaMantenendo(); window.scrollTo(0, 0); };
+  AZ['fg-modifica'] = (el) => { ui.fgApri = ui.fgApri === el.dataset.id ? null : el.dataset.id; ridisegnaMantenendo(); };
+  AZ['fg-elimina-uno'] = (el) => {
+    const p = M.prodotto(el.dataset.id); if (!p) return; const uso = M.usatoIn('p:' + p.id).dirette.length;
+    if (!confirm(`Elimino «${p.nomeBreve}»? Finisce nel Cestino.${uso ? `\n\nÈ usato in ${uso} ${uso === 1 ? 'ricetta' : 'ricette'}: lì l'ingrediente resterà senza costo finché non lo cambi.` : ''}`)) return;
+    togliProdotto(p.id); ui.fgApri = null; M.svuota(); salva(); ridisegnaMantenendo(); avviso(`«${p.nomeBreve}» nel Cestino.`);
+  };
+  AZ['fg-elenco'] = (el) => { ui.fgElenco = !!el.dataset.v; ui.fgSel = []; ui.fgIdx = 0; ridisegnaMantenendo(); window.scrollTo(0, 0); };
+  AZ['fg-apri-uno'] = (el) => { const l = listaFoglio(); ui.fgElenco = false; ui.fgIdx = Math.max(0, l.findIndex(p => p.id === el.dataset.id)); ui.fgFisso = el.dataset.id; ridisegnaMantenendo(); window.scrollTo(0, 0); };
+  AZ['fg-spunta'] = (el) => {
+    const v = el.dataset.v, l = listaFoglio(), fatt = S.prodotti.filter(x => M.daFattura(x));
+    if (!v) ui.fgSel = [];
+    else ui.fgSel = Array.from(new Set((ui.fgSel || []).concat(l.filter(p => v === 'tutti' || (v === 'nonusati' ? !M.usatoIn('p:' + p.id).dirette.length : (propostaFoglio(p, fatt) || {}).sicura)).map(p => p.id))));
+    ridisegnaMantenendo();
+  };
+  AZ['fg-blocco-collega'] = () => {
+    const sel = (ui.fgSel || []).filter(id => M.prodotto(id) && (ui.fgProposte || {})[id]); const senza = (ui.fgSel || []).length - sel.length;
+    if (!sel.length) { alert('Spunta almeno un prodotto che abbia una proposta dalle fatture.'); return; }
+    if (!confirm(`Collego ${sel.length} prodotti del foglio al prodotto delle fatture proposto?${senza ? `\n(${senza} spuntati non hanno proposta: li lascio stare)` : ''}`)) return;
+    const err = []; let fatti = 0;
+    sel.forEach(id => { const fo = M.prodotto(id); const e = M.collegaAlFoglio(id, ui.fgProposte[id]); if (e) err.push(fo.nomeBreve + ': ' + e); else fatti++; });
+    ui.fgSel = []; M.svuota(); salva(); ridisegnaMantenendo(); window.scrollTo(0, 0);
+    avviso(`Collegati ${fatti}.${err.length ? ' ' + err.length + ' non si possono collegare in automatico: falli uno per uno.' : ''}`);
+    if (err.length) setTimeout(() => alert('Da fare uno per uno:\n\n' + err.slice(0, 15).join('\n')), 300);
+  };
+  AZ['fg-blocco-elimina'] = () => {
+    const sel = (ui.fgSel || []).filter(id => M.prodotto(id)); if (!sel.length) { alert('Spunta almeno un prodotto.'); return; }
+    const usati = sel.filter(id => M.usatoIn('p:' + id).dirette.length).length;
+    if (!confirm(`Elimino ${sel.length} prodotti del foglio? Finiscono nel Cestino.${usati ? `\n\nAttenzione: ${usati} sono usati in qualche ricetta: lì l'ingrediente resterà senza costo finché non lo cambi.` : ''}`)) return;
+    const g = M.uid('g'); sel.forEach(id => togliProdotto(id, g));
+    ui.fgSel = []; M.svuota(); salva(); ridisegnaMantenendo(); window.scrollTo(0, 0); avviso(`${sel.length} prodotti nel Cestino.`);
+  };
   AZ['fg-apri'] = () => { ui.fgIdx = 0; ui.st_fg = []; ui.fgFisso = null; };
   AZ['fg-filtro'] = (el) => { ui.fgFiltro = el.dataset.v; ui.fgIdx = 0; ui.st_fg = []; ui.fgFisso = null; ridisegnaMantenendo(); };
   AZ['fg-forn'] = (el) => { ui.fgForn = el.dataset.v || null; ui.fgIdx = 0; ui.st_fg = []; ui.fgFisso = null; ridisegnaMantenendo(); };
@@ -2499,6 +2577,7 @@
     const prima = listaFoglio(); ricorda('fg', 'fgIdx', true);
     const ve = M.prodotto(el.dataset.a), fo = M.prodotto(el.dataset.da);
     const err = M.collegaAlFoglio(el.dataset.da, el.dataset.a); if (err) { ui.st_fg.pop(); alert(err); return; }
+    ui.fgApri = null;
     avviso(`Collegato: «${fo.nomeBreve}» ora è ${ve.nomeBreve} delle fatture${ve.dubbio ? ' (prezzo molto diverso: ricontrolla il formato)' : ''}.`);
     fgDopo(prima);
   };
@@ -3096,6 +3175,14 @@
     if (d.panData) { const sel = ui.panSel || { tipo: 'date' }; sel[d.panData] = el.value; ui.panSel = Object.assign({ tipo: 'date' }, sel); ridisegnaMantenendo(); return; }
     if (d.catSpesa) { const f = M.fornitore(d.catSpesa); if (f) { f.catSpesa = el.value; salva(); avviso('Tipo di spesa cambiato.'); } return; }
     if (d.costiData) { const sel = Object.assign({ tipo: 'date' }, ui.costiSel || {}); sel.tipo = 'date'; sel[d.costiData] = el.value; ui.costiSel = sel; ridisegnaMantenendo(); return; }
+    if (d.fgnome) { const p = M.prodotto(d.fgnome), v = el.value.trim(); if (p && v && v !== p.nomeBreve) { p.nomeBreve = v; salva(); avviso('Nome cambiato.'); } return; }
+    if (d.fgprezzo) {
+      const p = M.prodotto(d.fgprezzo), v = numDa(el.value); if (!p || v == null || v <= 0) return;
+      if (M.prezzo(p) != null && Math.abs(M.prezzo(p) - v) < 0.001) return;
+      p.prezzi = (p.prezzi || []).concat({ data: M.oggi(), fornitoreId: p.fornitoreId, prezzo: v, origine: 'Foglio (corretto a mano)' });
+      M.svuota(); salva(); ridisegnaMantenendo(); avviso('Prezzo cambiato: le ricette che lo usano sono aggiornate.'); return;
+    }
+    if (d.fgsel) { const set = new Set(ui.fgSel || []); if (el.checked) set.add(d.fgsel); else set.delete(d.fgsel); ui.fgSel = Array.from(set); el.closest('.riga').classList.toggle('da-togliere', el.checked); const n = document.querySelector('[data-fgsel-n]'); if (n) n.textContent = set.size; return; }
     if (d.elim && ui.elim) { const set = new Set(ui.elim.sel); if (el.checked) set.add(d.elim); else set.delete(d.elim); ui.elim.sel = Array.from(set); el.closest('label').classList.toggle('da-togliere', el.checked); const n = document.querySelector('[data-elim-n]'); if (n) n.textContent = set.size; return; }
     if (d.sposta) { const set = new Set(ui.spostaSel || []); if (el.checked) set.add(d.sposta); else set.delete(d.sposta); ui.spostaSel = Array.from(set); const b = document.querySelector('.sposta-barra b'); if (b) b.textContent = `Sposta le ricette spuntate (${set.size})`; return; }
     if (d.grNome) { const v = el.value.trim(); if (!v) return; const t = (S.tipiExtra || []).find(x => x.id === d.grNome); if (t) t.nome = v; else { S.nomiTipi = S.nomiTipi || {}; S.nomiTipi[d.grNome] = v; } M.aggiornaTipi(); salva(); avviso('Nome cambiato.'); return; }
@@ -3164,7 +3251,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v74';
+  const VERSIONE_APP = 'repub-v75';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
