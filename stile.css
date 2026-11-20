@@ -143,7 +143,7 @@ input.mini.largo { width: 140px; text-align: left; }
   #contenuto.colonne > * { grid-column: auto; min-width: 0; }
   #contenuto.colonne > .kpi-griglia, #contenuto.colonne > .msg, #contenuto.colonne > .bottoni, #contenuto.colonne > .chips,
   #contenuto.colonne > .btn.largo, #contenuto.colonne > p.tenue, #contenuto.colonne > .card.evidenza, #contenuto.colonne > .card.larga,
-  #contenuto.colonne > details, #contenuto.colonne > .griglia-tre, #contenuto.colonne > h2.sezione { grid-column: 1 / -1; }
+  #contenuto.colonne > details, #contenuto.colonne > .griglia-tre, #contenuto.colonne > h2.sezione, #contenuto.colonne > .scorri { grid-column: 1 / -1; }
   .grafico { max-height: 240px; }
   .griglia-voci { grid-template-columns: repeat(3, 1fr); }
   .mappa { max-width: 680px; margin: 0 auto 8px; }
@@ -416,3 +416,14 @@ select.chip-tendina.on { background-color: var(--accento); border-color: var(--a
 /* «Di più» nelle spiegazioni lunghe */
 button.piu { border: 0; background: none; padding: 0 2px; font: inherit; font-size: inherit; color: var(--accento); font-weight: 600; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
 @media (pointer: coarse) { button.piu { display: inline-block; padding: 8px 6px; margin: -8px -4px; line-height: 1.2; } }
+/* frecce per passare al prodotto o alla ricetta dopo */
+.scorri { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 14px; grid-column: 1 / -1; }
+.scorri span { margin: 0; align-self: center; line-height: 1.2; color: var(--tenue, #7a746a); font-size: 14px; font-variant-numeric: tabular-nums; text-align: center; }
+.scorri .btn { min-width: 118px; margin-top: 0; }
+.scorri .btn[disabled] { opacity: .35; }
+@media (pointer: coarse) { .scorri .btn { min-height: 40px; } }
+/* intestazione delle note con la ✕ */
+.note-testa { display: flex; align-items: center; justify-content: space-between; min-height: 34px; font-size: 13px; font-weight: 500; color: var(--tenue); }
+.note-testa + textarea { margin-top: 2px; margin-bottom: 10px; }
+/* la riga dell'ultimo prodotto o ricetta visto con le frecce */
+#lista a.appena-visto { background: color-mix(in srgb, var(--accento) 10%, transparent); transition: background 1.5s; }

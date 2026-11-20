@@ -773,6 +773,7 @@
     const perForn = ui.prodVista === 'fornitori';
     const l = S.prodotti.filter(p => (perForn ? (!ui.fornProd || diFornitore(p, ui.fornProd)) : (ui.categoria === '__nuovi' ? p.daCompletare : passaReparti(p, PF()))) && (!f || (p.nomeBreve + ' ' + p.nomeCompleto + ' ' + (p.nomeFoglio || '')).toLowerCase().includes(f)))
       .sort((a, b) => a.nomeBreve.localeCompare(b.nomeBreve));
+    ui.scorriP = l.map(p => p.id);
     if (!l.length) return '<p class="tenue centro">Nessun prodotto.</p>';
     if (inElimina('p')) return l.map(p => { const u = M.usatoIn('p:' + p.id).tutte.length; return rigaElimina(p.id, p.nomeBreve, `${esc((M.fornitore(p.fornitoreId) || {}).nome || 'senza fornitore')} · ${u ? `<b>usato in ${u} ${u === 1 ? 'ricetta' : 'ricette'}</b>` : 'non usato'}`); }).join('');
     return l.map(p => {
@@ -804,6 +805,20 @@
     };
   };
 
+  // ---------- Frecce per passare al prodotto o alla ricetta dopo, nell'elenco come l'avevi filtrato e ordinato ----------
+  // t = 'P' prodotti, 'R' ricette; l'elenco è quello visto per ultimo nella pagina Prodotti o Ricette
+  const posScorri = (t, id) => { const ids = ui['scorri' + t] || []; return { ids, i: ids.indexOf(id) }; };
+  function barraScorri(t, id, modifica) {
+    const { ids, i } = posScorri(t, id);
+    if (i < 0 || ids.length < 2) return '';
+    return `<div class="scorri"><button class="btn piccolo" data-az="scorri" data-t="${t}" data-dir="-1" ${modifica ? 'data-m="1"' : ''} ${i === 0 ? 'disabled' : ''} aria-label="Precedente">‹ Precedente</button>
+      <span>${i + 1} di ${ids.length}</span>
+      <button class="btn piccolo" data-az="scorri" data-t="${t}" data-dir="1" ${modifica ? 'data-m="1"' : ''} ${i === ids.length - 1 ? 'disabled' : ''} aria-label="Successivo">Successivo ›</button></div>`;
+  }
+  const tastoAvanti = (t, id) => { const { ids, i } = posScorri(t, id); return i >= 0 && i < ids.length - 1 ? `<button class="btn primario" data-az="scorri" data-t="${t}" data-dir="1" data-m="1" data-forza="1">Salva e vai avanti ›</button>` : ''; };
+  const bozzaCambiata = () => { const b = ui.bozza; if (!b || !b._iniz) return false; const c = Object.assign({}, b); delete c._iniz; return JSON.stringify(c) !== b._iniz; };
+  // il campo delle note con la ✕ per svuotarlo in un colpo
+  const campoNote = (b, righe) => `<div class="note-testa"><span>Note</span>${b.note ? '<button type="button" class="x" data-az="note-svuota" aria-label="Cancella la nota" title="Cancella la nota">✕</button>' : ''}</div><textarea data-b="note" rows="${righe}" aria-label="Note">${esc(b.note)}</textarea>`;
   PAGINE.prodotto = function (id) {
     const p = M.prodotto(id);
     if (!p) return { titolo: 'Prodotto', html: '<p>Prodotto non trovato.</p>' };
@@ -830,7 +845,7 @@
     }
     const conIva = pr != null ? pr * (1 + (p.iva || 0) / 100) : null;
     return {
-      titolo: p.nomeBreve, indietro: '#/prodotti', azione: `<a class="btn-top" href="#/modifica-prodotto/${p.id}">Modifica</a>`, html: `
+      titolo: p.nomeBreve, indietro: '#/prodotti', azione: `<a class="btn-top" href="#/modifica-prodotto/${p.id}">Modifica</a>`, html: `${barraScorri('P', p.id)}
       ${p.daCompletare ? `<div class="card evidenza giallo"><h3>Creato in automatico da una fattura</h3><p>Controlla il <b>nome breve</b> (quello delle ricette), il <b>formato</b> (${esc(p.confezione)} da ${qta(p.contenuto)} ${esc(p.unita)}), la categoria e gli allergeni.</p>
         <div class="bottoni"><a class="btn primario" href="#/controllo">Controllo rapido</a><a class="btn" href="#/modifica-prodotto/${p.id}">Modifica</a><button class="btn" data-az="completato" data-id="${p.id}">È già giusto</button>${p.creatoDa ? `<a class="btn" href="#/fattura/${p.creatoDa}">Vedi la fattura</a>` : ''}</div></div>` : ''}
       <div class="card"><div class="sottotitolo">${esc(p.nomeCompleto)}</div>
@@ -876,13 +891,13 @@
     if (!ui.bozza || ui.bozza._per !== 'p:' + id) {
       const base = id === 'nuovo' ? { id: M.uid('p'), nomeBreve: '', nomeCompleto: '', categoria: PF().cats.length === 1 ? PF().cats[0] : '', unita: 'ml', contenuto: 1000, confezione: 'bottiglia', iva: 22, giacenza: 0, scortaMinima: 0, resa: 100, allergeni: [], venditaDiretta: null, fornitoreId: '', articoli: [], prezzi: [], note: '' } : JSON.parse(JSON.stringify(M.prodotto(id)));
       base._per = 'p:' + id; const pr0 = id === 'nuovo' ? null : M.prezzo(M.prodotto(id)); base._prezzo = pr0 == null ? '' : n2(pr0); base._prezzoPrima = pr0;
-      ui.bozza = base;
+      base._iniz = JSON.stringify(base); ui.bozza = base;
     }
     const b = ui.bozza;
     const campo = (et, k, tipo, extra) => `<label>${et}<input type="${tipo || 'text'}" data-b="${k}" value="${esc(b[k])}" ${extra || ''}></label>`;
     const vd = b.venditaDiretta || {};
     return {
-      titolo: id === 'nuovo' ? 'Nuovo prodotto' : 'Modifica ' + b.nomeBreve, indietro: id === 'nuovo' ? '#/prodotti' : '#/prodotto/' + id, html: `
+      titolo: id === 'nuovo' ? 'Nuovo prodotto' : 'Modifica ' + b.nomeBreve, indietro: id === 'nuovo' ? '#/prodotti' : '#/prodotto/' + id, html: `${barraScorri('P', id, true)}
       <div class="due-colonne"><div class="colonna">
       <div class="card form">
         ${campo('Nome breve (quello delle ricette)', 'nomeBreve')}
@@ -916,9 +931,9 @@
           <div class="due"><label>Prezzo della porzione<input type="text" inputmode="decimal" autocomplete="off" data-vd="prezzoPorzione" value="${esc(vd.prezzoPorzione || '')}"></label>
           <label>Prezzo della confezione intera<input type="text" inputmode="decimal" autocomplete="off" data-vd="prezzoIntero" value="${esc(vd.prezzoIntero || '')}"></label></div>` : ''}
       </div>
-      <div class="card form"><label>Note<textarea data-b="note" rows="3">${esc(b.note)}</textarea></label></div>
+      <div class="card form">${campoNote(b, 3)}</div>
       </div></div>
-      <div class="bottoni"><button class="btn primario" data-az="salva-prodotto">Salva</button>${id !== 'nuovo' ? '<button class="btn pericolo" data-az="elimina-prodotto">Elimina</button>' : ''}</div>`
+      <div class="bottoni">${tastoAvanti('P', id)}<button class="btn ${tastoAvanti('P', id) ? '' : 'primario'}" data-az="salva-prodotto">Salva</button>${id !== 'nuovo' ? '<button class="btn pericolo" data-az="elimina-prodotto">Elimina</button>' : ''}</div>`
     };
   };
 
@@ -1147,7 +1162,7 @@
     const f = ui.filtroRicette.toLowerCase();
     const scelti = tipiScelti(ui.tipoRicette), conGruppo = scelti.length > 1;
     const l = S.ricette.filter(r => scelti.includes(r.tipo) && (!f || r.nome.toLowerCase().includes(f)) && (!ui.ricDaComp || daCompletareR(r))).sort((a, b) => a.nome.localeCompare(b.nome));
-    if (!l.length) return `<p class="tenue centro">${ui.ricDaComp ? 'Nessuna ricetta da completare qui. Ottimo!' : 'Nessuna ricetta.'}</p>`;
+    if (!l.length) { ui.scorriR = []; return `<p class="tenue centro">${ui.ricDaComp ? 'Nessuna ricetta da completare qui. Ottimo!' : 'Nessuna ricetta.'}</p>`; }
     // ordinamento come nei programmi per la ristorazione: popolarità (pezzi venduti), guadagno a pezzo, guadagno totale, costo in percentuale
     const ord = ordineRic();
     const vend = (r) => vendutiRic(r), mar = (r) => { const x = M.indicatori(r).margine; return x == null ? null : x; };
@@ -1161,6 +1176,7 @@
       else if (ord === 'molt') l.sort(perNum(r => M.indicatori(r).molt, -1));
     }
     const conVend = ['vendute', 'menovendute', 'guadtot'].includes(ord);
+    ui.scorriR = l.map(r => r.id);
     if (inElimina('r')) { const pp = periodoVendite(); return l.map(r => { const v = (S.periodiVendita || []).reduce((t, x) => t + (Number((r.vendite || {})[x]) || 0), 0), u = M.usatoIn('r:' + r.id).tutte.length; return rigaElimina(r.id, r.nome, `${esc(M.TIPI[r.tipo] || '')} · ${v ? qta(v) + ' venduti in tutto' : 'mai venduta'}${u ? ` · <b>usata in ${u} ${u === 1 ? 'ricetta' : 'ricette'}</b>` : ''}`); }).join(''); }
     if (ui.spostaModo) { const sel = new Set(ui.spostaSel || []); return l.map(r => `<label class="riga spunta-riga"><input type="checkbox" data-sposta="${r.id}" ${sel.has(r.id) ? 'checked' : ''}><span>${esc(r.nome)}</span></label>`).join(''); }
     return l.map(r => {
@@ -1212,7 +1228,7 @@
       return `<tr><td><a href="${link}">${esc(M.nomeRif(rg.rif))}</a>${rg.nota ? `<small>${esc(rg.nota)}</small>` : ''}${fonte}</td><td class="n">${qta(rg.quantita)} ${esc(M.unitaRif(rg.rif))}</td><td class="n">${rg.costo == null ? '<span class="badge rosso">manca</span>' : euro(rg.costo, 3)}</td><td class="n tenue">${perc(quota, 0)}</td></tr>`;
     }).join('') + (r.costiExtra || []).map(e => `<tr><td>${esc(e.nome)}</td><td></td><td class="n">${euro(e.costo, 3)}</td><td class="n tenue">${perc(cr.totale ? e.costo / cr.totale : null, 0)}</td></tr>`).join('');
     return {
-      titolo: r.nome, indietro: '#/ricette', azione: `<a class="btn-top" href="#/modifica-ricetta/${r.id}">Modifica</a>`, html: `
+      titolo: r.nome, indietro: '#/ricette', azione: `<a class="btn-top" href="#/modifica-ricetta/${r.id}">Modifica</a>`, html: `${barraScorri('R', r.id)}
       ${semi ? `<div class="kpi-griglia">${kpi('Costo della preparazione', euro(cr.totale))}${kpi('Resa', qta(r.resa) + ' ' + esc(r.unita))}${kpi(r.unita === 'g' ? 'Costo al kg' : 'Costo al litro', euro(cr.totale != null && r.resa ? cr.totale / r.resa * 1000 : null))}${kpi('Costo per 10 ' + esc(r.unita), euro(cr.totale != null && r.resa ? cr.totale / r.resa * 10 : null, 3))}</div>` : `
       <div class="kpi-griglia">
         ${kpi('Costo', euro(i.costo), 'senza IVA')}
@@ -1292,7 +1308,7 @@
           <button class="x" data-az="togli-riga" data-k="${k}" aria-label="Togli">✕</button></div>`).join('')}
         <button class="btn piccolo" data-az="aggiungi-riga">＋ Aggiungi ingrediente</button>
         <p class="anteprima">Costo: <b>${euro(c, 3)}</b>${!semi && pr && c ? ` · moltiplicatore × ${n2(pr / c)}` : ''}</p>
-        <label>Note<textarea data-b="note" rows="2">${esc(b.note)}</textarea></label>
+        ${campoNote(b, 2)}
       </div>
       <div class="bottoni">
         <button class="btn" data-az="riv-indietro" ${ui.rivIdx === 0 && !(ui.rivStorico || []).length ? 'disabled' : ''}>◀ Precedente</button>
@@ -1305,14 +1321,14 @@
   PAGINE['modifica-ricetta'] = function (id) {
     if (!ui.bozza || ui.bozza._per !== 'r:' + id) {
       const base = id === 'nuovo' ? { id: M.uid('r'), nome: '', tipo: tipiScelti(ui.tipoRicette)[0] || 'drink', prezzo: null, righe: [], resa: null, unita: 'ml', asporto: [], costiExtra: [], vendite: {}, note: '' } : JSON.parse(JSON.stringify(M.ricetta(id)));
-      base._per = 'r:' + id; ui.bozza = base;
+      base._per = 'r:' + id; base._iniz = JSON.stringify(base); ui.bozza = base;
     }
     const b = ui.bozza;
     M.svuota();
     const anteprima = M.costoRicetta(Object.assign({}, b, { id: '_bozza' }));
     const semi = b.tipo === 'semilavorato';
     return {
-      titolo: id === 'nuovo' ? 'Nuova ricetta' : 'Modifica ' + b.nome, indietro: id === 'nuovo' ? '#/ricette' : '#/ricetta/' + id, html: `
+      titolo: id === 'nuovo' ? 'Nuova ricetta' : 'Modifica ' + b.nome, indietro: id === 'nuovo' ? '#/ricette' : '#/ricetta/' + id, html: `${barraScorri('R', id, true)}
       <div class="card form">
         <label>Nome<input data-b="nome" value="${esc(b.nome)}"></label>
         <div class="due"><label>Tipo<select data-b="tipo" data-ridisegna="1">${Object.entries(M.TIPI_SINGOLARE).map(([k, v]) => `<option value="${k}" ${b.tipo === k ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></label>
@@ -1334,8 +1350,8 @@
         ${(b.asporto || []).map((a, k) => `<div class="riga-ed"><select data-a="${k}" data-k="rif">${opzioniProdotti(a.rif, p => p.categoria === 'Non alimentare')}</select><input type="text" inputmode="decimal" autocomplete="off" data-a="${k}" data-k="quantita" value="${esc(a.quantita)}"><button class="x" data-az="togli-asporto" data-k="${k}">✕</button></div>`).join('')}
         <button class="btn piccolo" data-az="aggiungi-asporto">＋ Aggiungi materiale da asporto</button></div>
       <div class="card form"><h3>Vendite</h3><div class="due">${S.periodiVendita.map(pp => `<label>${esc(pp)}<input type="text" inputmode="numeric" autocomplete="off" data-v="${esc(pp)}" value="${esc((b.vendite || {})[pp] || '')}"></label>`).join('')}</div></div>` : ''}
-      <div class="card form"><label>Note<textarea data-b="note" rows="3">${esc(b.note)}</textarea></label></div>
-      <div class="bottoni"><button class="btn primario" data-az="salva-ricetta">Salva</button>${id !== 'nuovo' ? '<button class="btn pericolo" data-az="elimina-ricetta">Elimina</button>' : ''}</div>`
+      <div class="card form">${campoNote(b, 3)}</div>
+      <div class="bottoni">${tastoAvanti('R', id)}<button class="btn ${tastoAvanti('R', id) ? '' : 'primario'}" data-az="salva-ricetta">Salva</button>${id !== 'nuovo' ? '<button class="btn pericolo" data-az="elimina-ricetta">Elimina</button>' : ''}</div>`
     };
   };
 
@@ -1741,6 +1757,10 @@
     const fn = PAGINE[nome] || PAGINE.pannello;
     if (!(nome === 'modifica-prodotto' || nome === 'modifica-ricetta' || nome === 'rivedi-ricette')) ui.bozza = null;
     if (nome !== 'magazzino') ui.conta = null;
+    // le frecce valgono per l'elenco da cui sei partito: se vai in un'altra sezione si azzera
+    if (nome === 'pannello' || nome === 'fatture' || nome === 'altro' || VOCI_ALTRO.some(v => v[0] === nome)) { ui.scorriP = null; ui.scorriR = null; }
+    if (nome === 'ricette') ui.scorriP = null;
+    if (nome === 'prodotti') ui.scorriR = null;
     let pag;
     try { pag = fn(arg); } catch (e) { console.error(e); pag = { titolo: 'Errore', html: `<p class="msg rosso">Qualcosa non ha funzionato: ${esc(e.message)}</p>` }; }
     const sez = SEZIONE[nome] || (PAGINE[nome] && TAB.some(t => t[0] === nome) ? nome : (PAGINE[nome] ? 'altro' : 'pannello'));
@@ -1843,7 +1863,15 @@
     const t = tornando;
     if (!t) segnaStoria();
     disegna();
-    if (t) { tornando = null; requestAnimationFrame(() => window.scrollTo(0, t.y || 0)); } else window.scrollTo(0, 0);
+    if (t) { tornando = null; requestAnimationFrame(() => {
+      window.scrollTo(0, t.y || 0);
+      const a = ui.scorriArrivo, nome = (qui().split('/')[1] || '');
+      if (a && ((a.t === 'P' && nome === 'prodotti') || (a.t === 'R' && nome === 'ricette'))) {
+        const r = document.querySelector(`#lista a[href="#/${a.t === 'P' ? 'prodotto' : 'ricetta'}/${a.id}"]`);
+        if (r) { r.scrollIntoView({ block: 'center' }); r.classList.add('appena-visto'); }
+        ui.scorriArrivo = null;
+      }
+    }); } else window.scrollTo(0, 0);
   });
 
   // ---------- Fatture: caricamento ----------
@@ -2019,21 +2047,42 @@
   AZ['tipo-ricette'] = (el) => { ui.tipoRicette = el.dataset.v; if (SCELTE_REP[el.dataset.v]) ui.repRicette = el.dataset.v; ridisegnaMantenendo(); };
   AZ.allergene = (el) => { const a = el.dataset.v, b = ui.bozza; b.allergeni = b.allergeni || []; b.allergeni = b.allergeni.includes(a) ? b.allergeni.filter(x => x !== a) : b.allergeni.concat(a); ridisegnaMantenendo(); };
   AZ['vd-attiva'] = (el) => { ui.bozza.venditaDiretta = el.checked ? { nomePorzione: ui.bozza.unita === 'ml' ? 'calice' : 'porzione', porzione: ui.bozza.unita === 'ml' ? 150 : 1, prezzoPorzione: null, prezzoIntero: null } : null; ridisegnaMantenendo(); };
-  AZ['salva-prodotto'] = () => {
-    const b = ui.bozza; if (!b.nomeBreve.trim()) { alert('Scrivi il nome breve.'); return; }
+  AZ.scorri = (el) => {
+    const t = el.dataset.t, mod = !!el.dataset.m, id = (qui().split('/')[2] || '');
+    const { ids, i } = posScorri(t, id), dest = ids[i + Number(el.dataset.dir)];
+    if (i < 0) return;
+    // nella pagina di modifica: se hai cambiato qualcosa lo salvo, poi passo al prossimo
+    if (mod && (el.dataset.forza || bozzaCambiata())) {
+      const b = t === 'P' ? salvaBozzaProdotto() : salvaBozzaRicetta(); if (!b) return;
+      avviso('Salvato: ' + (b.nomeBreve || b.nome));
+    }
+    if (!dest) { vai(t === 'P' ? '#/prodotto/' + id : '#/ricetta/' + id); return; }
+    ui.bozza = null;
+    const pag = (mod ? '#/modifica-' : '#/') + (t === 'P' ? 'prodotto/' : 'ricetta/');
+    const scheda = '#/' + (t === 'P' ? 'prodotto/' : 'ricetta/');
+    // le frecce non riempiono la storia: con ‹ in alto torni alla scheda dove sei arrivato e poi all'elenco
+    if (storia.length && storia[storia.length - 1].h === qui()) storia[storia.length - 1].h = pag + dest;
+    if (mod && storia.length > 1 && storia[storia.length - 2].h.startsWith(scheda)) storia[storia.length - 2].h = scheda + dest;
+    ui.scorriArrivo = { t, id: dest };
+    vai(pag + dest);
+  };
+  AZ['note-svuota'] = () => { if (ui.bozza) { ui.bozza.note = ''; ridisegnaMantenendo(); } };
+  AZ['salva-prodotto'] = () => { const b = salvaBozzaProdotto(); if (b) vai('#/prodotto/' + b.id); };
+  function salvaBozzaProdotto() {
+    const b = ui.bozza; if (!b.nomeBreve.trim()) { alert('Scrivi il nome breve.'); return null; }
     ['contenuto', 'iva', 'giacenza', 'scortaMinima', 'resa'].forEach(k => { b[k] = numDa(b[k]) || 0; });
     if (!b.contenuto) b.contenuto = 1; if (!b.resa) b.resa = 100;
     if (b.venditaDiretta) ['porzione', 'prezzoPorzione', 'prezzoIntero'].forEach(k => { b.venditaDiretta[k] = numDa(b.venditaDiretta[k]); });
     const pr = numDa(b._prezzo), prima = b._prezzoPrima;
     const nuovo = b._per === 'p:nuovo';
-    delete b._per; delete b._prezzo; delete b._prezzoPrima;
+    delete b._per; delete b._prezzo; delete b._prezzoPrima; delete b._iniz;
     b.prezzi = b.prezzi || [];
     if (!nuovo && pr != null && pr > 0 && (prima == null || Math.abs(pr - prima) > 0.004)) b.prezzi.push({ data: M.oggi(), fornitoreId: b.fornitoreId || null, prezzo: pr, origine: 'a mano' });
     b.daCompletare = false;
     if (nuovo) { if (pr != null) b.prezzi.push({ data: M.oggi(), fornitoreId: b.fornitoreId, prezzo: pr, origine: 'a mano' }); b.interno = !b.fornitoreId; S.prodotti.push(b); }
     else { const i = S.prodotti.findIndex(p => p.id === b.id); if (i >= 0) S.prodotti[i] = b; else S.prodotti.push(b); }
-    ui.bozza = null; M.svuota(); salva(); vai('#/prodotto/' + b.id);
-  };
+    ui.bozza = null; M.svuota(); salva(); return b;
+  }
   AZ['elimina-prodotto'] = () => {
     const b = ui.bozza; const uso = M.usatoIn('p:' + b.id).dirette;
     if (uso.length && !confirm(`${b.nomeBreve} è usato in ${uso.map(r => r.nome).join(', ')}. Eliminarlo lo stesso?`)) return;
@@ -2178,7 +2227,7 @@
     b.asporto = (b.asporto || []).filter(a => a.rif).map(a => Object.assign(a, { quantita: numDa(a.quantita) || 1 }));
     b.prezzo = numDa(b.prezzo); b.resa = numDa(b.resa);
     const nuovo = b._per === 'r:nuovo'; delete b._per;
-    const daRivedi = b._rivedi; delete b._rivedi;
+    const daRivedi = b._rivedi; delete b._rivedi; delete b._iniz;
     // salvare vuol dire «l'ho sistemata»: l'avviso automatico «Ricetta da completare…» se ne va
     if (/^Ricetta da completare/.test(b.note || '')) b.note = '';
     if (nuovo) S.ricette.push(b); else { const i = S.ricette.findIndex(r => r.id === b.id); if (i >= 0) S.ricette[i] = b; else S.ricette.push(b); }
@@ -3456,7 +3505,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v91';
+  const VERSIONE_APP = 'repub-v92';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
