@@ -20,7 +20,7 @@ h3 small { font-weight: 400; color: var(--tenue); }
 #tabbar a { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 0 6px; color: var(--grigio); font-size: 11px; }
 #tabbar a.on { color: var(--accento); font-weight: 600; }
 #tabbar svg { width: 25px; height: 25px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-#tabbar a:last-child svg { stroke-width: 4; }
+#tabbar a.tab-altro svg { stroke-width: 4; }
 .card { background: var(--carta); border-radius: var(--raggio); padding: 14px; margin-bottom: 12px; box-shadow: 0 1px 2px rgba(0, 0, 0, .04); }
 .card.evidenza { border: 2px solid var(--accento); }
 .card.lista { padding: 4px 14px; }
@@ -164,7 +164,8 @@ input.mini.largo { width: 140px; text-align: left; }
   #tabbar .solo-stretto { display: none; }
   #tabbar .solo-largo { display: flex; }
   #tabbar .gruppo { display: block; font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color: var(--grigio); padding: 18px 12px 6px; }
-  #tabbar a.secondaria { padding: 7px 12px 7px 45px; font-size: 14px; }
+  #tabbar a.secondaria { padding: 7px 12px; font-size: 14px; }
+  #tabbar a.secondaria svg { width: 19px; height: 19px; margin: 0 1px; stroke-width: 1.7; }
   #testa { padding-left: 24px; padding-right: 24px; }
   .toast { bottom: 28px; left: calc(50% + 116px); }
   #contenuto { padding: 24px 32px; }
@@ -397,3 +398,21 @@ details.menu-azioni > summary::-webkit-details-marker { display: none; }
 }
 /* sul telefono l'iPhone ingrandisce la pagina se il testo di un campo è sotto i 16 px: li tengo a 16 */
 @media (pointer: coarse) { input.mini, select.mini, textarea.mini { font-size: 16px; } }
+
+/* voci di «Altro» con icona */
+.voce.con-icona svg { width: 24px; height: 24px; fill: none; stroke: var(--accento); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; margin-bottom: 4px; }
+/* avanzamento di «Metti in ordine i dati» */
+.avanzamento { height: 8px; border-radius: 4px; background: var(--linea); overflow: hidden; margin: 4px 0 8px; }
+.avanzamento span { display: block; height: 100%; background: var(--accento); border-radius: 4px; }
+/* avviso compatto «Da sistemare» in cima ai prodotti */
+.card.riga.avviso-ordine { padding: 12px 16px; margin-bottom: 12px; }
+/* tendina a forma di etichetta («Altri periodi» nel pannello) */
+select.chip-tendina { width: auto; max-width: 220px; min-height: 0; padding: 7px 34px 7px 13px; font-size: 14px; line-height: 1.2; border-radius: 999px; background-color: var(--carta);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%237a746a' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 12px center; background-size: 11px 7px; }
+select.chip-tendina.on { background-color: var(--accento); border-color: var(--accento); color: #fff;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%23ffffff' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+@media (pointer: coarse) { select.chip-tendina { font-size: 16px; min-height: 36px; } }
+/* «Di più» nelle spiegazioni lunghe */
+button.piu { border: 0; background: none; padding: 0 2px; font: inherit; font-size: inherit; color: var(--accento); font-weight: 600; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+@media (pointer: coarse) { button.piu { display: inline-block; padding: 8px 6px; margin: -8px -4px; line-height: 1.2; } }

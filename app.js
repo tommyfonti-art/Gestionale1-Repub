@@ -556,7 +556,14 @@
     const conVendite = S.periodiVendita.filter(pp => S.ricette.some(r => (r.vendite || {})[pp]));
       const sel = ui.panSel || { tipo: 'periodo', per: conVendite[conVendite.length - 1] };
       const anni = Array.from(new Set(conVendite.map(p => dateDiPeriodo(p)).filter(Boolean).flatMap(x => { const l = []; for (let a = +x.dal.slice(0, 4); a <= +x.al.slice(0, 4); a++) l.push(a); return l; }))).sort();
-      return `<div class="chips"><button class="chip ${sel.tipo === 'tutto' ? 'on' : ''}" data-az="pan-sel" data-tipo="tutto">Tutto</button>${anni.map(a => `<button class="chip ${sel.tipo === 'anno' && sel.anno == a ? 'on' : ''}" data-az="pan-sel" data-tipo="anno" data-v="${a}">${a}</button>`).join('')}${conVendite.filter(pp => { const x = dateDiPeriodo(pp); return !(x && x.dal.slice(5) === '01-01' && x.al.slice(5) === '12-31' && x.dal.slice(0, 4) === x.al.slice(0, 4)); }).map(pp => `<button class="chip ${sel.tipo === 'periodo' && pers[0] === pp ? 'on' : ''}" data-az="pan-sel" data-tipo="periodo" data-v="${esc(pp)}">${esc(pp)}</button>`).join('')}<button class="chip ${sel.tipo === 'date' ? 'on' : ''}" data-az="pan-sel" data-tipo="date">📅 Scegli le date</button></div>
+      return `<div class="chips"><button class="chip ${sel.tipo === 'tutto' ? 'on' : ''}" data-az="pan-sel" data-tipo="tutto">Tutto</button>${anni.map(a => `<button class="chip ${sel.tipo === 'anno' && sel.anno == a ? 'on' : ''}" data-az="pan-sel" data-tipo="anno" data-v="${a}">${a}</button>`).join('')}${(() => {
+        // l'ultimo periodo caricato resta a portata di dito, gli altri stanno in una tendina: così non vanno su due righe
+        const altri = conVendite.filter(pp => { const x = dateDiPeriodo(pp); return !(x && x.dal.slice(5) === '01-01' && x.al.slice(5) === '12-31' && x.dal.slice(0, 4) === x.al.slice(0, 4)); });
+        if (!altri.length) return '';
+        const ultimo = altri[altri.length - 1], prima = altri.slice(0, -1).reverse(), scelto = sel.tipo === 'periodo' ? pers[0] : '';
+        return `<button class="chip ${scelto === ultimo ? 'on' : ''}" data-az="pan-sel" data-tipo="periodo" data-v="${esc(ultimo)}">${esc(ultimo)}</button>` +
+          (prima.length ? `<select class="chip chip-tendina ${prima.includes(scelto) ? 'on' : ''}" data-pan-periodo aria-label="Altri periodi"><option value="">Altri periodi</option>${prima.map(pp => `<option value="${esc(pp)}" ${scelto === pp ? 'selected' : ''}>${esc(pp)}</option>`).join('')}</select>` : '');
+      })()}<button class="chip ${sel.tipo === 'date' ? 'on' : ''}" data-az="pan-sel" data-tipo="date">📅 Scegli le date</button></div>
         ${sel.tipo === 'date' ? `<div class="card form date-pan"><div class="due"><label>Dal<input type="date" data-pan-data="dal" value="${esc(sel.dal || '')}"></label><label>Al<input type="date" data-pan-data="al" value="${esc(sel.al || '')}"></label></div></div>` : ''}
         ${(() => { const acc = accavallati(pers); return acc.length ? `<p class="msg rosso">Attenzione: ${acc.slice(0, 3).map(([a, b]) => `«${esc(a)}» e «${esc(b)}»`).join(', ')} hanno dei giorni in comune, quindi le vendite di quei giorni sono contate due volte. In Vendite elimina uno dei due, oppure ricarica i file con date che non si accavallano.</p>` : ''; })()}
         ${sel.tipo !== 'periodo' ? `<p class="tenue piccolo">${pers.length ? `Conto i periodi: ${pers.map(esc).join(', ')}.` : 'Nessun periodo caricato cade tutto in queste date.'}${SEL.esclusi.length ? ` Non conto ${SEL.esclusi.map(esc).join(', ')}: ${SEL.esclusi.length === 1 ? 'è' : 'sono'} solo in parte dentro le date. Le vendite si caricano per periodi: per guardare pochi giorni, carica dalla cassa periodi più corti (es. un mese alla volta).` : ''}</p>` : ''}
@@ -635,7 +642,7 @@
         ${kpi('Incasso', euro(cassa != null ? cassa : incassoRic, 0), cassa != null ? 'dalla cassa, IVA compresa' : 'pezzi venduti × prezzo, IVA compresa')}
         ${kpi('Su 100 € incassati', su100 == null ? '—' : euro(su100, 0) + ' di merce', 'ingredienti, senza contare l\'IVA', su100 == null ? '' : su100 > 30 ? 'rosso' : su100 > 25 ? 'giallo' : 'verde')}
         ${kpi('Guadagno sulla merce', euro(A.voci.reduce((s, x) => s + x.tot, 0), 0), 'incasso senza IVA meno ingredienti, prima di personale e spese')}
-        ${kpi('Calcolato su', Math.round(copertura * 100) + '% delle vendite', 'il resto non ha ancora la ricetta completa', copertura < 0.6 ? 'giallo' : '')}
+        ${kpi('Vendite con la ricetta completa', Math.round(copertura * 100) + '%', copertura < 1 ? 'i numeri qui accanto valgono per queste; il resto è da completare' : 'tutti i numeri sono completi', copertura < 0.6 ? 'giallo' : '')}
       </div>
       ${(() => {
         // vendite divise per categoria (gruppo di ricette), con il totale delle categorie scelte
@@ -684,10 +691,7 @@
     return {
       titolo: 'Gestionale Repub', html: `${andamento}
       <h2 class="sezione">Da fare</h2>
-      ${(() => { const p = passiOrdine(), n = p.filter(x => x[1]).length; return n ? `<a class="card riga evidenza" href="#/ordine"><span><b>Metti in ordine i dati</b><small>${n} passi da fare: fornitori, prodotti, foglio, cartoni, ricette. Tutti gli strumenti in un posto, nell'ordine giusto.</small></span><span class="badge giallo">${n}</span></a>` : ''; })()}
-      ${(() => { const n = S.prodotti.filter(p => M.daFoglio(p) && !(S.foglioTenuti || []).includes(p.id)).length; return n && S.fatture.length ? `<div class="card evidenza"><h3>Prodotti del tuo foglio (${n})</h3><p class="tenue">Uno per uno: collegali a quelli delle fatture, trasformali in preparazioni se li fate voi, tienili o eliminali.</p><a class="btn primario" href="#/foglio" data-az="fg-apri">Inizia</a></div>` : ''; })()}
-      ${fornitoriDaControllare().length ? `<div class="card"><h3>Fornitori nuovi da controllare</h3><p class="tenue">Dimmi chi vende merce e chi manda solo bollette o servizi: vale per tutte le loro fatture.</p><a class="btn primario" href="#/controllo-fatture">Controllo rapido (${fornitoriDaControllare().length})</a></div>` : ''}
-      ${nuoviDaCompletare() ? `<div class="card"><h3>Prodotti nuovi da completare</h3><p class="tenue">Creati in automatico dalle fatture: controlla nome breve e formato.</p>${S.prodotti.filter(p => p.daCompletare).slice(0, 6).map(p => `<a class="riga" href="#/prodotto/${p.id}"><span>${esc(p.nomeBreve)}<small>${esc(p.nomeCompleto)}</small></span><span class="badge giallo">da completare</span></a>`).join('')}<div class="bottoni"><a class="btn primario" href="#/controllo">Controllo rapido (${nuoviDaCompletare()})</a><a class="btn" href="#/prodotti" data-az="vai-nuovi">Vedi l'elenco</a></div></div>` : ''}
+      ${(() => { const p = passiOrdine(), n = p.filter(x => x[1]).length; return n ? `<a class="card riga evidenza" href="#/ordine"><span><b>Metti in ordine i dati</b><small>${p.filter(x => x[1]).slice(0, 4).map(x => esc(x[4]) + ' ' + x[1]).join(' · ')}${n > 4 ? ' · …' : ''}</small></span><span class="badge giallo">${n} passi</span></a>` : ''; })()}
       ${(() => {
         // ricette che costano più di quanto si vendono: quasi sempre un prodotto col prezzo del cartone intero contato come un pezzo
         const colpevoli = {};
@@ -698,7 +702,6 @@
         return ks.length ? `<div class="card evidenza"><h3>Costi impossibili</h3><p class="tenue">Queste ricette costano più di quanto le vendete: il colpevole è quasi sempre un prodotto con il prezzo di un cartone intero contato come un pezzo solo. Apri il prodotto e scrivi quanti pezzi ci sono nel cartone.</p>
           ${ks.map(k => { const p = M.prodotto(k); return `<a class="riga" href="#/prodotto/${k}"><span>${esc(p.nomeBreve)}<small>${descrPrezzo(p)} · in ${colpevoli[k].slice(0, 4).map(esc).join(', ')}${colpevoli[k].length > 4 ? '…' : ''}</small></span><span class="badge rosso">${colpevoli[k].length} ricette</span></a>`; }).join('')}</div>` : '';
       })()}
-      ${M.gruppiDoppioni().length ? `<div class="card"><h3>Prodotti doppi</h3><p class="tenue">${M.gruppiDoppioni().length} prodotti compaiono più volte con lo stesso nome e formato (es. da due fornitori): uniscili, così nelle ricette ne trovi uno solo.</p><a class="btn primario" href="#/doppioni">Vedi e unisci</a></div>` : ''}
       ${daFare.length ? `<div class="card"><h3>Fatture da completare</h3>${daFare.map(f => `<a class="riga" href="#/fattura/${f.id}"><span>${esc(f.fornitoreNome)} · n. ${esc(f.numero)}</span><span class="badge giallo">${M.daAbbinare(f)} righe da collegare</span></a>`).join('')}</div>` : ''}
       <div class="card"><h3>Prezzi cambiati</h3>${aumenti.length ? aumenti.slice(0, 8).map(x => `<a class="riga" href="#/prodotto/${x.p.id}"><span>${esc(x.p.nomeBreve)}<small>${dataIt(x.data)}</small></span><span class="badge ${x.v > 0 ? 'rosso' : 'verde'}">${x.v > 0 ? '+' : ''}${n2(x.v, 1)}%</span></a>`).join('') : '<p class="tenue">Nessun cambio di prezzo. Compariranno qui quando registri le fatture.</p>'}</div>
       <div class="card"><h3>Sotto la soglia del moltiplicatore</h3>${sotto.length ? sotto.map(r => { const i = M.indicatori(r); return `<a class="riga" href="#/ricetta/${r.id}"><span>${esc(r.nome)}<small>${M.TIPI_SINGOLARE[r.tipo]} · soglia × ${n2(i.soglia)}</small></span>${badgeMolt(i)}</a>`; }).join('') : '<p class="tenue">Tutte le ricette complete sono sopra la soglia.</p>'}</div>
@@ -730,7 +733,8 @@
   function chipsReparti(st, az, prima, spento) {
     const prod = S.prodotti.filter(p => !p.speciale), sel = new Set(st.cats || []);
     const nel = p => !st.rep || M.reparto(p) === st.rep;
-    const cats = categorie().filter(c => sel.has(c) || prod.some(p => p.categoria === c && nel(p)));
+    // «Da classificare» c'è già come reparto: non lo ripeto tra le categorie
+    const cats = categorie().filter(c => sel.has(c) || (prod.some(p => p.categoria === c && nel(p)) && !(c === 'Da classificare' && repartiUsati().includes('Da classificare'))));
     const n = c => prod.filter(p => p.categoria === c && nel(p)).length;
     return `<div class="chips">${prima || ''}${[['', 'Tutto']].concat(repartiUsati().map(r => [r, r])).map(([v, t]) => `<button class="chip ${!spento && (st.rep || '') === v ? 'on' : ''}" data-az="${az}" data-rep="${esc(v)}">${esc(t)}</button>`).join('')}</div>
       ${spento ? '' : `<div class="chips sotto">${cats.map(c => `<button class="chip ${sel.has(c) ? 'on' : ''}" data-az="${az}" data-cat="${esc(c)}">${sel.has(c) ? '✓ ' : ''}${esc(c)} <span class="${sel.has(c) ? '' : 'tenue'}">${n(c)}</span></button>`).join('')}${sel.size ? `<button class="chip giallo" data-az="${az}" data-cat="">Togli le categorie</button>` : ''}</div>`}`;
@@ -778,19 +782,23 @@
         <span class="destra">${p.speciale ? euro(rif && rif.valore, 2) + '<small>' + esc(rif ? rif.etichetta : '') + '</small>' : euro(pr) + `<small>${rif ? n2(rif.valore) + ' ' + rif.etichetta : 'senza prezzo'}</small>`}${sc ? '<span class="badge rosso">scorta</span>' : ''}${p.daCompletare ? '<span class="badge giallo">da completare</span>' : ''}</span></a>`;
     }).join('');
   }
+  // un solo avviso compatto al posto dei tasti grandi: porta a «Metti in ordine i dati»
+  function avvisoSistemare() {
+    const p = passiOrdine().filter(x => x[1] && ['prodotti nuovi', 'doppioni', 'del foglio', 'cartoni'].includes(x[4])), tot = p.reduce((t, x) => t + x[1], 0);
+    if (!tot) return '';
+    return `<a class="card riga evidenza avviso-ordine" href="#/ordine"><span><b>Prodotti da sistemare</b><small>${p.map(x => esc(x[4]) + ' ' + x[1]).join(' · ')}</small></span><span class="badge giallo">${tot}</span></a>`;
+  }
   PAGINE.prodotti = function () {
     return {
       titolo: 'Prodotti', azione: '<a class="btn-top" href="#/modifica-prodotto/nuovo">＋ Nuovo</a>', html: `
-      ${nuoviDaCompletare() ? `<a class="btn primario largo" href="#/controllo">Controllo rapido dei prodotti nuovi (${nuoviDaCompletare()})</a>` : ''}
-      ${M.gruppiDoppioni().length ? `<a class="btn largo" href="#/doppioni">Doppioni da unire (${M.gruppiDoppioni().length})</a>` : ''}
-      ${(() => { const n = S.prodotti.filter(p => M.daFoglio(p) && !(S.foglioTenuti || []).includes(p.id)).length; return n ? `<a class="btn largo" href="#/foglio" data-az="fg-apri">Prodotti del tuo foglio da collegare alle fatture (${n})</a>` : ''; })()}
-      ${ui.prodVista === 'fornitori'
-        ? (ui.fornProd && M.fornitore(ui.fornProd) ? `<a class="btn primario largo" href="#/formati" data-az="fmt-fornitore" data-id="${ui.fornProd}">Metti a posto tutti i prodotti di ${esc(M.fornitore(ui.fornProd).nome)}, uno dopo l'altro</a>` : '<p class="tenue">Scegli un fornitore: vedi tutta la sua roba e la sistemi in un colpo con la fattura sotto mano.</p>')
-        : `<a class="btn largo" href="#/formati" data-az="fmt-categoria">${ui.categoria !== '__nuovi' && PF().cats.length === 1 ? `Ricontrolla i formati: solo ${esc(PF().cats[0])}` : ui.categoria !== '__nuovi' && PF().rep ? `Ricontrolla i formati: tutto ${esc(PF().rep)}` : 'Ricontrolla i formati, uno dopo l\'altro'}</a>`}
+      ${avvisoSistemare()}
       <input class="cerca" type="search" placeholder="Cerca un prodotto" value="${esc(ui.filtroProdotti)}" data-filtro="prodotti">
       <div class="chips"><button class="chip ${ui.prodVista !== 'fornitori' ? 'on' : ''}" data-az="prod-vista" data-v="categorie">Per categoria</button><button class="chip ${ui.prodVista === 'fornitori' ? 'on' : ''}" data-az="prod-vista" data-v="fornitori">Per fornitore</button></div>
       ${ui.prodVista === 'fornitori' ? `<div class="chips">${fornitoriConProdotti().map(x => `<button class="chip ${ui.fornProd === x.f.id ? 'on' : ''}" data-az="forn-prod" data-v="${x.f.id}">${esc(x.f.nome)} (${x.n})</button>`).join('')}</div>` : chipsReparti(PF(), 'prod-filtro', nuoviDaCompletare() ? `<button class="chip ${ui.categoria === '__nuovi' ? 'on' : ''} giallo" data-az="categoria" data-v="__nuovi">Da completare (${nuoviDaCompletare()})</button>` : '', ui.categoria === '__nuovi')}
-      ${inElimina('p') ? barraElimina('p') : `<div class="bottoni"><button class="btn piccolo" data-az="elim-inizia" data-v="p">Elimina più prodotti</button></div>`}
+      ${inElimina('p') ? barraElimina('p') : `<div class="azioni-riga">${ui.prodVista === 'fornitori'
+        ? (ui.fornProd && M.fornitore(ui.fornProd) ? `<a class="btn primario piccolo" href="#/formati" data-az="fmt-fornitore" data-id="${ui.fornProd}">Metti a posto i prodotti di ${esc(nomeFornBreve(M.fornitore(ui.fornProd).nome))}, uno dopo l'altro</a>` : '')
+        : `<a class="btn primario piccolo" href="#/formati" data-az="fmt-categoria">${ui.categoria !== '__nuovi' && PF().cats.length === 1 ? `Ricontrolla i formati: ${esc(PF().cats[0])}` : ui.categoria !== '__nuovi' && PF().rep ? `Ricontrolla i formati: ${esc(PF().rep)}` : 'Ricontrolla i formati, uno dopo l\'altro'}</a>`}
+        <details class="menu-azioni"><summary class="btn piccolo">Altro ▾</summary><div class="menu-azioni-voci"><button class="btn piccolo" data-az="elim-inizia" data-v="p">Elimina più prodotti</button><a class="btn piccolo" href="#/doppioni">Unisci i doppioni</a><a class="btn piccolo" href="#/foglio" data-az="fg-apri">Prodotti del foglio</a></div></details></div>`}
       ${avvisoCestino('p')}
       <div class="card lista" id="lista">${listaProdotti()}</div>`
     };
@@ -1438,19 +1446,22 @@
   };
 
   // ----- Altro -----
+  // le voci di «Altro»: le stesse, nello stesso ordine, nella pagina Altro e nella colonna a sinistra su iPad e Mac
+  const VOCI_ALTRO = [
+    ['fornitori', 'Fornitori', 'contatti, spesa, prodotti', 'M2 6h12v10H2zM14 9h4l4 4v3h-8M4 18a2 2 0 1 0 4 0a2 2 0 1 0-4 0M15 18a2 2 0 1 0 4 0a2 2 0 1 0-4 0'],
+    ['magazzino', 'Magazzino', 'inventario ogni sei mesi', 'M3 21V8l9-5 9 5v13M7 21v-8h10v8M7 17h10'],
+    ['vendite', 'Vendite', 'pezzi venduti per periodo', 'M4 20V11M10 20V5M16 20v-6M2 20h20'],
+    ['costi', 'Costi del locale', 'merce, bollette, servizi, materiali', 'M3 7h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H3zM3 7l12-4v4M16 13.5h2'],
+    ['simulatore', 'Simulatore', 'e se cambia un prezzo?', 'M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1M15 4v4M9 10v4M17 16v4'],
+    ['eventi', 'Eventi', 'listini per le serate', 'M4 5h16v16H4zM4 10h16M8 3v4M16 3v4'],
+    ['olio', 'Costo olio', 'quanto costa friggere', 'M12 3c4 5 6 8 6 11a6 6 0 0 1-12 0c0-3 2-6 6-11z'],
+    ['ordine', 'Metti in ordine i dati', 'tutto quello da sistemare, in un posto', 'M10 6h10M10 12h10M10 18h10M3 6l1.5 1.5L7 5M3 12l1.5 1.5L7 11M3 18l1.5 1.5L7 17'],
+    ['importa', 'Importa dati', 'cassa, ricette, listini dei fornitori', 'M12 3v12M7 10l5 5 5-5M4 20h16'],
+    ['cestino', 'Cestino', 'quello che hai eliminato', 'M4 7h16M10 3h4M6 7l1 14h10l1-14M10 11v6M14 11v6'],
+    ['impostazioni', 'Impostazioni', 'soglie, IVA, esportazione', 'M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2']
+  ];
   PAGINE.altro = function () {
-    const voci = [
-      ['fornitori', 'Fornitori', 'contatti, spesa, prodotti'], ['magazzino', 'Magazzino', 'inventario ogni sei mesi'],
-['vendite', 'Vendite', 'pezzi venduti per periodo'],
-      ['simulatore', 'Simulatore', 'e se cambia un prezzo?'], ['eventi', 'Eventi', 'listini per le serate'], ['olio', 'Costo olio', 'quanto costa friggere'],
-      ['costi', 'Costi del locale', 'tutte le fatture: merce, bollette, servizi, materiali'],
-      ['ordine', 'Metti in ordine i dati', 'tutti gli strumenti di sistemazione, in ordine'],
-      ['foglio', 'Prodotti del foglio', 'collegali a quelli delle fatture, uno per uno'],
-      ['importa', 'Importa dati', 'cassa, liste di ricette, listini dei fornitori'],
-      ['cestino', 'Cestino', 'quello che hai eliminato: si può rimettere'],
-      ['impostazioni', 'Impostazioni', 'soglie, IVA, esportazione']
-    ];
-    return { titolo: 'Altro', html: `<div class="griglia-voci">${voci.map(v => `<a class="voce" href="#/${v[0]}"><b>${v[1]}</b><span>${v[2]}</span></a>`).join('')}</div>` };
+    return { titolo: 'Altro', html: `<div class="griglia-voci">${VOCI_ALTRO.map(v => `<a class="voce con-icona" href="#/${v[0]}"><svg viewBox="0 0 24 24"><path d="${v[3]}"/></svg><b>${v[1]}</b><span>${v[2]}</span></a>`).join('')}</div>` };
   };
 
   // ----- Fornitori -----
@@ -1722,9 +1733,8 @@
   };
 
   // ---------- Disegno ----------
-  const ALTRE = [['fornitori', 'Fornitori'], ['magazzino', 'Magazzino'], ['vendite', 'Vendite'], ['costi', 'Costi del locale'], ['simulatore', 'Simulatore'], ['eventi', 'Eventi'], ['olio', 'Costo olio'], ['foglio', 'Prodotti del foglio'], ['importa', 'Importa dati'], ['cestino', 'Cestino'], ['impostazioni', 'Impostazioni']];
   const TAB = [['pannello', 'Pannello', 'M3 12l9-8 9 8v8a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z'], ['prodotti', 'Prodotti', 'M4 7l8-4 8 4v10l-8 4-8-4zM4 7l8 4 8-4M12 11v10'], ['ricette', 'Ricette', 'M6 3h12M8 3v6l-4 12h16L16 9V3'], ['fatture', 'Fatture', 'M6 2h9l5 5v15H6zM14 2v6h6M9 13h8M9 17h8'], ['altro', 'Altro', 'M5 12h.01M12 12h.01M19 12h.01']];
-  const SEZIONE = { cestino: 'altro', mappa: 'pannello', costi: 'altro', ordine: 'pannello', 'gruppi-ricette': 'ricette', foglio: 'prodotti', doppioni: 'prodotti', importa: 'altro', 'controllo-fatture': 'fatture', controllo: 'prodotti', pulizia: 'altro', formati: 'prodotti', prodotto: 'prodotti', 'modifica-prodotto': 'prodotti', ricetta: 'ricette', 'modifica-ricetta': 'ricette', 'rivedi-ricette': 'ricette', fattura: 'fatture' };
+  const SEZIONE = { cestino: 'altro', mappa: 'pannello', costi: 'altro', ordine: 'altro', 'gruppi-ricette': 'ricette', foglio: 'prodotti', doppioni: 'prodotti', importa: 'altro', 'controllo-fatture': 'fatture', controllo: 'prodotti', pulizia: 'altro', formati: 'prodotti', prodotto: 'prodotti', 'modifica-prodotto': 'prodotti', ricetta: 'ricette', 'modifica-ricetta': 'ricette', 'rivedi-ricette': 'ricette', fattura: 'fatture' };
   function disegna() {
     if (!S) return;
     const [, nome, arg] = (location.hash || '#/pannello').split('/');
@@ -1740,9 +1750,9 @@
     const PAGINA_DI = { fornitore: 'fornitori', evento: 'eventi' };
     const attiva = PAGINA_DI[nome] || nome;
     $('#tabbar').innerHTML = '<div class="marchio">Gestionale <span>Repub</span></div>' +
-      TAB.map(t => `<a href="#/${t[0]}" class="${sez === t[0] ? 'on' : ''} ${t[0] === 'altro' ? 'solo-stretto' : ''}"><svg viewBox="0 0 24 24"><path d="${t[2]}"/></svg><span>${t[1]}</span></a>`).join('') +
+      TAB.map(t => `<a href="#/${t[0]}" class="${sez === t[0] ? 'on' : ''} ${t[0] === 'altro' ? 'solo-stretto tab-altro' : ''}"><svg viewBox="0 0 24 24"><path d="${t[2]}"/></svg><span>${t[1]}</span></a>`).join('') +
       '<div class="gruppo solo-largo">Altro</div>' +
-      ALTRE.map(v => `<a href="#/${v[0]}" class="solo-largo secondaria ${attiva === v[0] ? 'on' : ''}"><span>${v[1]}</span></a>`).join('');
+      VOCI_ALTRO.map(v => `<a href="#/${v[0]}" class="solo-largo secondaria ${attiva === v[0] ? 'on' : ''}"><svg viewBox="0 0 24 24"><path d="${v[3]}"/></svg><span>${v[1]}</span></a>`).join('');
     $('#contenuto').className = ['pannello', 'prodotto', 'ricetta', 'fattura', 'fornitore', 'evento', 'impostazioni', 'mappa', 'scadenze', 'magazzino', 'modifica-prodotto', 'modifica-ricetta', undefined].includes(nome) && !(nome === 'magazzino' && ui.conta) ? 'colonne' : '';
     document.title = pag.titolo + ' · Gestionale Repub';
   }
@@ -1798,6 +1808,17 @@
   });
   document.addEventListener('input', (e) => { if (e.target.classList && e.target.classList.contains('cerca-rif')) spazioSuggerimenti(e.target); }, true);
   if (window.visualViewport) window.visualViewport.addEventListener('resize', () => { const el = document.activeElement; if (el && el.classList && el.classList.contains('cerca-rif')) spazioSuggerimenti(el); });
+  // i numeri nei campi si scrivono all'italiana: 3,5 e non 3.5 (la lettura accetta tutti e due)
+  const virgola = (root) => { if (!root.querySelectorAll) return; const l = root.matches && root.matches('input[inputmode=decimal]') ? [root] : root.querySelectorAll('input[inputmode=decimal]');
+    l.forEach(i => { if (i.dataset.virgola) return; i.dataset.virgola = '1'; if (/^-?\d+\.\d+$/.test(i.value) && document.activeElement !== i) i.value = i.value.replace('.', ','); }); };
+  // spiegazioni lunghe: si vede la prima frase, il resto con «Di più» (così le pagine sono più pulite)
+  const accorcia = (root) => { if (!root.querySelectorAll) return;
+    const l = root.matches && root.matches('p.tenue') ? [root] : root.querySelectorAll('p.tenue');
+    l.forEach(pp => { if (pp.dataset.corto || pp.textContent.length < 130) return; pp.dataset.corto = '1';
+      const h = pp.innerHTML, m = h.match(/^([^<]{20,120}?[.:;!?])\s+(\S[\s\S]*)$/); if (!m) return;
+      pp.innerHTML = `${m[1]} <button type="button" class="piu" data-piu>Di più</button><span class="resto" hidden> ${m[2]}</span>`; }); };
+  document.addEventListener('click', (e) => { const b = e.target.closest('[data-piu]'); if (!b) return; e.preventDefault(); const r = b.nextElementSibling; if (r) r.hidden = false; b.remove(); });
+  new MutationObserver((ms) => ms.forEach(m => m.addedNodes.forEach(n => { virgola(n); accorcia(n); }))).observe(document.body, { childList: true, subtree: true });
   new MutationObserver(() => document.querySelectorAll('#contenuto select').forEach(rendiCercabile)).observe(document.getElementById('contenuto') || document.body, { childList: true, subtree: true });
   // ---------- Storia della navigazione: la freccia ‹ torna alla pagina da cui vieni (e allo stesso punto) ----------
   const storia = []; let tornando = null;
@@ -2969,23 +2990,40 @@
     const impossibili = S.ricette.filter(r => r.tipo !== 'semilavorato' && r.prezzo && (() => { const i = M.indicatori(r); return i.costo != null && i.costo > i.netto; })()).length;
     const cartoni = S.prodotti.filter(p => p.dubbio).length;
     const incomplete = S.ricette.filter(r => r.tipo !== 'semilavorato' && (!(r.righe || []).length || /^Ricetta da completare/.test(r.note || ''))).length;
+    const fattDaFare = S.fatture.filter(f => f.stato !== 'registrata').length;
+    // [titolo, quanti, indirizzo, spiegazione, nome breve, azione]
     return [
-      ['Fornitori nuovi: vendono merce o solo servizi?', fornitoriDaControllare().length, '#/controllo-fatture', 'Così i prodotti di bollette e servizi spariscono da soli.'],
-      ['Fornitori che sono lo stesso', coppieF, '#/fornitori', 'Es. Sebar e SE.BA.R: uniscili.'],
-      ['Prodotti nuovi da controllare', nuoviDaCompletare(), '#/controllo', 'Nome breve, categoria e formato dei prodotti arrivati dalle fatture.'],
-      ['Prodotti doppi', M.gruppiDoppioni().length, '#/doppioni', 'Lo stesso prodotto arrivato due volte: uniscilo.'],
-      ['Prodotti del tuo foglio', daFoglio, '#/foglio', 'Collegali alle fatture, falli diventare preparazioni, tienili o eliminali.'],
-      ['Cartoni contati come un pezzo', cartoni + impossibili, '#/formati', impossibili ? `${impossibili} ricette costano più del prezzo: c'è un cartone da sistemare.` : 'Scrivi quanti pezzi ci sono nel cartone.'],
-      ['Ricette senza ingredienti completi', incomplete, '#/ricette', 'Con «Rivedi una per una», dalle più vendute.']
+      ['Fornitori nuovi: vendono merce o solo servizi?', fornitoriDaControllare().length, '#/controllo-fatture', 'Così i prodotti di bollette e servizi spariscono da soli.', 'fornitori nuovi'],
+      ['Fornitori che sono lo stesso', coppieF, '#/fornitori', 'Es. Sebar e SE.BA.R: uniscili.', 'fornitori doppi'],
+      ['Fatture da completare', fattDaFare, '#/fatture', 'Righe ancora da collegare a un prodotto.', 'fatture', 'ord-fatture'],
+      ['Prodotti nuovi da controllare', nuoviDaCompletare(), '#/controllo', 'Nome breve, categoria e formato dei prodotti arrivati dalle fatture.', 'prodotti nuovi'],
+      ['Prodotti doppi', M.gruppiDoppioni().length, '#/doppioni', 'Lo stesso prodotto arrivato due volte: uniscilo.', 'doppioni'],
+      ['Prodotti del tuo foglio', daFoglio, '#/foglio', 'Collegali alle fatture, falli diventare preparazioni, tienili o eliminali.', 'del foglio', 'fg-apri'],
+      ['Cartoni contati come un pezzo', cartoni + impossibili, '#/formati', impossibili ? `${impossibili} ricette costano più del prezzo: c'è un cartone da sistemare.` : 'Scrivi quanti pezzi ci sono nel cartone.', 'cartoni', 'ord-cartoni'],
+      ['Ricette senza ingredienti completi', incomplete, '#/rivedi-ricette', 'Una per una, dalle più vendute.', 'ricette', 'ord-ricette']
     ];
   }
   PAGINE.ordine = function () {
     const passi = passiOrdine(), fatti = passi.filter(x => !x[1]).length;
-    return { titolo: 'Metti in ordine i dati', indietro: '#/pannello', html: `
-      <div class="card"><p>Fai i passi in quest'ordine: ognuno rende più facile il successivo. Fatti ${fatti} su ${passi.length}.</p></div>
-      <div class="card lista">${passi.map(([t, n, h, sp], i) => `<a class="riga" href="${h}" ${h === '#/ricette' ? 'data-az="ord-ricette"' : h === '#/foglio' ? 'data-az="fg-apri"' : ''}><span><b>${i + 1}. ${t}</b><small>${sp}</small></span><span class="badge ${n ? 'giallo' : 'verde'}">${n ? n : 'fatto'}</span></a>`).join('')}</div>` };
+    const strumenti = [
+      ['#/formati', 'ord-formati', 'Ricontrolla i formati', 'tutti i prodotti, uno dopo l\'altro'],
+      ['#/rivedi-ricette', 'ord-rivedi', 'Rivedi le ricette', 'tutte, una per una, dalle più vendute'],
+      ['#/doppioni', '', 'Unisci i doppioni', 'prodotti con lo stesso nome e formato'],
+      ['#/foglio', 'fg-apri', 'Prodotti del foglio', 'tutti quelli che hai messo tu'],
+      ['#/pulizia', '', 'Pulizia dati del foglio', 'collegamenti con le fatture'],
+      ['#/cestino', '', 'Cestino', 'quello che hai eliminato']
+    ];
+    return { titolo: 'Metti in ordine i dati', indietro: '#/altro', html: `
+      <div class="card larga"><div class="avanzamento"><span style="width:${Math.round(fatti / passi.length * 100)}%"></span></div><p class="tenue piccolo">Fatti ${fatti} passi su ${passi.length}. Vai in quest'ordine: ognuno rende più facile il successivo.</p></div>
+      <div class="card lista larga">${passi.map(([t, n, h, sp, , az], i) => `<a class="riga" href="${h}" ${az ? `data-az="${az}"` : ''}><span><b>${i + 1}. ${t}</b><small>${sp}</small></span><span class="badge ${n ? 'giallo' : 'verde'}">${n ? n : 'fatto'}</span></a>`).join('')}</div>
+      <h2 class="sezione">Strumenti</h2>
+      <div class="griglia-voci">${strumenti.map(([h, az, t, sp]) => `<a class="voce" href="${h}" ${az ? `data-az="${az}"` : ''}><b>${t}</b><span>${sp}</span></a>`).join('')}</div>` };
   };
-  AZ['ord-ricette'] = () => { ui.rivFiltro = 'incomplete'; ui.rivOrdine = 'piu'; };
+  AZ['ord-ricette'] = () => { ui.tipoRicette = '*tutto'; ui.filtroRicette = ''; ui.rivFiltro = 'incomplete'; ui.rivOrdine = haVendite() ? 'piu' : 'nome'; ui.rivPer = '*'; ui.rivIdx = 0; ui.rivStorico = []; ui.rivFisso = null; ui.bozza = null; };
+  AZ['ord-rivedi'] = () => { ui.tipoRicette = '*tutto'; ui.filtroRicette = ''; ui.rivFiltro = 'tutte'; ui.rivOrdine = haVendite() ? 'piu' : 'nome'; ui.rivPer = '*'; ui.rivIdx = 0; ui.rivStorico = []; ui.rivFisso = null; ui.bozza = null; };
+  AZ['ord-formati'] = () => { ui.fmtCat = ''; ui.fmtRep = ''; ui.fmtForn = ''; ui.fmtFiltro = 'tutti'; ui.fmtIdx = 0; };
+  AZ['ord-cartoni'] = () => { ui.fmtCat = ''; ui.fmtRep = ''; ui.fmtForn = ''; ui.fmtFiltro = 'cartoni'; ui.fmtIdx = 0; };
+  AZ['ord-fatture'] = () => { ui.statoFatt = 'dafare'; ui.filtroFatt = ''; };
   // ---------- Costi del locale: tutte le fatture, non solo la merce (bollette, servizi, materiali, attrezzatura…) ----------
   const CAT_SPESA = {
     merce: ['Merce: bar e cucina', 'var(--verde)'],
@@ -3326,6 +3364,7 @@
   });
   document.addEventListener('change', (e) => {
     const el = e.target; const d = el.dataset;
+    if (d.panPeriodo != null) { if (el.value) { ui.panSel = { tipo: 'periodo', per: el.value }; ridisegnaMantenendo(); } return; }
     if (d.carica === 'xml') { caricaXML(Array.from(el.files)); el.value = ''; return; }
     if (d.carica === 'foto') { if (el.files[0]) caricaFoto(el.files[0]); el.value = ''; return; }
     if (d.carica === 'listino-fornitore') { if (el.files[0]) caricaListinoFornitore(el.files[0]); el.value = ''; return; }
@@ -3417,7 +3456,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v90';
+  const VERSIONE_APP = 'repub-v91';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
