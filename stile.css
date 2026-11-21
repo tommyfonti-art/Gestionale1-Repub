@@ -392,7 +392,7 @@ details.menu-azioni > summary::-webkit-details-marker { display: none; }
 .barra small, .barra span { white-space: nowrap; }
 /* su telefono e iPad (dita, non mouse) le etichette sono alte abbastanza da toccarle bene */
 @media (pointer: coarse) {
-  .chip { min-height: 36px; display: inline-flex; align-items: center; }
+  .chip { min-height: 36px; display: inline-flex; align-items: center; gap: 5px; }
   .chip.piccola { min-height: 34px; }
   .segmentato button { padding: 9px 14px; }
 }
