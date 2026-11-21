@@ -879,6 +879,7 @@
         return `<a class="riga" href="#/ricetta/${r.id}"><span>${esc(r.nome)}<small>${diretta ? qta(diretta.quantita) + ' ' + esc(p.unita) + ' · ' + euro(M.costoUnita(p) * diretta.quantita, 3) : 'dentro una preparazione'}</small></span><span class="destra">${euro(M.costo(r))}<small>${M.TIPI_SINGOLARE[r.tipo]}</small></span></a>`;
       }).join('') : '<p class="tenue">Non è usato in nessuna ricetta.</p>'}</div>
       ${!p.speciale ? collegaARicette(p) : ''}
+      ${!p.speciale && !M.daFattura(p) ? `<div class="card"><h3>È fatto da voi?</h3><p class="tenue piccolo">Se è una cosa che preparate voi (salse, sciroppi, cipolla tagliata…), trasformalo in preparazione: gli metti gli ingredienti e la resa, e le ricette che lo usano passano alla preparazione.</p><button class="btn piccolo" data-az="prod-prep" data-id="${p.id}">Diventa una preparazione</button></div>` : ''}
       ${!p.speciale ? `<div class="card form"><h3>È lo stesso di un altro prodotto?</h3><p class="tenue piccolo">Uniscilo: resta l'altro, con i prezzi, le fatture e le ricette di tutti e due.</p>
         <label>Unisci dentro<select data-az-change="ctrl-unisci" data-id="${p.id}"><option value="">scegli il prodotto…</option>${S.prodotti.filter(x => x.id !== p.id && !x.speciale).sort((a, b) => a.nomeBreve.localeCompare(b.nomeBreve)).map(x => `<option value="${x.id}">${esc(x.nomeBreve)} · ${esc(x.nomeCompleto)} · ${esc((M.fornitore(x.fornitoreId) || {}).nome || '')}</option>`).join('')}</select></label></div>` : ''}
       ${(p.articoli || []).length ? `<div class="card"><h3>Come compare nelle fatture</h3>${p.articoli.map(a => `<div class="riga"><span>${esc(a.descrizione)}<small>${esc((M.fornitore(a.fornitoreId) || {}).nome || '')}${a.codice ? ' · codice ' + esc(a.codice) : ''}</small></span><span>${a.confezioniPerUnita > 1 ? a.confezioniPerUnita + ' ' + esc(p.confezione) + ' per unità' : ''}</span></div>`).join('')}</div>` : ''}
@@ -2802,16 +2803,28 @@
   AZ['fg-elimina'] = (el) => { const p = M.prodotto(el.dataset.id); if (!confirm(`Elimino «${p.nomeBreve}»?`)) return; const prima = listaFoglio(); ricorda('fg', 'fgIdx'); togliProdotto(p.id); fgDopo(prima); };
   AZ['fg-prep'] = (el) => {
     const p = M.prodotto(el.dataset.id), prima = listaFoglio(); ricorda('fg', 'fgIdx');
-    const costo = M.prezzo(p);
-    const r = { id: M.uid('r'), nome: p.nomeBreve, tipo: 'semilavorato', prezzo: null, righe: [], resa: p.contenuto || 1000, unita: p.unita === 'pz' ? 'pz' : p.unita, asporto: [], vendite: {},
-      costiExtra: costo != null ? [{ nome: 'Costo dal foglio (provvisorio: toglilo quando metti gli ingredienti)', costo }] : [],
-      note: 'Ricetta da completare: mancano gli ingredienti. Era nel foglio come «' + p.nomeBreve + '» (' + p.confezione + ' da ' + qta(p.contenuto) + ' ' + p.unita + ').' };
-    S.ricette.push(r);
-    S.ricette.forEach(x => { (x.righe || []).forEach(rg => { if (rg.rif === 'p:' + p.id) rg.rif = 'r:' + r.id; }); (x.asporto || []).forEach(a => { if (a.rif === 'p:' + p.id) a.rif = 'r:' + r.id; }); });
-    S.prodotti = S.prodotti.filter(x => x !== p);
+    const r = inPreparazione(p);
     avviso(`«${r.nome}» ora è una preparazione: la trovi in Ricette › Preparazioni.`);
     fgDopo(prima);
   };
+  // dalla scheda di un prodotto creato a mano: diventa una preparazione e si apre subito la modifica
+  AZ['prod-prep'] = (el) => {
+    const p = M.prodotto(el.dataset.id); if (!p) return;
+    if (!confirm(`«${p.nomeBreve}» diventa una preparazione: poi gli metti gli ingredienti e la resa. Le ricette che lo usano passano alla preparazione. Vado?`)) return;
+    const r = inPreparazione(p); salva(); ui.bozza = null; ui.scorriP = null;
+    avviso(`«${r.nome}» ora è una preparazione.`); vai('#/modifica-ricetta/' + r.id);
+  };
+  function inPreparazione(p) {
+    const costo = M.prezzo(p);
+    const r = { id: M.uid('r'), nome: p.nomeBreve, tipo: 'semilavorato', prezzo: null, righe: [], resa: p.contenuto || 1000, unita: p.unita === 'pz' ? 'pz' : p.unita, asporto: [], vendite: {},
+      costiExtra: costo != null ? [{ nome: 'Costo dal foglio (provvisorio: toglilo quando metti gli ingredienti)', costo }] : [],
+      note: 'Ricetta da completare: mancano gli ingredienti. Era tra i prodotti come «' + p.nomeBreve + '» (' + p.confezione + ' da ' + qta(p.contenuto) + ' ' + p.unita + ').' };
+    S.ricette.push(r);
+    S.ricette.forEach(x => { (x.righe || []).forEach(rg => { if (rg.rif === 'p:' + p.id) rg.rif = 'r:' + r.id; }); (x.asporto || []).forEach(a => { if (a.rif === 'p:' + p.id) a.rif = 'r:' + r.id; }); });
+    S.prodotti = S.prodotti.filter(x => x !== p);
+    M.svuota();
+    return r;
+  }
   // ---------- Listino di un fornitore: prezzi per i prodotti che hai già (senza IVA) ----------
   const numIt = (x) => { if (typeof x === 'number') return x; const t = String(x == null ? '' : x).replace(/[€\s]/g, ''); if (!/\d/.test(t)) return NaN; return parseFloat(t.includes(',') ? t.replace(/\./g, '').replace(',', '.') : t); };
   function formatoListino(desc) {
@@ -3505,7 +3518,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v93';
+  const VERSIONE_APP = 'repub-v94';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
