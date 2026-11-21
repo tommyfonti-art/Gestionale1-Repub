@@ -220,7 +220,7 @@
       ['Bello', [], 'bello'], ['Jefferson', ['p_mwkoh4bwt032'], ''], ['Amaro Camatti', ['p_mwjffqjdn082'], ''], ['Miscela al 30', ['p_mwjffqjd53db'], ''], ['Petrus', ['p_mwjffqjdexns'], ''], ['Amaro Formidabile', [], 'formidabile']] }
   ];
   function creaGruppiLisci() {
-    const nn = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+    const nn = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
     const slug = (t) => nn(t).replace(/ /g, '-');
     const testo = (x) => ' ' + nn([x.nomeBreve, x.nomeCompleto, x.nomeFoglio].concat((x.articoli || []).map(a => a.descrizione)).join(' ')) + ' ';
     const cerca = (parole, gia) => { const w = nn(parole).split(' ').filter(Boolean); if (!w.length) return null;
@@ -280,7 +280,7 @@
   }
 
   function riordinaGruppi() {
-    const nn = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+    const nn = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
     const tipi = () => Object.keys(M.TIPI).filter(k => k !== 'semilavorato');
     const tipoDi = (...nomi) => tipi().find(k => nomi.includes(nn(M.TIPI[k])));
     const togli = (k) => { if ((S.tipiExtra || []).some(t => t.id === k)) S.tipiExtra = S.tipiExtra.filter(t => t.id !== k); else S.tipiNascosti = Array.from(new Set((S.tipiNascosti || []).concat(k))); M.aggiornaTipi(); };
@@ -2421,7 +2421,7 @@
   }
   const tabellaDa = (righe) => { if (!righe || !righe.length) return []; const h = righe[0].map(x => String(x == null ? '' : x).trim()); return righe.slice(1).filter(r => r.some(x => x != null && x !== '')).map(r => { const o = {}; h.forEach((k, i) => { o[k] = r[i]; }); return o; }); };
   const colDa = (o, inizio) => { const k = Object.keys(o).find(x => x.startsWith(inizio)); return k ? o[k] : undefined; };
-  const normCassa = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[’']/g, '').replace(/&/g, ' e ').replace(/\bpata\b/g, 'patatine').replace(/[^a-z0-9]+/g, ' ').trim();
+  const normCassa = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[’']/g, '').replace(/&/g, ' e ').replace(/\bpata\b/g, 'patatine').replace(/[^a-z0-9]+/g, ' ').trim();
   const bello = (t) => { const x = String(t || '').trim().toLowerCase(); return x.charAt(0).toUpperCase() + x.slice(1); };
   const ricettaDiSku = (sku) => { const n = normCassa(sku); return S.ricette.find(r => r.tipo !== 'semilavorato' && ((r.nomeCassa && normCassa(r.nomeCassa) === n) || (r.aliasCassa || []).some(a => normCassa(a) === n))); };
   function somiglianzaNomi(a, b) {
@@ -3667,7 +3667,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v98';
+  const VERSIONE_APP = 'repub-v99';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
