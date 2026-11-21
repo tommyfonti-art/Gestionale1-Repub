@@ -159,6 +159,8 @@
     }
     // una volta: i gruppi «lisci» della cassa (whisky, vermouth, tequila, rum, grappa, amari) con dentro i loro prodotti, 60 ml, costo = media
     if (!S.gruppiLisci2) { creaGruppiLisci(); S.gruppiLisci = true; S.gruppiLisci2 = true; M.svuota(); }
+    // una volta: gruppi e categorie in ordine (birre insieme, cocktail insieme, niente «Distillati», vermouth e vodka con amari e liquori)
+    if (!S.riordino1) { riordinaGruppi(); S.riordino1 = true; M.svuota(); }
     // una volta: i prezzi del foglio di Tommi erano IVA compresa (pagati al banco); i costi si fanno senza IVA, come in fattura
     if (!S.ivaFoglioTolta) {
       S.prodotti.forEach(p => (p.prezzi || []).forEach(e => { if (/^Foglio/.test(e.origine || '') && !e.ivaTolta) { e.prezzo = Math.round(e.prezzo / (1 + (p.iva != null ? p.iva : 22) / 100) * 10000) / 10000; e.ivaTolta = true; } }));
@@ -194,13 +196,13 @@
       ["Maker's Mark", ['p_mwjffqjd0ryu'], 'maker mark'], ['Buffalo Trace', [], 'buffalo'], ['Rare Breed', [], 'rare breed'], ['Wild Turkey 101', [], 'turkey 101'], ['Wild Turkey', ['p_wildturkey'], ''],
       ['Wild Turkey Rye', [], 'turkey rye'], ['Knob Creek Rye', [], 'knob creek'], ['Suntory', [], 'suntory'], ['Nikka Days', [], 'nikka days'], ['Nikka From the Barrel', [], 'nikka barrel'],
       ['Bulleit 10', [], 'bulleit'], ["Jack Daniel's", ['p_jack'], '']] },
-    { ricetta: 'r_mwknirqgm7fd', nomi: ['vermouth'], cat: 'Bitter e vermouth', gruppo: 'Vermouth', base: 'Vermouth', cassa: 'VERMOUTH', voci: [
+    { ricetta: 'r_mwknirqgm7fd', nomi: ['vermouth'], cat: 'Amari e liquori', gruppo: 'Vermouth', base: 'Vermouth', cassa: 'VERMOUTH', voci: [
       ['Carpano', ['p_carpano'], ''], ['Antica Formula', [], 'antica formula'], ['Punt e Mes', [], 'punt mes'], ['Carlo Alberto', [], 'carlo alberto'], ['Cocchi', [], 'cocchi torino'],
       ['Lillet', ['p_mwkopu7hiwpk'], '', 750], ['Lillet Rosso', [], 'lillet rouge'], ['Americano Cocchi', [], 'americano cocchi']] },
     { ricetta: 'r_mwknirqg71r8', nomi: ['tequila mezcal'], cat: 'Tequila e mezcal', gruppo: 'Tequila e mezcal', base: 'Tequila', cassa: 'TEQUILA \\ MEZCAL', voci: [
       ['Herradura Blanco', [], 'herradura blanco'], ['Herradura Reposado', [], 'herradura reposado'], ['Patrón Blanco', [], 'patron'], ['Se Busca', [], 'se busca'], ['Los Danzantes', [], 'danzantes'],
       ['Burrito Fiestero', ['p_mezcal'], ''], ['Vida', [], 'del maguey vida'], ['Quiquiriqui', [], 'quiquiriqui'], ['Altos Blanco', ['p_mwjffqja21tz'], ''], ['Altos Reposado', ['p_mwkow6xa062j'], '', 700]] },
-    { ricetta: 'r_mwknirqgz16n', nomi: ['rum'], cat: 'Rum e cachaça', gruppo: 'Rum', base: 'Rum', cassa: 'RUM', voci: [
+    { ricetta: 'r_mwknirqgz16n', nomi: ['rum'], cat: 'Rum', gruppo: 'Rum', base: 'Rum', cassa: 'RUM', voci: [
       ['J. Bally Bianco', [], 'bally'], ['Saint James', ['p_mwkojze66fll'], '', 1000], ['Karukera', [], 'karukera blanc'], ['Karukera Vieux', [], 'karukera vieux'], ['Clairin Vaval', [], 'clairin vaval'],
       ['Demoiseau', [], 'damoiseau'], ['Santero', ['p_mwkopu7pmebj'], ''], ['Wray & Nephew', ['p_mwkojzef5iph', 'p_wray'], ''], ['Havana 7', ['p_mwjffqiwt5og'], '', 700], ["Myers's", [], 'myers'],
       ["Doorly's 5", [], 'doorly 5'], ["Doorly's XO", [], 'doorly xo'], ['Gosling', ['p_gosling'], ''], ['Gosling 151', ['p_mwjffqjdo1fh'], ''], ['OFTD', [], 'oftd'], ['Veritas', ['p_mwkojzefcypl'], ''],
@@ -275,6 +277,60 @@
     }
     if (S.impostazioni.soglie[gt] == null) S.impostazioni.soglie[gt] = 3.5;
     S.ricette.forEach(x => { if (/^gin ?tonic\b/i.test(nn(x.nome)) || /^g ?t\b/.test(nn(x.nome))) x.tipo = gt; });
+  }
+
+  function riordinaGruppi() {
+    const nn = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+    const tipi = () => Object.keys(M.TIPI).filter(k => k !== 'semilavorato');
+    const tipoDi = (...nomi) => tipi().find(k => nomi.includes(nn(M.TIPI[k])));
+    const togli = (k) => { if ((S.tipiExtra || []).some(t => t.id === k)) S.tipiExtra = S.tipiExtra.filter(t => t.id !== k); else S.tipiNascosti = Array.from(new Set((S.tipiNascosti || []).concat(k))); M.aggiornaTipi(); };
+    const rinomina = (k, nome) => { const t = (S.tipiExtra || []).find(x => x.id === k); if (t) t.nome = nome; else { S.nomiTipi = S.nomiTipi || {}; S.nomiTipi[k] = nome; } M.aggiornaTipi(); };
+    const crea = (nome) => { const id = 'g_' + nn(nome).replace(/ /g, ''); if (!(S.tipiExtra || []).some(t => t.id === id)) S.tipiExtra = (S.tipiExtra || []).concat({ id, nome, reparto: 'bar' }); M.aggiornaTipi(); if (S.impostazioni.soglie[id] == null) S.impostazioni.soglie[id] = 3.5; return id; };
+    const unisci = (dest, altri) => altri.forEach(k => { if (!k || k === dest) return; S.ricette.forEach(r => { if (r.tipo === k) r.tipo = dest; }); togli(k); });
+    const catIngr = (r) => (r.righe || []).map(rg => rg.rif.startsWith('p:') ? (M.prodotto(rg.rif.slice(2)) || {}).categoria || '' : '');
+    // Cocktail = Drink + Cocktail
+    const cocktail = tipoDi('cocktail') || tipoDi('drink') || tipoDi('drink e cocktail');
+    if (cocktail) { unisci(cocktail, [tipoDi('drink'), tipoDi('cocktail'), tipoDi('drink e cocktail')]); rinomina(cocktail, 'Cocktail'); }
+    // Birre: tutti i gruppi delle birre insieme, e le birre tolte da «Birre, vini e bibite»
+    const nomiBirre = ['birre', 'birra', 'birre in lattina', 'birre e fusti', 'birra e fusti', 'birre alla spina', 'birre artigianali'];
+    const birre = tipoDi(...nomiBirre) || crea('Birre');
+    unisci(birre, tipi().filter(k => nomiBirre.includes(nn(M.TIPI[k]))));
+    rinomina(birre, 'Birre');
+    const misto = tipi().find(k => /\bbirr/.test(nn(M.TIPI[k])) && k !== birre);
+    if (misto) {
+      S.ricette.forEach(r => { if (r.tipo === misto && (/^birr/.test(nn(r.catCassa)) || /\bbirr/.test(nn(r.nome)) || catIngr(r).some(c => /^(birr|fust)/i.test(c)))) r.tipo = birre; });
+      rinomina(misto, M.TIPI[misto].replace(/birr[ae]\s*(,|e)?\s*/i, '').replace(/^\s*(,|e)\s*/, '').replace(/^./, c => c.toUpperCase()) || 'Vini e bibite');
+    }
+    // il vermouth va con amari e liquori
+    const amari = tipoDi('amari e liquori') || tipoDi('amari') || crea('Amari e liquori');
+    rinomina(amari, 'Amari e liquori');
+    unisci(amari, [tipoDi('vermouth'), tipoDi('liquori'), tipoDi('amari')].filter(k => k !== amari));
+    // «Distillati» non serve più: ogni ricetta va nel suo gruppo
+    const dist = tipoDi('distillati');
+    if (dist) {
+      const dove = (r) => { const n = nn(r.nome);
+        if (/\brum\b|\brhum\b/.test(n)) return tipoDi('rum') || crea('Rum');
+        if (/whisk/.test(n)) return tipoDi('whisky') || crea('Whisky');
+        if (/tequila|mezcal/.test(n)) return tipoDi('tequila e mezcal') || crea('Tequila e mezcal');
+        if (/grapp/.test(n)) return tipoDi('grappe') || crea('Grappe');
+        return amari; };
+      S.ricette.forEach(r => { if (r.tipo === dist) r.tipo = dove(r); });
+      togli(dist);
+    }
+    // in Caffetteria solo i caffè: la grappa va nelle grappe
+    const caff = tipoDi('caffetteria');
+    if (caff) S.ricette.forEach(r => { if (r.tipo === caff && /grapp/.test(nn(r.nome))) r.tipo = tipoDi('grappe') || crea('Grappe'); });
+    // categorie dei prodotti
+    S.prodotti.forEach(p => {
+      const c = nn(p.categoria), n = nn([p.nomeBreve, p.nomeCompleto].join(' '));
+      if (/^(birra e fusti|birre e fusti|fusti|birra|birre)$/.test(c)) p.categoria = 'Birre';
+      else if (/^(bitter e vermouth|vodka|liquori|amari)$/.test(c)) p.categoria = 'Amari e liquori';
+      else if (c === 'rum e cachaca') p.categoria = 'Rum';
+      else if (c === 'distillati') {
+        p.categoria = /\bgin\b/.test(n) ? 'Gin' : /\brum\b|\brhum\b|cachaca/.test(n) ? 'Rum' : /whisk|bourbon/.test(n) ? 'Whisky' : /tequila|mezcal/.test(n) ? 'Tequila e mezcal' : /grapp/.test(n) ? 'Grappe' : 'Amari e liquori';
+        if (p.categoria === 'Grappe') p.reparto = 'Bar';
+      }
+    });
   }
 
   // ---------- Salvataggio online (Firebase) ----------
@@ -3611,7 +3667,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v96';
+  const VERSIONE_APP = 'repub-v97';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
