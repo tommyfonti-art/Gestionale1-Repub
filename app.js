@@ -1516,7 +1516,7 @@
         ${semi ? `<div class="due"><label>Quanto ne viene<input type="text" inputmode="decimal" autocomplete="off" data-b="resa" value="${esc(b.resa)}"></label><label>Unità<select data-b="unita">${['ml', 'g', 'pz'].map(u => `<option ${b.unita === u ? 'selected' : ''}>${u}</option>`).join('')}</select></label></div>`
           : `<label>Prezzo di vendita (con IVA)<input type="text" inputmode="decimal" autocomplete="off" data-b="prezzo" value="${esc(b.prezzo)}"></label>`}
         <h3>Ingredienti</h3>
-        ${!semi ? `<label class="spunta"><input type="checkbox" data-media="1" ${b.media ? 'checked' : ''}> <span>Il cliente ne sceglie uno (amari, rum, grappe…): il costo è la <b>media</b> degli ingredienti, non la somma</span></label>` : ''}
+        ${!semi && b.media ? `<label class="spunta"><input type="checkbox" data-media="1" ${b.media ? 'checked' : ''}> <span>Il cliente ne sceglie uno (amari, rum, grappe…): il costo è la <b>media</b> degli ingredienti, non la somma</span></label>` : ''}
         ${b.righe.map((rg, k) => `<div class="riga-ed">${campoIngrediente(rg, k)}
           <input type="text" inputmode="decimal" autocomplete="off" data-r="${k}" data-k="quantita" value="${esc(rg.quantita)}" placeholder="dose"><span class="u">${esc(M.unitaRif(rg.rif))}</span>
           <button class="x" data-az="togli-riga" data-k="${k}" aria-label="Togli">✕</button></div>`).join('')}
@@ -1550,7 +1550,7 @@
         ${semi ? `<label>Unità della preparazione<select data-b="unita">${['ml', 'g', 'pz'].map(u => `<option ${b.unita === u ? 'selected' : ''}>${u}</option>`).join('')}</select></label>` : ''}
       </div>
       <div class="card form"><h3>Ingredienti</h3>
-        ${b.tipo !== 'semilavorato' ? `<label class="spunta"><input type="checkbox" data-media="1" ${b.media ? 'checked' : ''}> <span>Il cliente ne sceglie uno (amari, rum, grappe…): il costo è la <b>media</b> degli ingredienti, non la somma</span></label>` : ''}
+        ${b.tipo !== 'semilavorato' && b.media ? `<label class="spunta"><input type="checkbox" data-media="1" ${b.media ? 'checked' : ''}> <span>Il cliente ne sceglie uno (amari, rum, grappe…): il costo è la <b>media</b> degli ingredienti, non la somma</span></label>` : ''}
         ${b.righe.map((rg, k) => `<div class="riga-ed">${campoIngrediente(rg, k)}
           <input type="text" inputmode="decimal" autocomplete="off" data-r="${k}" data-k="quantita" value="${esc(rg.quantita)}" placeholder="dose"><span class="u">${esc(M.unitaRif(rg.rif))}</span>
           <button class="x" data-az="togli-riga" data-k="${k}" aria-label="Togli">✕</button></div>`).join('')}
@@ -1563,7 +1563,7 @@
       ${!semi ? `<div class="card form"><h3>Da asporto</h3>
         ${(b.asporto || []).map((a, k) => `<div class="riga-ed"><select data-a="${k}" data-k="rif">${opzioniProdotti(a.rif, p => p.categoria === 'Non alimentare')}</select><input type="text" inputmode="decimal" autocomplete="off" data-a="${k}" data-k="quantita" value="${esc(a.quantita)}"><button class="x" data-az="togli-asporto" data-k="${k}">✕</button></div>`).join('')}
         <button class="btn piccolo" data-az="aggiungi-asporto">＋ Aggiungi materiale da asporto</button></div>
-      <div class="card form"><h3>Vendite</h3><div class="due">${S.periodiVendita.map(pp => `<label>${esc(pp)}<input type="text" inputmode="numeric" autocomplete="off" data-v="${esc(pp)}" value="${esc((b.vendite || {})[pp] || '')}"></label>`).join('')}</div></div>` : ''}
+      ` : ''}
       <div class="card form">${campoNote(b, 3)}</div>
       <div class="bottoni">${tastoAvanti('R', id)}<button class="btn ${tastoAvanti('R', id) ? '' : 'primario'}" data-az="salva-ricetta">Salva</button>${id !== 'nuovo' ? '<button class="btn pericolo" data-az="elimina-ricetta">Elimina</button>' : ''}</div>`
     };
@@ -3738,7 +3738,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v101';
+  const VERSIONE_APP = 'repub-v102';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
