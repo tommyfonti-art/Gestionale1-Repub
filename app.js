@@ -161,6 +161,10 @@
     if (!S.gruppiLisci2) { creaGruppiLisci(); S.gruppiLisci = true; S.gruppiLisci2 = true; M.svuota(); }
     // una volta: gruppi e categorie in ordine (birre insieme, cocktail insieme, niente «Distillati», vermouth e vodka con amari e liquori)
     if (!S.riordino1) { riordinaGruppi(); S.riordino1 = true; M.svuota(); }
+    // una volta: Bibite, Bevande e Acqua insieme in «Bevande» (anche acqua e bibite rimaste in «Vini e bibite»)
+    if (!S.riordino2) { unisciBevande(); S.riordino2 = true; M.svuota(); }
+    // una volta: il gruppo «Panini» non serve (i panini sono nei gruppi dei burger della cassa)
+    if (!S.riordino3) { togliGruppoPanini(); S.riordino3 = true; M.svuota(); }
     // una volta: i prezzi del foglio di Tommi erano IVA compresa (pagati al banco); i costi si fanno senza IVA, come in fattura
     if (!S.ivaFoglioTolta) {
       S.prodotti.forEach(p => (p.prezzi || []).forEach(e => { if (/^Foglio/.test(e.origine || '') && !e.ivaTolta) { e.prezzo = Math.round(e.prezzo / (1 + (p.iva != null ? p.iva : 22) / 100) * 10000) / 10000; e.ivaTolta = true; } }));
@@ -331,6 +335,65 @@
         if (p.categoria === 'Grappe') p.reparto = 'Bar';
       }
     });
+  }
+
+  function unisciBevande() {
+    const nn = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+    const tipi = () => Object.keys(M.TIPI).filter(k => k !== 'semilavorato');
+    const nomi = ['bevande', 'bibite', 'acqua', 'acque', 'bevanda', 'bibita'];
+    let dest = tipi().find(k => nn(M.TIPI[k]) === 'bevande') || tipi().find(k => nomi.includes(nn(M.TIPI[k])));
+    if (!dest) { dest = 'g_bevande'; if (!(S.tipiExtra || []).some(t => t.id === dest)) S.tipiExtra = (S.tipiExtra || []).concat({ id: dest, nome: 'Bevande', reparto: 'bar' }); M.aggiornaTipi(); }
+    if (S.impostazioni.soglie[dest] == null) S.impostazioni.soglie[dest] = 3;
+    tipi().filter(k => k !== dest && nomi.includes(nn(M.TIPI[k]))).forEach(k => {
+      S.ricette.forEach(r => { if (r.tipo === k) r.tipo = dest; });
+      if ((S.tipiExtra || []).some(t => t.id === k)) S.tipiExtra = S.tipiExtra.filter(t => t.id !== k); else S.tipiNascosti = Array.from(new Set((S.tipiNascosti || []).concat(k)));
+      M.aggiornaTipi();
+    });
+    const t = (S.tipiExtra || []).find(x => x.id === dest); if (t) t.nome = 'Bevande'; else { S.nomiTipi = S.nomiTipi || {}; S.nomiTipi[dest] = 'Bevande'; }
+    M.aggiornaTipi();
+    // dal gruppo misto «Vini e bibite»: acqua e bibite vanno in Bevande, i vini restano
+    const misto = tipi().find(k => k !== dest && /\bbibit/.test(nn(M.TIPI[k])));
+    if (misto) {
+      const catIngr = (r) => (r.righe || []).map(rg => rg.rif.startsWith('p:') ? nn((M.prodotto(rg.rif.slice(2)) || {}).categoria) : '');
+      const bibita = (r) => { const n = nn(r.nome), c = nn(r.catCassa);
+        if (/^(bibite|bevande|acqua)/.test(c)) return true;
+        if (/\b(vino|vini|calice|bottiglia|prosecco|spumante|franciacorta)\b/.test(n)) return false;
+        return /\b(acqua|naturale|frizzante|nat|frizz|gas|coca|cola|fanta|sprite|tonica|ginger|lemonsoda|lemon soda|redbull|red bull|the|te|tea|succo|succhi|soda|tassoni|chinotto|aranciata|schweppes|cedrata|cocco)\b/.test(n) || catIngr(r).some(x => /^(sode|acqua|bibite)/.test(x)); };
+      // le birre (alla spina con la misura, o in lattina/bottiglia) vanno nelle Birre; i caffè nella Caffetteria
+      const birra = (r) => { const n = nn(r.nome);
+        return /^birr/.test(nn(r.catCassa)) || /\b(piccola|media|boccale|giraffa|caraffa|pinta|mezza pinta)$/.test(n) && !/\b(coca|cola|fanta|sprite|acqua)\b/.test(n)
+          || /\b(birra|ipa|pils|lager|weiss|stout|guinness|kilkenny|menabrea|franziskaner|bud|ale|blanche|crak|residual)\b/.test(n) || /\blattina\b/.test(n) && !/\b(coca|cola|fanta|sprite|fuze|tea|the|redbull|soda)\b/.test(n) || catIngr(r).some(x => /^(birr|fust)/.test(x)); };
+      const caffe = (r) => /\b(caffe|decaffeinato|orzo|ginseng|cappuccino|macchiato)\b/.test(nn(r.nome)) || /^caffett/.test(nn(r.catCassa));
+      const birre = tipi().find(k => nn(M.TIPI[k]) === 'birre'), caff = tipi().find(k => nn(M.TIPI[k]) === 'caffetteria');
+      const tis = tipi().find(k => /^tisan/.test(nn(M.TIPI[k]))), vb = tipi().find(k => nn(M.TIPI[k]) === 'vini bottiglia'), vc = tipi().find(k => nn(M.TIPI[k]) === 'vini calice');
+      S.ricette.forEach(r => { if (r.tipo !== misto) return; const n = nn(r.nome);
+        if (caff && caffe(r)) r.tipo = caff;
+        else if (tis && /\b(tisana|karkade|zenzero|cannella|liquirizia|earl grey|camomilla|infuso)\b/.test(n)) r.tipo = tis;
+        else if (vb && /^(bottiglia|bott)\b/.test(n)) r.tipo = vb;
+        else if (vc && /^calice\b/.test(n)) r.tipo = vc;
+        else if (birre && birra(r)) r.tipo = birre; else if (bibita(r)) r.tipo = dest; });
+      // rimasto vuoto: il gruppo misto non serve più
+      if (!S.ricette.some(r => r.tipo === misto)) { if ((S.tipiExtra || []).some(t => t.id === misto)) S.tipiExtra = S.tipiExtra.filter(t => t.id !== misto); else S.tipiNascosti = Array.from(new Set((S.tipiNascosti || []).concat(misto))); M.aggiornaTipi(); return; }
+      // se dentro sono rimasti solo vini, il gruppo si chiama «Vini»
+      const restano = S.ricette.filter(r => r.tipo === misto);
+      if (restano.length && restano.every(r => /\b(vino|vini|calice|bottiglia|bott|prosecco|spumante|franciacorta|sangiovese|rebola|malvasia|gewurz|sangue di giuda|lambrusco|bianco|rosso|rose)\b/.test(nn(r.nome)))) {
+        const tm = (S.tipiExtra || []).find(x => x.id === misto), nuovo = 'Vini';
+        if (tm) tm.nome = nuovo; else { S.nomiTipi = S.nomiTipi || {}; S.nomiTipi[misto] = nuovo; }
+        M.aggiornaTipi();
+      }
+    }
+  }
+
+  function togliGruppoPanini() {
+    const nn = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+    const tipi = Object.keys(M.TIPI).filter(k => k !== 'semilavorato');
+    const pan = tipi.find(k => nn(M.TIPI[k]) === 'panini'); if (!pan) return;
+    // le ricette rimaste dentro vanno nei Burgers (o nel primo gruppo della cucina)
+    const dove = tipi.find(k => k !== pan && /^(burgers|classic burgers|burger)$/.test(nn(M.TIPI[k])));
+    if (S.ricette.some(r => r.tipo === pan) && !dove) return;
+    S.ricette.forEach(r => { if (r.tipo === pan) r.tipo = dove; });
+    if ((S.tipiExtra || []).some(t => t.id === pan)) S.tipiExtra = S.tipiExtra.filter(t => t.id !== pan); else S.tipiNascosti = Array.from(new Set((S.tipiNascosti || []).concat(pan)));
+    M.aggiornaTipi();
   }
 
   // ---------- Salvataggio online (Firebase) ----------
@@ -3667,7 +3730,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v99';
+  const VERSIONE_APP = 'repub-v100';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
