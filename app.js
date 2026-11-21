@@ -1359,11 +1359,10 @@
     const segm = [['*tutto', 'Tutte'], ['*bar', 'Bar'], ['*cucina', 'Cucina'], ['semilavorato', 'Preparazioni']];
     return `<div class="filtri-ric">
       <div class="segmentato">${segm.map(([k, v]) => `<button class="${t === k || (rep === k && !SCELTE_REP[t] && t !== 'semilavorato') ? 'on' : ''}" data-az="${az}" data-v="${k}">${v}</button>`).join('')}</div>
-      ${conDaCompletare ? `<button class="chip giallo ${ui.ricDaComp ? 'on' : ''}" data-az="ric-dacomp">${ui.ricDaComp ? '✓ ' : ''}Da completare (${nDc})</button>` : ''}
     </div>
-    ${t !== 'semilavorato' ? `<div class="striscia-gruppi"><span class="tenue piccolo">Gruppo</span>${SCELTE_REP[t] ? `<button class="chip piccola on" data-az="${az}" data-v="${rep}">Tutti</button>` : `<button class="chip piccola" data-az="${az}" data-v="${rep}">Tutti</button>`}${gruppi.map(k => { const n = S.ricette.filter(r => r.tipo === k).length; return `<button class="chip piccola ${t === k ? 'on' : ''} ${n ? '' : 'vuoto'}" data-az="${az}" data-v="${k}">${esc(M.TIPI[k])} <span class="${t === k ? '' : 'tenue'}">${n}</span></button>`; }).join('')}</div>` : ''}`;
+    ${t !== 'semilavorato' ? `<div class="striscia-gruppi">${conDaCompletare ? `<button class="chip piccola giallo ${ui.ricDaComp ? 'on' : ''}" data-az="ric-dacomp">${ui.ricDaComp ? '✓ ' : ''}Da completare ${nDc}</button><span class="separa"></span>` : ''}${SCELTE_REP[t] ? `<button class="chip piccola on" data-az="${az}" data-v="${rep}">Tutti</button>` : `<button class="chip piccola" data-az="${az}" data-v="${rep}">Tutti</button>`}${gruppi.map(k => { const n = S.ricette.filter(r => r.tipo === k).length; return `<button class="chip piccola ${t === k ? 'on' : ''} ${n ? '' : 'vuoto'}" data-az="${az}" data-v="${k}">${esc(M.TIPI[k])} <span class="${t === k ? '' : 'tenue'}">${n}</span></button>`; }).join('')}</div>` : ''}`;
   }
-  const ORDINI_RIC = [['vendute', 'Più vendute'], ['menovendute', 'Meno vendute'], ['guadtot', 'Guadagnano di più in tutto'], ['guadpiu', 'Guadagno a pezzo più alto'], ['guadagno', 'Guadagno a pezzo più basso'], ['molt', 'Costo in % più alto'], ['nome', 'Per nome']];
+  const ORDINI_RIC = [['vendute', 'Più vendute'], ['menovendute', 'Meno vendute'], ['guadtot', 'Guadagno totale'], ['guadpiu', 'Guadagno più alto'], ['guadagno', 'Guadagno più basso'], ['molt', 'Costo % più alto'], ['nome', 'Per nome']];
   const haVendite = () => S.periodiVendita.some(pp => S.ricette.some(r => (r.vendite || {})[pp]));
   const ordineRic = () => ui.ordineRicette || (haVendite() ? 'vendute' : 'nome');
   function vendutiRic(r) {
@@ -1401,7 +1400,7 @@
       // ricette con solo una parte degli ingredienti: i numeri sono troppo belli, lo dico chiaro
       const parziale = /^Ricetta da completare/.test(r.note || '');
       const vv = conVend ? vendutiRic(r) : 0;
-      return `<a class="riga" href="#/ricetta/${r.id}"><span>${esc(r.nome)}<small>${conGruppo ? esc(M.TIPI[r.tipo] || '') + ' · ' : ''}costo ${euro(i.costo)} → prezzo ${euro(i.prezzo)}</small>${conVend ? `<small class="forn-riga">${vv ? qta(vv) + ' venduti' + (i.margine != null && ord === 'guadtot' ? ' · ' + euro(vv * i.margine, 0) + ' guadagnati' : '') : 'mai venduta'}</small>` : ''}</span><span class="destra">${parziale ? '<span class="badge giallo">ingredienti incompleti</span>' : badgeMolt(i)}<small>${i.margine != null ? 'guadagni ' + euro(i.margine) : ''}</small></span></a>`;
+      return `<a class="riga" href="#/ricetta/${r.id}"><span>${esc(r.nome)}<small>${conGruppo ? esc(M.TIPI[r.tipo] || '') + ' · ' : ''}costo ${i.molt == null ? '—' : euro(i.costo)} → prezzo ${euro(i.prezzo)}</small>${conVend ? `<small class="forn-riga">${vv ? qta(vv) + ' venduti' + (i.margine != null && ord === 'guadtot' ? ' · ' + euro(vv * i.margine, 0) + ' guadagnati' : '') : 'mai venduta'}</small>` : ''}</span><span class="destra">${parziale ? '<span class="badge giallo">ingredienti incompleti</span>' : badgeMolt(i)}<small>${i.margine != null && i.molt != null ? 'guadagni ' + euro(i.margine) : ''}</small></span></a>`;
     }).join('');
   }
   PAGINE.ricette = function () {
@@ -1410,12 +1409,14 @@
       <div class="cerca-riga"><input class="cerca" type="search" placeholder="Cerca una ricetta" value="${esc(ui.filtroRicette)}" data-filtro="ricette">
 </div>
       ${chipsGruppi('tipo-ricette', true)}
-      ${ui.tipoRicette !== 'semilavorato' ? `<div class="striscia-gruppi"><span class="tenue piccolo">Ordina</span>${ORDINI_RIC.map(([k, v]) => `<button class="chip piccola ${ordineRic() === k ? 'on' : ''}" data-az="ordine-ricette" data-v="${k}">${v}</button>`).join('')}</div>
-        ${['vendute', 'menovendute', 'guadtot'].includes(ordineRic()) && haVendite() ? `<div class="striscia-gruppi"><span class="tenue piccolo">Vendite di</span><button class="chip piccola ${!ui.ricPer ? 'on' : ''}" data-az="ric-per" data-v="">Tutto</button>${S.periodiVendita.filter(pp => S.ricette.some(r => (r.vendite || {})[pp])).map(pp => `<button class="chip piccola ${ui.ricPer === pp ? 'on' : ''}" data-az="ric-per" data-v="${esc(pp)}">${esc(pp)}</button>`).join('')}</div>` : ''}` : ''}
+      ${ui.tipoRicette !== 'semilavorato' ? `<div class="filtri-tendine">
+        <label><span>Ordina</span><select data-ric-ordine aria-label="Ordina">${ORDINI_RIC.map(([k, v]) => `<option value="${k}" ${ordineRic() === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
+        ${haVendite() ? `<label><span>Vendite di</span><select data-ric-periodo aria-label="Vendite di">${[['', 'Tutti i periodi']].concat(S.periodiVendita.filter(pp => S.ricette.some(r => (r.vendite || {})[pp])).map(pp => [pp, pp])).map(([k, v]) => `<option value="${esc(k)}" ${(ui.ricPer || '') === k ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></label>` : ''}
+      </div>` : ''}
       ${ui.spostaModo ? `<div class="card evidenza sposta-barra"><b>Sposta le ricette spuntate (${(ui.spostaSel || []).length})</b>
         <label>nel gruppo<select id="sposta-in">${Object.entries(M.TIPI).filter(([k]) => k !== ui.tipoRicette).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('')}</select></label>
         <div class="bottoni"><button class="btn primario" data-az="sposta-ok">Sposta</button><button class="btn" data-az="sposta-tutte">Spunta tutte quelle visibili</button><button class="btn" data-az="sposta-fine">Annulla</button></div></div>` : ''}
-      ${inElimina('r') ? barraElimina('r') : `<div class="azioni-riga"><button class="btn primario piccolo" data-az="riv-inizia">Rivedi ${ui.ricDaComp ? 'quelle da completare' : ui.filtroRicette ? 'quelle con «' + esc(ui.filtroRicette) + '»' : 'le ' + esc(nomeScelta(ui.tipoRicette))} una per una</button>
+      ${inElimina('r') ? barraElimina('r') : `<div class="azioni-riga"><button class="btn primario piccolo" data-az="riv-inizia" title="Rivedi ${ui.ricDaComp ? 'quelle da completare' : ui.filtroRicette ? 'quelle con «' + esc(ui.filtroRicette) + '»' : 'le ' + esc(nomeScelta(ui.tipoRicette))} una per una">Rivedi una per una</button>
         <details class="menu-azioni"><summary class="btn piccolo">Altro ▾</summary><div class="menu-azioni-voci"><button class="btn piccolo" data-az="sposta-inizia">Sposta ricette in un altro gruppo</button><button class="btn piccolo" data-az="elim-inizia" data-v="r">Elimina più ricette</button><a class="btn piccolo" href="#/gruppi-ricette">＋ Nuovo gruppo / gestisci i gruppi</a></div></details></div>`}
       ${avvisoCestino('r')}
       <div class="card lista" id="lista">${listaRicette()}</div>`
@@ -1989,7 +1990,12 @@
     $('#contenuto').className = ['pannello', 'prodotto', 'ricetta', 'fattura', 'fornitore', 'evento', 'impostazioni', 'mappa', 'scadenze', 'magazzino', 'modifica-prodotto', 'modifica-ricetta', undefined].includes(nome) && !(nome === 'magazzino' && ui.conta) ? 'colonne' : '';
     document.title = pag.titolo + ' · Gestionale Repub';
   }
-  function ridisegnaMantenendo() { const y = window.scrollY; disegna(); window.scrollTo(0, y); }
+  function ridisegnaMantenendo() {
+    // anche le strisce di etichette che scorrono di lato restano dove le avevi lasciate (prima tornavano all'inizio e i tasti «saltavano»)
+    const lati = Array.from(document.querySelectorAll('#contenuto .striscia-gruppi, #contenuto .chips')).map(e => e.scrollLeft);
+    const y = window.scrollY; disegna(); window.scrollTo(0, y);
+    document.querySelectorAll('#contenuto .striscia-gruppi, #contenuto .chips').forEach((e, i) => { if (lati[i]) e.scrollLeft = lati[i]; });
+  }
 
   // ---------- Tendine lunghe: si cerca scrivendo (vale per tutte le tendine con tante voci, in ogni pagina) ----------
   function rendiCercabile(sel) {
@@ -3638,6 +3644,8 @@
   });
   document.addEventListener('change', (e) => {
     const el = e.target; const d = el.dataset;
+    if (d.ricOrdine != null) { ui.ordineRicette = el.value; ridisegnaMantenendo(); return; }
+    if (d.ricPeriodo != null) { ui.ricPer = el.value; ridisegnaMantenendo(); return; }
     if (d.panPeriodo != null) { if (el.value) { ui.panSel = { tipo: 'periodo', per: el.value }; ridisegnaMantenendo(); } return; }
     if (d.carica === 'xml') { caricaXML(Array.from(el.files)); el.value = ''; return; }
     if (d.carica === 'foto') { if (el.files[0]) caricaFoto(el.files[0]); el.value = ''; return; }
@@ -3730,7 +3738,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v100';
+  const VERSIONE_APP = 'repub-v101';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
