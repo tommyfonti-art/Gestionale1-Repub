@@ -158,7 +158,7 @@
       S.nomiDaFattura = true; M.svuota();
     }
     // una volta: i gruppi «lisci» della cassa (whisky, vermouth, tequila, rum, grappa, amari) con dentro i loro prodotti, 60 ml, costo = media
-    if (!S.gruppiLisci) { creaGruppiLisci(); S.gruppiLisci = true; M.svuota(); }
+    if (!S.gruppiLisci2) { creaGruppiLisci(); S.gruppiLisci = true; S.gruppiLisci2 = true; M.svuota(); }
     // una volta: i prezzi del foglio di Tommi erano IVA compresa (pagati al banco); i costi si fanno senza IVA, come in fattura
     if (!S.ivaFoglioTolta) {
       S.prodotti.forEach(p => (p.prezzi || []).forEach(e => { if (/^Foglio/.test(e.origine || '') && !e.ivaTolta) { e.prezzo = Math.round(e.prezzo / (1 + (p.iva != null ? p.iva : 22) / 100) * 10000) / 10000; e.ivaTolta = true; } }));
@@ -188,19 +188,19 @@
 
   // [nome, prodotti già noti (il primo che c'è), parole per cercarlo, ml della bottiglia se è segnato a pezzo]
   const GRUPPI_LISCI = [
-    { ricetta: 'r_mwknirqg7jgs', nomi: ['whiskey', 'whisky'], cat: 'Whisky', voci: [
+    { ricetta: 'r_mwknirqg7jgs', nomi: ['whiskey', 'whisky'], cat: 'Whisky', gruppo: 'Whisky', base: 'Whisky', cassa: 'WHISKEY', voci: [
       ['Jameson', ['p_jameson'], 'jameson'], ['Tullamore', [], 'tullamore'], ['Red Label', [], 'red label'], ['Black Label', [], 'black label'], ['Double Black', ['p_mwkoh4buw64r'], 'double black', 700],
       ['Talisker Skye', [], 'talisker skye'], ['Talisker 10', [], 'talisker 10'], ['Oban 14', [], 'oban'], ['Laphroaig 10', [], 'laphroaig'], ['Caol Ila 12', [], 'caol ila'],
       ["Maker's Mark", ['p_mwjffqjd0ryu'], 'maker mark'], ['Buffalo Trace', [], 'buffalo'], ['Rare Breed', [], 'rare breed'], ['Wild Turkey 101', [], 'turkey 101'], ['Wild Turkey', ['p_wildturkey'], ''],
       ['Wild Turkey Rye', [], 'turkey rye'], ['Knob Creek Rye', [], 'knob creek'], ['Suntory', [], 'suntory'], ['Nikka Days', [], 'nikka days'], ['Nikka From the Barrel', [], 'nikka barrel'],
       ['Bulleit 10', [], 'bulleit'], ["Jack Daniel's", ['p_jack'], '']] },
-    { ricetta: 'r_mwknirqgm7fd', nomi: ['vermouth'], cat: 'Bitter e vermouth', voci: [
+    { ricetta: 'r_mwknirqgm7fd', nomi: ['vermouth'], cat: 'Bitter e vermouth', gruppo: 'Vermouth', base: 'Vermouth', cassa: 'VERMOUTH', voci: [
       ['Carpano', ['p_carpano'], ''], ['Antica Formula', [], 'antica formula'], ['Punt e Mes', [], 'punt mes'], ['Carlo Alberto', [], 'carlo alberto'], ['Cocchi', [], 'cocchi torino'],
       ['Lillet', ['p_mwkopu7hiwpk'], '', 750], ['Lillet Rosso', [], 'lillet rouge'], ['Americano Cocchi', [], 'americano cocchi']] },
-    { ricetta: 'r_mwknirqg71r8', nomi: ['tequila mezcal'], cat: 'Tequila e mezcal', voci: [
+    { ricetta: 'r_mwknirqg71r8', nomi: ['tequila mezcal'], cat: 'Tequila e mezcal', gruppo: 'Tequila e mezcal', base: 'Tequila', cassa: 'TEQUILA \\ MEZCAL', voci: [
       ['Herradura Blanco', [], 'herradura blanco'], ['Herradura Reposado', [], 'herradura reposado'], ['Patrón Blanco', [], 'patron'], ['Se Busca', [], 'se busca'], ['Los Danzantes', [], 'danzantes'],
       ['Burrito Fiestero', ['p_mezcal'], ''], ['Vida', [], 'del maguey vida'], ['Quiquiriqui', [], 'quiquiriqui'], ['Altos Blanco', ['p_mwjffqja21tz'], ''], ['Altos Reposado', ['p_mwkow6xa062j'], '', 700]] },
-    { ricetta: 'r_mwknirqgz16n', nomi: ['rum'], cat: 'Rum e cachaça', voci: [
+    { ricetta: 'r_mwknirqgz16n', nomi: ['rum'], cat: 'Rum e cachaça', gruppo: 'Rum', base: 'Rum', cassa: 'RUM', voci: [
       ['J. Bally Bianco', [], 'bally'], ['Saint James', ['p_mwkojze66fll'], '', 1000], ['Karukera', [], 'karukera blanc'], ['Karukera Vieux', [], 'karukera vieux'], ['Clairin Vaval', [], 'clairin vaval'],
       ['Demoiseau', [], 'damoiseau'], ['Santero', ['p_mwkopu7pmebj'], ''], ['Wray & Nephew', ['p_mwkojzef5iph', 'p_wray'], ''], ['Havana 7', ['p_mwjffqiwt5og'], '', 700], ["Myers's", [], 'myers'],
       ["Doorly's 5", [], 'doorly 5'], ["Doorly's XO", [], 'doorly xo'], ['Gosling', ['p_gosling'], ''], ['Gosling 151', ['p_mwjffqjdo1fh'], ''], ['OFTD', [], 'oftd'], ['Veritas', ['p_mwkojzefcypl'], ''],
@@ -208,9 +208,9 @@
       ['Diplomatico', [], 'diplomatico'], ['El Dorado 8', [], 'dorado 8'], ['El Dorado 12', ['p_mwjffqjd6tlj'], ''], ['Magnifica', [], 'magnifica'], ['Yaguara Branca', [], 'yaguara branca'],
       ['Yaguara Organica', ['p_mwjffqiw4n8h'], '', 700], ['Hampden Pagos', [], 'hampden pagos'], ['Papalin 7 anni', [], 'papalin 7'], ['Papalin Reunion', [], 'papalin reunion'], ['Privateer', [], 'privateer'],
       ['Papa Rouyo', [], 'rouyo'], ['Renegade', [], 'renegade']] },
-    { ricetta: 'r_mwknirqg5oi4', nomi: ['grappa'], cat: 'Grappe', bar: true, voci: [
+    { ricetta: 'r_mwknirqg5oi4', nomi: ['grappa'], cat: 'Grappe', bar: true, gruppo: 'Grappe', base: 'Grappa', cassa: 'GRAPPA', voci: [
       ['18 Lune invecchiata', ['p_mwkopuas5c2f'], '', 700], ['Amarone invecchiata', [], 'grappa amarone'], ['903 invecchiata', [], '903'], ['Poli bianca', [], 'poli grappa'], ['Prime Uve bianca', [], 'prime uve']] },
-    { ricetta: 'r_mwknirqgdn1o', nomi: ['amari'], cat: 'Amari e liquori', voci: [
+    { ricetta: 'r_mwknirqgdn1o', nomi: ['amari'], cat: 'Amari e liquori', gruppo: 'Amari e liquori', base: 'Amari', cassa: 'AMARI', voci: [
       ['Amaro del Capo', ['p_mwkojzgn65se'], ''], ['Sambuca', [], 'sambuca'], ['Braulio', [], 'braulio'], ['Montenegro', ['p_mwkopu7t07vq', 'p_mwkojzgn02eh'], ''], ['Brancamenta', [], 'brancamenta'],
       ['Fernet Branca', ['p_fernet'], ''], ['Averna', [], 'averna'], ['Limoncello', [], 'limoncello'], ['Anima Nera', [], 'anima nera'], ['Borghetti', [], 'borghetti'], ['Disaronno', [], 'disaronno'],
       ['Jägermeister', [], 'jagermeister'], ['Assenzio', [], 'assenzio'], ['Cynar', [], 'cynar'], ['Amaro Lucano', [], 'lucano'], ['Kahlúa', [], 'kahlua'], ['Vodka menta', [], 'vodka menta'],
@@ -226,7 +226,7 @@
       return l.find(x => M.daFattura(x)) || l[0] || null; };
     GRUPPI_LISCI.forEach(g => {
       const r = M.ricetta(g.ricetta) || S.ricette.find(x => x.tipo !== 'semilavorato' && g.nomi.includes(nn(x.nome)));
-      const ids = [];
+      const ids = [], voci = [];
       g.voci.forEach(([nome, noti, parole, ml]) => {
         let p = noti.map(id => M.prodotto(id)).find(Boolean) || cerca(parole, ids);
         if (!p) {
@@ -242,12 +242,37 @@
         }
         p.categoria = g.cat; if (g.bar) p.reparto = 'Bar';
         if (!ids.includes(p.id)) ids.push(p.id);
+        voci.push({ nome, id: p.id });
       });
-      if (r && !(r.righe || []).length) { r.righe = ids.map(id => ({ rif: 'p:' + id, quantita: 60 })); r.media = true; }
+      // il gruppo delle ricette (es. «Whisky»): una ricetta per ogni bottiglia venduta liscia
+      let tipo = Object.keys(M.TIPI).find(k => k !== 'semilavorato' && nn(M.TIPI[k]) === nn(g.gruppo));
+      if (!tipo) { tipo = 'g_' + slug(g.gruppo).replace(/-/g, ''); if (!(S.tipiExtra || []).some(t => t.id === tipo)) S.tipiExtra = (S.tipiExtra || []).concat({ id: tipo, nome: g.gruppo, reparto: 'bar' }); M.aggiornaTipi(); }
+      if (S.impostazioni.soglie[tipo] == null) S.impostazioni.soglie[tipo] = 3.5;
+      // la ricetta generica della cassa («Whiskey»): niente media; resta per le vendite vecchie, finché la cassa non vende con le varianti
+      if (r) {
+        if (r.media && (r.righe || []).length && r.righe.every(rg => ids.includes(rg.rif.slice(2)) && Number(rg.quantita) === 60)) { r.righe = []; delete r.media; }
+        r.tipo = tipo;
+        if (!/Vecchia voce della cassa/.test(r.note || '')) r.note = ((r.note ? r.note + '\n' : '') + 'Vecchia voce della cassa senza bottiglia: quando la cassa venderà «' + g.base + ' (nome della bottiglia)» non servirà più e potrai eliminarla.');
+      }
+      voci.forEach(v => {
+        const id = 'r_gr_' + slug(g.base + ' ' + v.nome);
+        if (M.ricetta(id)) return;
+        S.ricette.push({ id, nome: g.base + ' (' + v.nome + ')', tipo, prezzo: r ? r.prezzo : null, righe: [{ rif: 'p:' + v.id, quantita: 60 }], asporto: [], vendite: {}, costiExtra: [], note: '',
+          nomeCassa: ((r && r.nomeCassa) || g.cassa) + ' - ' + v.nome.toUpperCase() });
+      });
     });
     // gruppo «Gin tonic»: ci vanno tutti i gin tonic
-    let gt = Object.keys(M.TIPI).find(k => nn(M.TIPI[k]) === 'gin tonic');
-    if (!gt) { gt = 'gintonic'; S.tipiExtra = (S.tipiExtra || []).concat({ id: gt, nome: 'Gin tonic', reparto: 'bar' }); M.aggiornaTipi(); }
+    // se c'è già il gruppo «Gin tonic e premium» uso quello (rinominato «Gin tonic»), senza farne un doppione
+    let gt = Object.keys(M.TIPI).find(k => k !== 'gintonic' && nn(M.TIPI[k]).startsWith('gin tonic'));
+    if (gt) {
+      S.ricette.forEach(x => { if (x.tipo === 'gintonic') x.tipo = gt; });
+      S.tipiExtra = (S.tipiExtra || []).filter(t => t.id !== 'gintonic');
+      const t = (S.tipiExtra || []).find(x => x.id === gt); if (t) t.nome = 'Gin tonic'; else { S.nomiTipi = S.nomiTipi || {}; S.nomiTipi[gt] = 'Gin tonic'; }
+      M.aggiornaTipi();
+    } else {
+      gt = 'gintonic';
+      if (!(S.tipiExtra || []).some(t => t.id === gt)) { S.tipiExtra = (S.tipiExtra || []).concat({ id: gt, nome: 'Gin tonic', reparto: 'bar' }); M.aggiornaTipi(); }
+    }
     if (S.impostazioni.soglie[gt] == null) S.impostazioni.soglie[gt] = 3.5;
     S.ricette.forEach(x => { if (/^gin ?tonic\b/i.test(nn(x.nome)) || /^g ?t\b/.test(nn(x.nome))) x.tipo = gt; });
   }
@@ -3586,7 +3611,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v95';
+  const VERSIONE_APP = 'repub-v96';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
