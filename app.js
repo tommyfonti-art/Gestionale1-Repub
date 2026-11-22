@@ -169,6 +169,14 @@
     if (!S.ginTonic1) { creaGinTonic(); S.ginTonic1 = true; M.svuota(); }
     // una volta: i prezzi del listino Zonzini che Tommi ha controllato (solo bar, solo prodotti senza fattura)
     // una volta: soglie del moltiplicatore per gruppo, dalla ricerca (prezzo con IVA ÷ costo senza IVA)
+    // una volta: il coperto della cassa sulla ricetta «Coperto» che c'è già; «Sherlocl hops» scritto male nella cassa: prende anche «Sherlock hops»
+    if (!S.dopoVenduto2) {
+      const nn = (t) => normCassa(t);
+      const cop = S.ricette.find(r => r.tipo !== 'semilavorato' && /^coperto\b/.test(nn(r.nome)));
+      if (cop && !(cop.nomeCassa && nn(cop.nomeCassa) === 'coperto') && !(cop.aliasCassa || []).some(a => nn(a) === 'coperto')) cop.aliasCassa = (cop.aliasCassa || []).concat('COPERTO');
+      S.ricette.forEach(r => { if (/^sherlocl hops\b/.test(nn(r.nome))) { r.nome = r.nome.replace(/sherlocl/i, 'Sherlock'); if (r.nomeCassa) { const giusto = r.nomeCassa.replace(/SHERLOCL/i, 'SHERLOCK'); if (!(r.aliasCassa || []).includes(giusto)) r.aliasCassa = (r.aliasCassa || []).concat(giusto); } } });
+      S.dopoVenduto2 = true; M.svuota();
+    }
     // una volta: dopo il venduto 2026 (amari e grappe generici, mezza nat doppia, fritti in «Da spizzicare»)
     if (!S.dopoVenduto1) { S.esitoDopoVenduto = sistemaDopoVenduto(); S.dopoVenduto1 = true; M.svuota(); }
     if (!S.soglieRicerca1) { S.esitoSoglie = soglieDaRicerca(); S.soglieRicerca1 = true; }
@@ -2711,7 +2719,7 @@
   const ricettaDiSku = (sku) => { const n = normCassa(sku); return S.ricette.find(r => r.tipo !== 'semilavorato' && ((r.nomeCassa && normCassa(r.nomeCassa) === n) || (r.aliasCassa || []).some(a => normCassa(a) === n))); };
   function somiglianzaNomi(a, b) {
     // «pata» (= con le patatine) resta un segno a parte: «Ninetynine + pata» non deve somigliare a «Patatine»
-    const parole = (t) => normCassa(String(t || '').replace(/\bpata\b/gi, ' conpata ')).replace(/\b(base|drink)\b/g, ' ').split(' ').filter(x => x.length > 1);
+    const parole = (t) => normCassa(String(t || '').replace(/\bpata\b/gi, ' conpata ').replace(/\bgiraffe\b/gi, 'giraffa')).replace(/\b(base|drink)\b/g, ' ').split(' ').filter(x => x.length > 1);
     const A = parole(a), B = parole(b);
     if (!A.length || !B.length) return 0;
     if (A.join(' ') === B.join(' ')) return 1;
@@ -4148,7 +4156,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v114';
+  const VERSIONE_APP = 'repub-v115';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
