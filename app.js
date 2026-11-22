@@ -3470,7 +3470,7 @@
   // ---------- Costi del locale: tutte le fatture, non solo la merce (bollette, servizi, materiali, attrezzatura…) ----------
   const CAT_SPESA = {
     merce: ['Merce: bar e cucina', 'var(--verde)'],
-    materiali: ['Non food e materiali', '#8a6d3b'],
+    materiali: ['Pulizia e materiali (fuori dalle ricette)', '#8a6d3b'],
     affitto: ['Affitto', '#4a235a'],
     personale: ['Personale', '#1a5276'],
     luce: ['Luce e gas', '#c0392b'],
@@ -3532,12 +3532,15 @@
     cacheCatSpesa[f.id] = c; return c;
   }
   // quanto pesa ogni fattura su ogni tipo di spesa (senza IVA; le note di credito tolgono)
+  // prodotti che stanno in almeno una ricetta (o nei costi di un gruppo): il loro costo è già nel costo dei drink e dei piatti
+  let usatiInRicette = null;
+  const prodottiInRicette = () => { const u = new Set(); S.ricette.forEach(r => (r.righe || []).forEach(rg => rg.rif && u.add(rg.rif))); Object.values(S.costiGruppo || {}).forEach(l => (l || []).forEach(g => g.rif && u.add(g.rif))); return u; };
   function speseFattura(f) {
     const segno = f.tipoDoc === 'TD04' ? -1 : 1; let tot = Number(f.imponibile || f.totale) || 0;
     const forn = M.fornitore(f.fornitoreId), cat = categoriaSpesa(forn), out = {};
     // righe collegate a un prodotto: «Non food» nei materiali, il resto nella merce (anche da un fornitore di servizi, es. tovagliette dalla tipografia)
     const foC = M.fornitore(f.fornitoreId), cassa = foC && foC.casseAMeta ? M.prodottiACassa(foC.id) : null;
-    let nf = 0, me = 0, extra = 0; f.righe.forEach(rg => { const k = cassa && !rg.ignora ? M.moltiplicaRiga(f, rg, cassa) : 1, t = (Number(rg.totale) || 0) * k; extra += t - (Number(rg.totale) || 0); const p = rg.prodottoId && M.prodotto(rg.prodottoId); if (!p || rg.ignora) return; if (M.reparto(p) === 'Non food') nf += t; else me += t; });
+    let nf = 0, me = 0, extra = 0; f.righe.forEach(rg => { const k = cassa && !rg.ignora ? M.moltiplicaRiga(f, rg, cassa) : 1, t = (Number(rg.totale) || 0) * k; extra += t - (Number(rg.totale) || 0); const p = rg.prodottoId && M.prodotto(rg.prodottoId); if (!p || rg.ignora) return; if (M.reparto(p) === 'Non food' && !(usatiInRicette || prodottiInRicette()).has(p.id)) nf += t; else me += t; });
     tot += extra;
     if (cat !== 'merce') { out.materiali = segno * nf; out.merce = segno * me; out[cat] = (out[cat] || 0) + segno * (tot - nf - me); return out; }
     // fornitore di merce: il resto (anche trasporti e sconti) va nella merce
@@ -3545,11 +3548,13 @@
   }
   function speseTra(dal, al) {
     const per = {}, perForn = {}, perMese = {};
+    usatiInRicette = prodottiInRicette();
     S.fatture.forEach(f => {
       if (!f.data || (dal && f.data < dal) || (al && f.data > al)) return;
       const x = speseFattura(f), m = f.data.slice(0, 7);
       Object.entries(x).forEach(([c, v]) => { if (!v) return; per[c] = (per[c] || 0) + v; const k = c + '|' + (f.fornitoreId || f.fornitoreNome); perForn[k] = (perForn[k] || 0) + v; perMese[m] = (perMese[m] || 0) + v; });
     });
+    usatiInRicette = null;
     return { per, perForn, perMese, totale: Object.values(per).reduce((s, v) => s + v, 0) };
   }
   // spese fisse che non arrivano in fattura (personale, TARI, assicurazione…): le scrive Tommi, al mese o all'anno
@@ -3586,7 +3591,7 @@
     return { titolo: 'Costi del locale', indietro: '#/altro', html: `
       <div class="chips"><button class="chip ${sel.tipo === 'tutto' ? 'on' : ''}" data-az="costi-sel" data-tipo="tutto">Tutto</button>${anni.map(a => `<button class="chip ${sel.tipo === 'anno' && sel.anno === a ? 'on' : ''}" data-az="costi-sel" data-tipo="anno" data-v="${a}">${a}</button>`).join('')}<select class="chip chip-tendina ${sel.tipo === 'mese' ? 'on' : ''}" data-costi-mese data-no-cerca="1" aria-label="Un mese"><option value="">Un mese…</option>${mesiFatt.map(m => `<option value="${m}" ${sel.tipo === 'mese' && sel.mese === m ? 'selected' : ''}>${nomeMeseLungo(m)}</option>`).join('')}</select><button class="chip ${sel.tipo === 'date' ? 'on' : ''}" data-az="costi-sel" data-tipo="date">📅 Scegli le date</button></div>
       ${sel.tipo === 'date' ? `<div class="card form"><div class="due"><label>Dal<input type="date" data-costi-data="dal" value="${esc(sel.dal || '')}"></label><label>Al<input type="date" data-costi-data="al" value="${esc(sel.al || '')}"></label></div></div>` : ''}
-      <div class="kpi-griglia">${kpi('Spese totali', euro(X.totale, 0), 'senza IVA, da tutte le fatture · ' + esc(etich))}${kpi('Merce', euro(X.per.merce || 0, 0), X.totale ? Math.round((X.per.merce || 0) / X.totale * 100) + '% del totale' : '')}${kpi('Tutto il resto', euro(X.totale - (X.per.merce || 0), 0), 'bollette, servizi, materiali…')}</div>
+      <div class="kpi-griglia">${kpi('Spese totali', euro(X.totale, 0), 'senza IVA, da tutte le fatture · ' + esc(etich))}${kpi('Merce', euro(X.per.merce || 0, 0), 'già nel costo delle ricette · ' + (X.totale ? Math.round((X.per.merce || 0) / X.totale * 100) + '% del totale' : ''))}${kpi('Tutto il resto', euro(X.totale - (X.per.merce || 0), 0), 'affitto, bollette, servizi, pulizia…')}</div>
       ${cop ? `<p class="tenue piccolo">Fatture caricate dal ${dataIt(cop.dal)} al ${dataIt(cop.al)}. Qui sotto puoi scegliere un solo mese o le date che vuoi. Attenzione: alcune bollette arrivano ogni due mesi e alcune spese una volta l'anno, quindi un mese da solo può sembrare più caro o più leggero del vero; due o tre mesi insieme danno un conto più giusto. Quello che non arriva in fattura (personale, TARI…) scrivilo in «Spese fisse senza fattura».</p>` : ''}
       <div class="card larga"><h3>Per tipo di spesa</h3>
         ${cats.length ? cats.map(c => { const fs = Object.entries(X.perForn).filter(([k]) => k.startsWith(c + '|')).map(([k, v]) => { const id = k.slice(c.length + 1); const f = M.fornitore(id); return { id, nome: f ? f.nome : id, v }; }).sort((a, b) => b.v - a.v);
@@ -3987,7 +3992,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v111';
+  const VERSIONE_APP = 'repub-v112';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
