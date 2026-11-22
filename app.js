@@ -165,6 +165,8 @@
     if (!S.riordino2) { unisciBevande(); S.riordino2 = true; M.svuota(); }
     // una volta: il gruppo «Panini» non serve (i panini sono nei gruppi dei burger della cassa)
     if (!S.riordino3) { togliGruppoPanini(); S.riordino3 = true; M.svuota(); }
+    // una volta: un gin tonic per ogni gin (50 ml + 1 tonica Goldberg) nel gruppo «Gin tonic»
+    if (!S.ginTonic1) { creaGinTonic(); S.ginTonic1 = true; M.svuota(); }
     // una volta: i prezzi del foglio di Tommi erano IVA compresa (pagati al banco); i costi si fanno senza IVA, come in fattura
     if (!S.ivaFoglioTolta) {
       S.prodotti.forEach(p => (p.prezzi || []).forEach(e => { if (/^Foglio/.test(e.origine || '') && !e.ivaTolta) { e.prezzo = Math.round(e.prezzo / (1 + (p.iva != null ? p.iva : 22) / 100) * 10000) / 10000; e.ivaTolta = true; } }));
@@ -396,6 +398,39 @@
     M.aggiornaTipi();
   }
 
+  function creaGinTonic() {
+    const nn = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+    const gt = Object.keys(M.TIPI).find(k => nn(M.TIPI[k]).startsWith('gin tonic')); if (!gt) return;
+    const testo = (p) => nn([p.nomeBreve, p.nomeCompleto].join(' '));
+    // le toniche in lattina/bottiglietta comprate a cartone (es. «15CL X24») erano contate come un pezzo solo: un pezzo = una lattina
+    S.prodotti.forEach(p => { const m = String(p.nomeCompleto || '').match(/x\s*(\d{1,2})\b/i);
+      if (/tonic|tonica/.test(testo(p)) && p.unita === 'pz' && (Number(p.contenuto) || 1) === 1 && m && Number(m[1]) >= 6 && (M.prezzo(p) || 0) > 5) { p.contenuto = Number(m[1]); p.confezione = 'cartone'; } });
+    const goldberg = M.prodotto('p_mwkopuaxeoxv') || S.prodotti.find(p => /goldberg/.test(testo(p)) && /tonic/.test(testo(p)));
+    // ml della bottiglia scritti nel nome della fattura: 070 / 0700 / cl 70 = 700 ml, 100 / cl 100 = 1000 ml, 050 = 500 ml
+    const mlDa = (p) => { const t = String(p.nomeCompleto || '');
+      const m = t.match(/\b(?:cl\.?\s*)?(0?70|0700|100|1000|050|0500|75|075)\b/i); if (!m) return 700;
+      const v = m[1].replace(/^0+/, ''); return v === '70' || v === '700' ? 700 : v === '100' || v === '1000' ? 1000 : v === '50' || v === '500' ? 500 : v === '75' ? 750 : 700; };
+    const chiave = (p) => nn(p.nomeBreve).replace(/\bgin\b/g, '').replace(/\s+/g, ' ').trim();
+    // i gin che hanno già il loro gin tonic
+    const fatti = new Set();
+    S.ricette.forEach(r => { if (!/^gin ?tonic/.test(nn(r.nome)) && r.tipo !== gt) return;
+      (r.righe || []).forEach(rg => { const p = rg.rif.startsWith('p:') && M.prodotto(rg.rif.slice(2)); if (p && nn(p.categoria) === 'gin') fatti.add(chiave(p)); }); });
+    S.prodotti.filter(p => nn(p.categoria) === 'gin' && !p.speciale).forEach(p => {
+      const k = chiave(p); if (fatti.has(k)) return; fatti.add(k);
+      if (p.unita === 'pz' && (Number(p.contenuto) || 1) === 1) {
+        const ml = mlDa(p);
+        S.ricette.forEach(x => [].concat(x.righe || [], x.asporto || []).forEach(rg => { if (rg.rif === 'p:' + p.id) rg.quantita = Math.round((Number(rg.quantita) || 0) * ml * 100) / 100; }));
+        p.unita = 'ml'; p.contenuto = ml; p.confezione = 'bottiglia';
+      }
+      let nome = p.nomeBreve.replace(/\bgin\b/ig, '').replace(/\s+/g, ' ').trim();
+      if (!nome) nome = String(p.nomeCompleto || '').replace(/\bgin\b|\d+([.,]\d+)?\s*(%|°)|\b0?\d{2,4}\b|\bcl\.?/ig, '').replace(/\s+/g, ' ').trim().toLowerCase().replace(/^./, c => c.toUpperCase()) || p.nomeBreve;
+      nome = nome.replace(/^./, c => c.toUpperCase());
+      const id = 'r_gt_' + nn(nome).replace(/ /g, '-');
+      if (M.ricetta(id)) return;
+      S.ricette.push({ id, nome: 'Gin tonic ' + nome, tipo: gt, prezzo: null, righe: [{ rif: 'p:' + p.id, quantita: 50 }].concat(goldberg ? [{ rif: 'p:' + goldberg.id, quantita: 1 }] : []), asporto: [], vendite: {}, costiExtra: [], note: '' });
+    });
+  }
+
   // ---------- Salvataggio online (Firebase) ----------
   let db = null, utente = null, ultimoSalvato = new Map(), timerCloud = null, inVolo = 0, ultimoTimbro = null;
   // finché non ho controllato che la copia sul dispositivo sia ancora quella online, non scrivo niente online
@@ -583,7 +618,7 @@
 
   // ---------- Pezzi grafici ----------
   function badgeMolt(ind) {
-    if (ind.molt == null) return '<span class="badge grigio">senza costo</span>';
+    if (ind.molt == null) return `<span class="badge grigio">${ind.costo > 0 && !ind.prezzo ? 'senza prezzo' : 'senza costo'}</span>`;
     return `<span class="badge ${ind.sotto ? 'rosso' : 'verde'}">× ${n2(ind.molt)}</span>`;
   }
   function kpi(etichetta, valore, sotto, cls) {
@@ -1400,7 +1435,7 @@
       // ricette con solo una parte degli ingredienti: i numeri sono troppo belli, lo dico chiaro
       const parziale = /^Ricetta da completare/.test(r.note || '');
       const vv = conVend ? vendutiRic(r) : 0;
-      return `<a class="riga" href="#/ricetta/${r.id}"><span>${esc(r.nome)}<small>${conGruppo ? esc(M.TIPI[r.tipo] || '') + ' · ' : ''}costo ${i.molt == null ? '—' : euro(i.costo)} → prezzo ${euro(i.prezzo)}</small>${conVend ? `<small class="forn-riga">${vv ? qta(vv) + ' venduti' + (i.margine != null && ord === 'guadtot' ? ' · ' + euro(vv * i.margine, 0) + ' guadagnati' : '') : 'mai venduta'}</small>` : ''}</span><span class="destra">${parziale ? '<span class="badge giallo">ingredienti incompleti</span>' : badgeMolt(i)}<small>${i.margine != null && i.molt != null ? 'guadagni ' + euro(i.margine) : ''}</small></span></a>`;
+      return `<a class="riga" href="#/ricetta/${r.id}"><span>${esc(r.nome)}<small>${conGruppo ? esc(M.TIPI[r.tipo] || '') + ' · ' : ''}costo ${i.costo > 0 ? euro(i.costo) : '—'} → prezzo ${i.prezzo ? euro(i.prezzo) : '—'}</small>${conVend ? `<small class="forn-riga">${vv ? qta(vv) + ' venduti' + (i.margine != null && ord === 'guadtot' ? ' · ' + euro(vv * i.margine, 0) + ' guadagnati' : '') : 'mai venduta'}</small>` : ''}</span><span class="destra">${parziale ? '<span class="badge giallo">ingredienti incompleti</span>' : badgeMolt(i)}<small>${i.margine != null && i.molt != null ? 'guadagni ' + euro(i.margine) : ''}</small></span></a>`;
     }).join('');
   }
   PAGINE.ricette = function () {
@@ -3738,7 +3773,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v102';
+  const VERSIONE_APP = 'repub-v103';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
