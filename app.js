@@ -3138,18 +3138,19 @@
   async function caricaListinoFornitore(file) {
     try {
       const voci = leggiListino(await leggiXlsx(file));
-      const cand = S.prodotti.filter(p => M.daFoglio(p)).sort((a, b) => a.nomeBreve.localeCompare(b.nomeBreve));
+      // i prodotti senza fattura: quelli del tuo foglio, quelli col prezzo scritto a mano e quelli ancora senza prezzo (es. le bottiglie dei lisci)
+      const cand = S.prodotti.filter(p => !p.speciale && (M.daFoglio(p) || !M.daFattura(p))).sort((a, b) => a.nomeBreve.localeCompare(b.nomeBreve));
       ui.lfVoci = voci; ui.lfFile = file.name;
       // scelgo da solo solo se la prima proposta è chiaramente la migliore (non per «Prosecco», dove ce ne sono tante uguali)
       ui.lfProd = cand.map(p => { const pr = proposteListino(p, voci); const sicura = pr.length && pr[0].s >= 1.4 && (!pr[1] || pr[0].s - pr[1].s >= 0.015); return { id: p.id, proposte: pr.map(x => x.i), auto: sicura ? pr[0].i : -1, scelta: null }; });
       ridisegnaMantenendo();
     } catch (e) { alert('Non riesco a leggere il listino: ' + e.message); }
   }
-  const sceltaLf = (x) => { if (x.scelta != null) return x.scelta; const p = M.prodotto(x.id); return p && ui.lfForn && p.fornitoreId === ui.lfForn ? x.auto : -1; };
+  const sceltaLf = (x) => { if (x.scelta != null) return x.scelta; const p = M.prodotto(x.id); return p && ui.lfForn && (p.fornitoreId === ui.lfForn || !p.fornitoreId) ? x.auto : -1; };
   function sezioneListino() {
     const fid = ui.lfForn || '', forn = M.fornitore(fid);
     let h = `<div class="card form"><h3>4. Listino di un fornitore</h3>
-      <p class="tenue piccolo">Per i prodotti del tuo foglio che non hanno ancora una fattura: prendo i prezzi dal listino (senza IVA). Solo quelli che hai già, gli altri del listino restano fuori. Quando arriverà una fattura, il suo prezzo prenderà il posto di questo.</p>
+      <p class="tenue piccolo">Per i prodotti che non hanno ancora una fattura (del tuo foglio, scritti a mano o ancora senza prezzo): prendo i prezzi dal listino (senza IVA). Solo quelli che hai già, gli altri del listino restano fuori. Quando arriverà una fattura, il suo prezzo prenderà il posto di questo.</p>
       <label>Fornitore<select data-lf="forn"><option value="">scegli…</option>${S.fornitori.slice().sort((a, b) => a.nome.localeCompare(b.nome)).map(f => `<option value="${f.id}" ${fid === f.id ? 'selected' : ''}>${esc(f.nome)}</option>`).join('')}</select></label>
       <div class="due"><label>Data del listino<input type="date" data-lf="data" value="${esc(ui.lfData || M.oggi())}"></label><label>Vostro sconto (%)<input type="text" inputmode="decimal" autocomplete="off" data-lf="sconto" value="${esc(ui.lfSconto || '')}" placeholder="0"></label></div>
       <label class="btn">Scegli il file del listino (Excel)<input type="file" accept=".xlsx" data-carica="listino-fornitore" hidden></label></div>`;
@@ -3158,7 +3159,7 @@
     const scelti = ui.lfProd.filter(x => sceltaLf(x) >= 0).length;
     // prima quelli che nel foglio erano di questo fornitore
     const ordine = ui.lfProd.map((x, k) => k).sort((a, b) => { const pa = M.prodotto(ui.lfProd[a].id), pb = M.prodotto(ui.lfProd[b].id); return ((pb && pb.fornitoreId === fid) - (pa && pa.fornitoreId === fid)) || (sceltaLf(ui.lfProd[b]) >= 0) - (sceltaLf(ui.lfProd[a]) >= 0); });
-    h += `<div class="card evidenza"><h3>${esc(ui.lfFile)}: ${voci.length} righe</h3><p>Su ${ui.lfProd.length} prodotti del tuo foglio, <b>${scelti}</b> collegati a una riga del listino${(ui.lfNuovi || []).length ? `; in più <b>${ui.lfNuovi.length}</b> prodotti nuovi da creare` : ''}. Controlla quelli proposti e cerca gli altri. Il prezzo a destra è già portato al formato del tuo prodotto${sc ? `, con il ${n2(sc)}% di sconto` : ''}.</p>
+    h += `<div class="card evidenza"><h3>${esc(ui.lfFile)}: ${voci.length} righe</h3><p>Su ${ui.lfProd.length} prodotti senza fattura, <b>${scelti}</b> collegati a una riga del listino${(ui.lfNuovi || []).length ? `; in più <b>${ui.lfNuovi.length}</b> prodotti nuovi da creare` : ''}. Controlla quelli proposti e cerca gli altri. Il prezzo a destra è già portato al formato del tuo prodotto${sc ? `, con il ${n2(sc)}% di sconto` : ''}.</p>
       <div class="bottoni"><button class="btn primario" data-az="lf-ok" ${forn ? '' : 'disabled'}>Metti i prezzi${forn ? ' di ' + esc(forn.nome) : ' (scegli il fornitore)'}</button><button class="btn" data-az="lf-annulla">Annulla</button></div></div>`;
     const nuovi = ui.lfNuovi || [];
     h += `<div class="card form"><h3>Prodotti nuovi da questo listino</h3><p class="tenue piccolo">Per quelli che non hai ancora (es. gli amari, i rum, i whisky): cercali e aggiungili, diventano prodotti con il prezzo del listino.</p>
@@ -3808,7 +3809,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v104';
+  const VERSIONE_APP = 'repub-v105';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
