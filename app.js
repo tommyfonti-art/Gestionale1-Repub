@@ -1452,7 +1452,7 @@
         <label>nel gruppo<select id="sposta-in">${Object.entries(M.TIPI).filter(([k]) => k !== ui.tipoRicette).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('')}</select></label>
         <div class="bottoni"><button class="btn primario" data-az="sposta-ok">Sposta</button><button class="btn" data-az="sposta-tutte">Spunta tutte quelle visibili</button><button class="btn" data-az="sposta-fine">Annulla</button></div></div>` : ''}
       ${inElimina('r') ? barraElimina('r') : `<div class="azioni-riga"><button class="btn primario piccolo" data-az="riv-inizia" title="Rivedi ${ui.ricDaComp ? 'quelle da completare' : ui.filtroRicette ? 'quelle con «' + esc(ui.filtroRicette) + '»' : 'le ' + esc(nomeScelta(ui.tipoRicette))} una per una">Rivedi una per una</button>
-        <details class="menu-azioni"><summary class="btn piccolo">Altro ▾</summary><div class="menu-azioni-voci"><button class="btn piccolo" data-az="sposta-inizia">Sposta ricette in un altro gruppo</button><button class="btn piccolo" data-az="elim-inizia" data-v="r">Elimina più ricette</button><a class="btn piccolo" href="#/gruppi-ricette">＋ Nuovo gruppo / gestisci i gruppi</a></div></details></div>`}
+        <details class="menu-azioni"><summary class="btn piccolo">Altro ▾</summary><div class="menu-azioni-voci"><button class="btn piccolo" data-az="sposta-inizia">Sposta ricette in un altro gruppo</button><button class="btn piccolo" data-az="elim-inizia" data-v="r">Elimina più ricette</button>${tipiScelti(ui.tipoRicette).length === 1 && ui.tipoRicette !== 'semilavorato' ? `<a class="btn piccolo" href="#/costi-gruppo/${tipiScelti(ui.tipoRicette)[0]}">Costi su tutto il gruppo «${esc(M.TIPI[tipiScelti(ui.tipoRicette)[0]] || '')}»</a>` : ''}<a class="btn piccolo" href="#/gruppi-ricette">＋ Nuovo gruppo / gestisci i gruppi (e i loro costi)</a></div></details></div>`}
       ${avvisoCestino('r')}
       <div class="card lista" id="lista">${listaRicette()}</div>`
     };
@@ -1475,7 +1475,8 @@
       const quota = rg.costo != null && cr.totale ? rg.costo / cr.totale : null;
       const fonte = rg.rif.startsWith('p:') ? (o ? fontePrezzo(o) : '') : provvisoriaDaFoglio(o) ? '<small class="fonte giallo-t">preparazione con il costo provvisorio del tuo foglio</small>' : '';
       return `<tr><td><a href="${link}">${esc(M.nomeRif(rg.rif))}</a>${rg.nota ? `<small>${esc(rg.nota)}</small>` : ''}${fonte}</td><td class="n">${qta(rg.quantita)} ${esc(M.unitaRif(rg.rif))}</td><td class="n">${rg.costo == null ? '<span class="badge rosso">manca</span>' : euro(rg.costo, 3)}</td><td class="n tenue">${perc(quota, 0)}</td></tr>`;
-    }).join('') + (r.costiExtra || []).map(e => `<tr><td>${esc(e.nome)}</td><td></td><td class="n">${euro(e.costo, 3)}</td><td class="n tenue">${perc(cr.totale ? e.costo / cr.totale : null, 0)}</td></tr>`).join('');
+    }).join('') + (r.costiExtra || []).map(e => `<tr><td>${esc(e.nome)}</td><td></td><td class="n">${euro(e.costo, 3)}</td><td class="n tenue">${perc(cr.totale ? e.costo / cr.totale : null, 0)}</td></tr>`).join('')
+      + (cr.gruppo || []).map(g => `<tr><td>${g.rif ? `<a href="#/prodotto/${g.rif.slice(2)}">${esc(M.nomeRif(g.rif))}</a>` : esc(g.nome || 'costo')}<small class="fonte"><a href="#/costi-gruppo/${r.tipo}">dal gruppo ${esc(M.TIPI[r.tipo] || '')}</a></small></td><td class="n">${g.rif ? qta(g.quantita) + ' ' + esc(M.unitaRif(g.rif)) : ''}</td><td class="n">${g.costo == null ? '<span class="badge giallo">senza prezzo</span>' : euro(g.costo, 3)}</td><td class="n tenue">${perc(g.costo != null && cr.totale ? g.costo / cr.totale : null, 0)}</td></tr>`).join('');
     return {
       titolo: r.nome, indietro: '#/ricette', azione: `<a class="btn-top" href="#/modifica-ricetta/${r.id}">Modifica</a>`, html: `${barraScorri('R', r.id)}
       ${semi ? `<div class="kpi-griglia">${kpi('Costo della preparazione', euro(cr.totale))}${kpi('Resa', qta(r.resa) + ' ' + esc(r.unita))}${kpi(r.unita === 'g' ? 'Costo al kg' : 'Costo al litro', euro(cr.totale != null && r.resa ? cr.totale / r.resa * 1000 : null))}${kpi('Costo per 10 ' + esc(r.unita), euro(cr.totale != null && r.resa ? cr.totale / r.resa * 10 : null, 3))}</div>` : `
@@ -1595,6 +1596,10 @@
       <div class="card form"><h3>Costi fissi (guarnizioni, sale…)</h3>
         ${(b.costiExtra || []).map((e, k) => `<div class="riga-ed"><input data-e="${k}" data-k="nome" value="${esc(e.nome)}" placeholder="nome"><input type="text" inputmode="decimal" autocomplete="off" data-e="${k}" data-k="costo" value="${esc(e.costo)}" placeholder="€"><button class="x" data-az="togli-extra" data-k="${k}">✕</button></div>`).join('')}
         <button class="btn piccolo" data-az="aggiungi-extra">＋ Aggiungi costo fisso</button></div>
+      ${!semi ? `<div class="card form"><h3>Costi del gruppo «${esc(M.TIPI[b.tipo] || '')}»</h3>
+        ${((S.costiGruppo || {})[b.tipo] || []).length ? `<p class="tenue piccolo">${S.costiGruppo[b.tipo].map(g => g.rif ? descrCostoGruppo(g) : esc(g.nome || 'costo') + ' ' + euro(Number(g.costo) || 0, 3)).join(' · ')}</p>
+          <label class="spunta"><input type="checkbox" data-senza-cg ${b.senzaCostiGruppo ? '' : 'checked'}> <span>Aggiungili anche a questa ricetta</span></label>` : `<p class="tenue piccolo">Nessun costo messo su tutto il gruppo.</p>`}
+        <a class="btn piccolo" href="#/costi-gruppo/${b.tipo}">Cambia i costi del gruppo</a></div>` : ''}
       ${!semi ? `<div class="card form"><h3>Da asporto</h3>
         ${(b.asporto || []).map((a, k) => `<div class="riga-ed"><select data-a="${k}" data-k="rif">${opzioniProdotti(a.rif, p => p.categoria === 'Non alimentare')}</select><input type="text" inputmode="decimal" autocomplete="off" data-a="${k}" data-k="quantita" value="${esc(a.quantita)}"><button class="x" data-az="togli-asporto" data-k="${k}">✕</button></div>`).join('')}
         <button class="btn piccolo" data-az="aggiungi-asporto">＋ Aggiungi materiale da asporto</button></div>
@@ -1999,7 +2004,7 @@
 
   // ---------- Disegno ----------
   const TAB = [['pannello', 'Pannello', 'M3 12l9-8 9 8v8a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z'], ['prodotti', 'Prodotti', 'M4 7l8-4 8 4v10l-8 4-8-4zM4 7l8 4 8-4M12 11v10'], ['ricette', 'Ricette', 'M6 3h12M8 3v6l-4 12h16L16 9V3'], ['fatture', 'Fatture', 'M6 2h9l5 5v15H6zM14 2v6h6M9 13h8M9 17h8'], ['altro', 'Altro', 'M5 12h.01M12 12h.01M19 12h.01']];
-  const SEZIONE = { cestino: 'altro', mappa: 'pannello', costi: 'altro', ordine: 'altro', 'gruppi-ricette': 'ricette', foglio: 'prodotti', doppioni: 'prodotti', importa: 'altro', 'controllo-fatture': 'fatture', controllo: 'prodotti', pulizia: 'altro', formati: 'prodotti', prodotto: 'prodotti', 'modifica-prodotto': 'prodotti', ricetta: 'ricette', 'modifica-ricetta': 'ricette', 'rivedi-ricette': 'ricette', fattura: 'fatture' };
+  const SEZIONE = { cestino: 'altro', mappa: 'pannello', costi: 'altro', ordine: 'altro', 'gruppi-ricette': 'ricette', 'costi-gruppo': 'ricette', foglio: 'prodotti', doppioni: 'prodotti', importa: 'altro', 'controllo-fatture': 'fatture', controllo: 'prodotti', pulizia: 'altro', formati: 'prodotti', prodotto: 'prodotti', 'modifica-prodotto': 'prodotti', ricetta: 'ricette', 'modifica-ricetta': 'ricette', 'rivedi-ricette': 'ricette', fattura: 'fatture' };
   function disegna() {
     if (!S) return;
     const [, nome, arg] = (location.hash || '#/pannello').split('/');
@@ -3224,6 +3229,30 @@
   }
   AZ['pz-suggerito'] = (el) => { const i = document.querySelector(`[data-pzr="${el.dataset.f}"]`); if (!i) return; i.value = el.dataset.n; i.dispatchEvent(new Event('change', { bubbles: true })); };
   // ---------- Gruppi di ricette: crearli (Amari, Rum…), rinominarli, sceglierne il reparto ----------
+  // ---------- Costi su tutto un gruppo di ricette ----------
+  const costiDi = (k) => ((S.costiGruppo = S.costiGruppo || {})[k] = S.costiGruppo[k] || []);
+  const descrCostoGruppo = (g) => { if (!g.rif) return esc(g.nome || 'costo'); const p = M.prodotto(g.rif.slice(2)); return esc(p ? p.nomeBreve : 'prodotto eliminato') + ' ' + qta(Number(g.quantita) || 0) + ' ' + esc(p ? p.unita : ''); };
+  PAGINE['costi-gruppo'] = function (k) {
+    if (!M.TIPI[k] || k === 'semilavorato') return { titolo: 'Gruppo', indietro: '#/gruppi-ricette', html: '<p class="tenue centro">Gruppo non trovato.</p>' };
+    const l = costiDi(k), n = S.ricette.filter(r => r.tipo === k).length;
+    const costoDi = (g) => g.rif ? M.costoRiga(g.rif, Number(g.quantita) || 0).costo : Number(g.costo) || 0;
+    const tot = l.reduce((t, g) => t + (costoDi(g) || 0), 0);
+    return { titolo: 'Costi di ' + M.TIPI[k], indietro: '#/gruppi-ricette', html: `
+      <div class="card form"><h3>Su tutte le ${n} ricette di «${esc(M.TIPI[k])}»</h3>
+        <p class="tenue piccolo">Si aggiungono al costo di ogni ricetta del gruppo, anche di quelle che creerai dopo. Un prodotto (ghiaccio, cannuccia) segue il prezzo delle fatture; un costo in euro (gas CO2) resta fisso.</p>
+        ${l.map((g, i) => g.rif
+          ? `<div class="riga-ed"><select data-cg="${i}" data-k="rif">${opzioniProdotti(g.rif)}</select><input type="text" inputmode="decimal" autocomplete="off" data-cg="${i}" data-k="quantita" value="${esc(g.quantita)}" aria-label="Quantità"><span class="tenue piccolo">${esc((M.prodotto(g.rif.slice(2)) || {}).unita || '')} · ${costoDi(g) == null ? 'senza prezzo' : euro(costoDi(g), 3)}</span><button class="x" data-az="cg-togli" data-k="${k}" data-i="${i}" aria-label="Togli">✕</button></div>`
+          : `<div class="riga-ed"><input data-cg="${i}" data-k="nome" value="${esc(g.nome)}" placeholder="es. gas CO2" aria-label="Nome"><input type="text" inputmode="decimal" autocomplete="off" data-cg="${i}" data-k="costo" value="${esc(g.costo)}" aria-label="Euro"><span class="tenue piccolo">€</span><button class="x" data-az="cg-togli" data-k="${k}" data-i="${i}" aria-label="Togli">✕</button></div>`).join('') || '<p class="tenue piccolo">Ancora nessun costo.</p>'}
+        <div class="bottoni"><button class="btn piccolo" data-az="cg-prodotto" data-k="${k}">＋ Prodotto (es. ghiaccio, cannuccia)</button><button class="btn piccolo" data-az="cg-euro" data-k="${k}">＋ Costo in euro (es. gas CO2)</button></div>
+        ${l.length ? `<p class="kpi-riga">In più su ogni ricetta: <b>${euro(tot, 3)}</b></p>` : ''}</div>
+      <p class="tenue piccolo">Se una ricetta ha già quel prodotto tra gli ingredienti (es. il ghiaccio) non viene contato due volte. Se una ricetta non li deve avere (es. un cocktail senza cannuccia), aprila in modifica e togli la spunta «Aggiungili anche a questa ricetta».</p>` };
+  };
+  const cgCambiato = () => { M.svuota(); salva(); };
+  AZ['cg-prodotto'] = (el) => { const gh = S.prodotti.find(p => /ghiacci/i.test(p.nomeBreve)); costiDi(el.dataset.k).push({ rif: 'p:' + (gh || S.prodotti[0]).id, quantita: gh ? 180 : 1 }); cgCambiato(); ridisegnaMantenendo(); };
+  AZ['cg-euro'] = (el) => { costiDi(el.dataset.k).push({ nome: '', costo: 0 }); cgCambiato(); ridisegnaMantenendo(); };
+  AZ['cg-togli'] = (el) => { costiDi(el.dataset.k).splice(+el.dataset.i, 1); cgCambiato(); ridisegnaMantenendo(); };
+  AZ['cg-apri'] = (el) => vai('#/costi-gruppo/' + el.dataset.k);
+
   PAGINE['gruppi-ricette'] = function () {
     const conta = (k) => S.ricette.filter(r => r.tipo === k).length;
     return { titolo: 'Gruppi di ricette', indietro: '#/ricette', html: `
@@ -3235,6 +3264,7 @@
           <input data-gr-nome="${k}" value="${esc(M.TIPI[k])}" aria-label="Nome del gruppo">
           <select data-gr-rep="${k}"><option value="bar" ${M.REPARTO_TIPO[k] === 'bar' ? 'selected' : ''}>Bar</option><option value="cucina" ${M.REPARTO_TIPO[k] === 'cucina' ? 'selected' : ''}>Cucina</option></select>
           <span class="tenue piccolo">${conta(k)} ricette</span>
+          <a class="btn piccolo" href="#/costi-gruppo/${k}">Costi${(S.costiGruppo || {})[k] && S.costiGruppo[k].length ? ' (' + S.costiGruppo[k].length + ')' : ''}</a>
           <button class="x" data-az="gr-elimina" data-id="${k}" aria-label="Elimina il gruppo">✕</button></div>`).join('')}
         <p class="tenue piccolo">Il nome si cambia scrivendo. Se elimini un gruppo, le ricette dentro vanno in un altro gruppo dello stesso reparto.</p></div>` };
   };
@@ -3678,6 +3708,11 @@
     alert('Posso leggere fatture elettroniche (.xml, .p7m, .zip) o i file Excel della cassa (.xlsx).');
   });
   document.addEventListener('change', (e) => {
+    { const el = e.target, d = el.dataset || {};
+      if (d.senzaCg != null && ui.bozza) { if (el.checked) delete ui.bozza.senzaCostiGruppo; else ui.bozza.senzaCostiGruppo = true; aggiornaAnteprima(); return; }
+      if (d.cg != null) { const k = qui().split('/')[2], g = costiDi(k)[+d.cg]; if (!g) return;
+        if (d.k === 'rif') g.rif = el.value; else if (d.k === 'nome') g.nome = el.value.trim(); else g[d.k] = numDa(el.value) || 0;
+        M.svuota(); salva(); ridisegnaMantenendo(); return; } }
     const el = e.target; const d = el.dataset;
     if (d.ricOrdine != null) { ui.ordineRicette = el.value; ridisegnaMantenendo(); return; }
     if (d.ricPeriodo != null) { ui.ricPer = el.value; ridisegnaMantenendo(); return; }
@@ -3773,7 +3808,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v103';
+  const VERSIONE_APP = 'repub-v104';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;

@@ -130,7 +130,17 @@
     // «il cliente ne sceglie uno» (amari, rum, grappe…): il costo degli ingredienti è la media, non la somma
     if (r.media) { const conCosto = righe.filter(x => x.costo != null).length; if (conCosto) tot = tot / conCosto; }
     (r.costiExtra || []).forEach(e => { tot += Number(e.costo) || 0; });
-    const ris = { totale: righe.length || (r.costiExtra || []).length ? tot : null, righe, mancanti };
+    // costi messi su tutto il gruppo (es. ghiaccio e cannuccia in tutti i cocktail, gas CO2 in tutte le birre)
+    const gruppo = [];
+    if (r.tipo !== 'semilavorato' && !r.senzaCostiGruppo && righe.length) {
+      ((S.costiGruppo || {})[r.tipo] || []).forEach(g => {
+        // se la ricetta ha già quel prodotto tra gli ingredienti (es. il ghiaccio) non lo conto due volte
+        if (g.rif && (r.righe || []).some(rg => rg.rif === g.rif)) return;
+        if (g.rif) { const c = M.costoRiga(g.rif, Number(g.quantita) || 0, data, pila); gruppo.push({ rif: g.rif, quantita: g.quantita, costo: c.costo }); if (c.costo == null) mancanti.push(c.mancante); else tot += c.costo; }
+        else { const c = Number(g.costo) || 0; gruppo.push({ nome: g.nome, costo: c }); tot += c; }
+      });
+    }
+    const ris = { totale: righe.length || (r.costiExtra || []).length ? tot : null, righe, mancanti, gruppo };
     if (pila.length === 1) cache.set(chiave, ris);
     return ris;
   };
