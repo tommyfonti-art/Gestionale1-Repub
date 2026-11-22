@@ -169,6 +169,8 @@
     if (!S.ginTonic1) { creaGinTonic(); S.ginTonic1 = true; M.svuota(); }
     // una volta: i prezzi del listino Zonzini che Tommi ha controllato (solo bar, solo prodotti senza fattura)
     // una volta: soglie del moltiplicatore per gruppo, dalla ricerca (prezzo con IVA ÷ costo senza IVA)
+    // una volta: dopo il venduto 2026 (amari e grappe generici, mezza nat doppia, fritti in «Da spizzicare»)
+    if (!S.dopoVenduto1) { S.esitoDopoVenduto = sistemaDopoVenduto(); S.dopoVenduto1 = true; M.svuota(); }
     if (!S.soglieRicerca1) { S.esitoSoglie = soglieDaRicerca(); S.soglieRicerca1 = true; }
     if (!S.listinoZonz1) { S.esitoListinoZonz = prezziListinoZonzini(); S.listinoZonz1 = true; M.svuota(); }
     // una volta: seconda tornata (nomi indicati da Tommi) e bottiglie già comprate da Turci al posto di quelle create senza prezzo
@@ -402,6 +404,80 @@
     S.ricette.forEach(r => { if (r.tipo === pan) r.tipo = dove; });
     if ((S.tipiExtra || []).some(t => t.id === pan)) S.tipiExtra = S.tipiExtra.filter(t => t.id !== pan); else S.tipiNascosti = Array.from(new Set((S.tipiNascosti || []).concat(pan)));
     M.aggiornaTipi();
+  }
+
+  // dopo il venduto 2026: amari e grappe generici della cassa di nuovo nelle loro ricette, la «Mezza nat» doppia senza vendite via, i fritti in «Da spizzicare»
+  function sistemaDopoVenduto() {
+    const nn = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+    const esito = { generici: [], mezzeTolte: 0, fritti: 0 };
+    const totVend = (r) => Object.values(r.vendite || {}).reduce((t, q) => t + (Number(q) || 0), 0);
+    // 1) «AMARI» e «GRAPPA» della cassa: ricetta generica, costo = la bottiglia più economica del gruppo (60 ml)
+    [{ id: 'r_mwknirqgdn1o', nome: 'Amaro generico', cassa: 'AMARI', base: 'amari', prezzo: 3.5 }, { id: 'r_mwknirqg5oi4', nome: 'Grappa generica', cassa: 'GRAPPA', base: 'grappa', prezzo: 4.5 }].forEach(g => {
+      const bott = S.ricette.filter(r => r.id.startsWith('r_gr_' + g.base + '-'));
+      if (!bott.length) return;
+      const tipo = bott[0].tipo;
+      let gen = M.ricetta(g.id);
+      if (!gen) { gen = { id: g.id, nome: g.nome, tipo, prezzo: null, righe: [], asporto: [], vendite: {}, costiExtra: [], note: '' }; S.ricette.push(gen); }
+      gen.nome = g.nome; gen.tipo = tipo; gen.nomeCassa = g.cassa; delete gen.media;
+      // le vendite finite su una bottiglia per nome simile tornano qui, e quella bottiglia non si ricorda più il nome generico
+      const k = nn(g.cassa); let spostati = 0;
+      S.ricette.forEach(r => {
+        if (r === gen) return;
+        const alias = (r.aliasCassa || []).some(a => nn(a) === k), nome = r.nomeCassa && nn(r.nomeCassa) === k;
+        if (!alias && !nome) return;
+        if (alias) r.aliasCassa = r.aliasCassa.filter(a => nn(a) !== k);
+        if (nome) delete r.nomeCassa;
+        if (!r.id.startsWith('r_gr_')) return;
+        Object.entries(r.vendite || {}).forEach(([per, q]) => { gen.vendite = gen.vendite || {}; gen.vendite[per] = (Number(gen.vendite[per]) || 0) + (Number(q) || 0); spostati += Number(q) || 0; });
+        r.vendite = {};
+        if (!gen.prezzo && r.prezzo) gen.prezzo = r.prezzo;
+      });
+      if (!gen.prezzo) gen.prezzo = g.prezzo;
+      // costo: la bottiglia più economica del gruppo, 60 ml
+      let min = null;
+      bott.forEach(r => (r.righe || []).forEach(rg => { const c = M.costoRiga(rg.rif, 60, undefined, []); if (c.costo != null && c.costo > 0 && (!min || c.costo < min.costo)) min = { rif: rg.rif, costo: c.costo, nome: r.nome }; }));
+      if (min) gen.righe = [{ rif: min.rif, quantita: 60 }];
+      gen.note = 'Voce generica della cassa («' + g.cassa + '»), per le vendite di prima delle varianti per bottiglia. Costo: la bottiglia più economica del gruppo' + (min ? ' (' + min.nome + ')' : '') + ', 60 ml.';
+      esito.generici.push({ nome: g.nome, spostati, bottiglia: min && min.nome });
+    });
+    // 2) «Mezza nat» doppia: tolgo quella senza nessuna vendita (se ce n'è un'altra)
+    const mezze = S.ricette.filter(r => r.tipo !== 'semilavorato' && nn(r.nome) === 'mezza nat');
+    if (mezze.length > 1 && mezze.some(r => totVend(r) > 0)) {
+      const via = mezze.filter(r => !totVend(r) && !M.usatoIn('r:' + r.id).dirette.length);
+      const tieni = mezze.find(r => totVend(r) > 0);
+      via.forEach(r => { (r.aliasCassa || []).forEach(a => { if (!(tieni.aliasCassa || []).includes(a)) tieni.aliasCassa = (tieni.aliasCassa || []).concat(a); }); });
+      S.ricette = S.ricette.filter(r => !via.includes(r)); esito.mezzeTolte = via.length;
+    }
+    // 3) i fritti rimasti nel gruppo «Fritti» vanno in «Da spizzicare», e «Fritti» sparisce
+    const spizz = Object.keys(M.TIPI).find(t => t !== 'fritto' && t !== 'semilavorato' && /\bspizzicare\b/.test(nn(M.TIPI[t])));
+    if (spizz) {
+      S.ricette.forEach(r => { if (r.tipo === 'fritto') { r.tipo = spizz; esito.fritti++; } });
+      const cg = (S.costiGruppo || {}).fritto; if (cg && cg.length && !((S.costiGruppo[spizz] || []).length)) S.costiGruppo[spizz] = cg;
+      if (S.costiGruppo) delete S.costiGruppo.fritto;
+      S.tipiNascosti = Array.from(new Set((S.tipiNascosti || []).concat('fritto'))); M.aggiornaTipi();
+    }
+    // 4) collegamenti ricordati per «nome simile» che erano sbagliati: «+ pata» o misura diversa, o la voce generica su una bottiglia
+    esito.slegati = [];
+    S.ricette.forEach(r => {
+      const via = (r.aliasCassa || []).filter(a => somiglianzaNomi(a, r.nome) < 0.65 && (r.id.startsWith('r_gr_') || /\b(pata|doppio|triplo)\b/i.test(a) !== /\b(pata|doppio|triplo)\b/i.test(r.nome)));
+      if (!via.length) return;
+      r.aliasCassa = r.aliasCassa.filter(a => !via.includes(a)); via.forEach(a => esito.slegati.push(a + ' → ' + r.nome));
+    });
+    // 5) il burrito è un panino (non il mezcal Burrito Fiestero): ricette «Burrito» e «Burrito + pata» nei gruppi dei burger
+    const gruppoDi = (re, poi) => { const r = S.ricette.find(x => x.tipo !== 'semilavorato' && re.test(normCassa(x.nomeCassa || ''))); return r ? r.tipo : poi; };
+    [{ id: 'r_burrito', nome: 'Burrito', cassa: 'BURRITO', tipo: gruppoDi(/^(resmash|cheesebacon|crispy rebacon)\b/, 'panino') },
+      { id: 'r_burrito-pata', nome: 'Burrito + pata', cassa: 'BURRITO + PATA', tipo: gruppoDi(/^(oklahoma|double b) pata\b/, 'combo') }].forEach(x => {
+      let r = M.ricetta(x.id) || S.ricette.find(y => y.tipo !== 'semilavorato' && normCassa(y.nomeCassa || '') === normCassa(x.cassa));
+      if (!r) { r = { id: x.id, nome: x.nome, tipo: x.tipo, prezzo: null, righe: [], asporto: [], vendite: {}, costiExtra: [], note: 'Ricetta da completare: creata dalla vendita della cassa «' + x.cassa + '». Metti gli ingredienti.' }; S.ricette.push(r); }
+      r.nomeCassa = x.cassa;
+    });
+    // le vendite del burrito finite sul mezcal tornano al panino
+    const fiest = M.ricetta('r_gr_tequila-burrito-fiestero'), bur = M.ricetta('r_burrito');
+    if (fiest && bur && esito.slegati.some(t => /^burrito → /i.test(t))) {
+      Object.entries(fiest.vendite || {}).forEach(([per, q]) => { bur.vendite[per] = (Number(bur.vendite[per]) || 0) + (Number(q) || 0); });
+      fiest.vendite = {};
+    }
+    return esito;
   }
 
   function creaGinTonic() {
@@ -1584,7 +1660,7 @@
         ${(r.asporto || []).map(a => `<div><span>${esc(M.nomeRif(a.rif))} × ${qta(a.quantita)}</span><b>${euro(M.costoRiga(a.rif, a.quantita).costo, 3)}</b></div>`).join('')}
         <div><span>Costo da asporto</span><b>${euro(asp.totale)}</b></div>
         <div><span>Moltiplicatore da asporto</span><b>× ${n2(r.prezzo / asp.totale)}</b></div></div></div>` : ''}
-      <div class="card"><h3>Allergeni</h3>${all.length ? `<div class="chips">${all.map(a => `<span class="chip on">${esc(a)}</span>`).join('')}</div>` : '<p class="tenue">Nessun allergene segnato negli ingredienti.</p>'}<p class="tenue piccolo">Presi in automatico dalle schede dei prodotti.</p></div>
+      <div class="card"><h3>Allergeni</h3>${all.length ? `<div class="chips">${all.map(a => `<span class="chip on">${esc(a)}</span>`).join('')}</div>` : '<p class="tenue">Nessun allergene segnato.</p>'}<p class="tenue piccolo">Presi in automatico dalle schede dei prodotti, più quelli che segni tu in «Modifica».</p></div>
       ${!semi && periodi.length ? `<div class="card"><h3>Vendite</h3><table class="tab"><tr><th>Periodo</th><th class="n">Pezzi</th><th class="n">Incasso</th><th class="n">Margine</th></tr>
         ${periodi.map(pp => `<tr><td>${esc(pp)}</td><td class="n">${qta(r.vendite[pp])}</td><td class="n">${euro(r.vendite[pp] * r.prezzo, 0)}</td><td class="n">${euro(i.margine != null ? r.vendite[pp] * i.margine : null, 0)}</td></tr>`).join('')}</table>
         <p class="tenue piccolo">Margine senza IVA, con il costo di oggi.</p></div>` : ''}
@@ -1696,6 +1772,9 @@
         ${(b.asporto || []).map((a, k) => `<div class="riga-ed"><select data-a="${k}" data-k="rif">${opzioniProdotti(a.rif, p => p.categoria === 'Non alimentare')}</select><input type="text" inputmode="decimal" autocomplete="off" data-a="${k}" data-k="quantita" value="${esc(a.quantita)}"><button class="x" data-az="togli-asporto" data-k="${k}">✕</button></div>`).join('')}
         <button class="btn piccolo" data-az="aggiungi-asporto">＋ Aggiungi materiale da asporto</button></div>
       ` : ''}
+      ${(() => { const daIngr = M.allergeniRicetta(Object.assign({}, b, { allergeni: [] })); return `<div class="card form"><h3>Allergeni</h3>
+        <div class="chips a-capo">${M.ALLERGENI.map(a => daIngr.includes(a) ? `<span class="chip on bloccato" title="dagli ingredienti">${esc(a)}</span>` : `<button class="chip ${(b.allergeni || []).includes(a) ? 'on' : ''}" data-az="allergene" data-v="${esc(a)}">${esc(a)}</button>`).join('')}</div>
+        <p class="tenue piccolo">Tocca per segnarne uno a mano. Quelli bloccati arrivano dagli ingredienti: per toglierli cambia la scheda del prodotto.</p></div>`; })()}
       <div class="card form">${campoNote(b, 3)}</div>
       <div class="bottoni">${tastoAvanti('R', id)}<button class="btn ${tastoAvanti('R', id) ? '' : 'primario'}" data-az="salva-ricetta">Salva</button>${id !== 'nuovo' ? '<button class="btn pericolo" data-az="elimina-ricetta">Elimina</button>' : ''}</div>`
     };
@@ -2631,12 +2710,22 @@
   const bello = (t) => { const x = String(t || '').trim().toLowerCase(); return x.charAt(0).toUpperCase() + x.slice(1); };
   const ricettaDiSku = (sku) => { const n = normCassa(sku); return S.ricette.find(r => r.tipo !== 'semilavorato' && ((r.nomeCassa && normCassa(r.nomeCassa) === n) || (r.aliasCassa || []).some(a => normCassa(a) === n))); };
   function somiglianzaNomi(a, b) {
-    const A = normCassa(a).replace(/\b(base|drink)\b/g, ' ').split(' ').filter(x => x.length > 1), B = normCassa(b).replace(/\b(base|drink)\b/g, ' ').split(' ').filter(x => x.length > 1);
+    // «pata» (= con le patatine) resta un segno a parte: «Ninetynine + pata» non deve somigliare a «Patatine»
+    const parole = (t) => normCassa(String(t || '').replace(/\bpata\b/gi, ' conpata ')).replace(/\b(base|drink)\b/g, ' ').split(' ').filter(x => x.length > 1);
+    const A = parole(a), B = parole(b);
     if (!A.length || !B.length) return 0;
     if (A.join(' ') === B.join(' ')) return 1;
+    // «+ pata» e le misure (doppio, piccola, media…) devono essere uguali: «Ciaccia + pata» non è «Ciaccia», «Bacon doppio» non è «Bacon + pata doppio»
+    const SEGNI = ['conpata', 'doppio', 'triplo', 'piccola', 'media', 'grande', 'caraffa', 'giraffa', 'boccale', 'pinta', 'litro', 'asporto'];
+    const segni = (L) => L.filter(x => SEGNI.includes(x)).sort().join(' ');
+    if (segni(A) !== segni(B)) return 0;
+    // tolti i segni, deve restare almeno una parola in comune («Ciaccia + pata doppio» non è «Chicken + pata doppio»)
+    const nucleo = (L) => L.filter(x => !SEGNI.includes(x)), nA = nucleo(A), nB = nucleo(B);
+    if (nA.length && nB.length && !nA.some(x => nB.includes(x))) return 0;
     const comuni = A.filter(x => B.includes(x)).length;
-    // tutto il nome più corto sta dentro l'altro (es. «Centauro» e «Centauro (analcolico)»): quasi certo
-    if (comuni === Math.min(A.length, B.length)) return Math.max(0.65, comuni / Math.max(A.length, B.length));
+    // il nome più corto sta tutto dentro l'altro, e ne è almeno metà (es. «Centauro» e «Centauro (analcolico)»): quasi certo.
+    // Una parola sola dentro un nome lungo no («Burrito» non è «Tequila (Burrito Fiestero)», «Amari» non è «Amari (Montenegro)»)
+    if (comuni === Math.min(A.length, B.length) && comuni / Math.max(A.length, B.length) >= 0.5) return Math.max(0.65, comuni / Math.max(A.length, B.length));
     return comuni / Math.max(A.length, B.length);
   }
   // che tipo di ricetta è una categoria della cassa (dal nome, o dai prodotti che contiene se il nome manca)
@@ -2777,7 +2866,7 @@
       <div class="due"><label>Dal<input type="date" data-cc-data="dal" value="${esc(ui.ccDal || '')}"></label><label>Al<input type="date" data-cc-data="al" value="${esc(ui.ccAl || '')}"></label></div>
       <label class="btn">Scegli il file delle vendite<input type="file" accept=".xlsx" data-carica="cassa-vendite" hidden></label></div>`;
     if (Vd) {
-      const coll = Vd.filter(v => v.scelta && v.scelta !== '__salta'), non = Vd.filter(v => !v.scelta), prop = Vd.filter(v => v.proposta && v.scelta);
+      const coll = Vd.filter(v => v.scelta && v.scelta !== '__salta'), non = Vd.filter(v => !v.scelta || v.scelta === '__nuova'), prop = Vd.filter(v => v.proposta && v.scelta);
       const pezzi = coll.reduce((s, v) => s + v.q, 0), tot = Vd.reduce((s, v) => s + v.q, 0), inc = Vd.reduce((s, v) => s + v.incasso, 0);
       const nome = ui.ccDal && ui.ccAl ? nomeDaDate(ui.ccDal, ui.ccAl) : '';
       vendite += `<div class="card evidenza"><h3>Anteprima delle vendite${ui.ccFileVendite ? ' · ' + esc(ui.ccFileVendite) : ''}</h3>
@@ -2786,9 +2875,9 @@
         ${nome ? `<p>Periodo: <b>${esc(nome)}</b>${S.periodiVendita.includes(nome) ? ' (esiste già: sostituisco i numeri)' : ''}</p>` : '<p class="msg giallo">Scegli le date «Dal» e «Al» qui sopra: la data grigia che vedi è solo un suggerimento, il campo è ancora vuoto.</p>'}
         <div class="bottoni"><button class="btn primario" data-az="cc-vendite-ok">Salva le vendite</button><button class="btn" data-az="cc-vendite-annulla">Annulla</button></div></div>
         ${prop.length ? `<div class="card"><h3>Collegate per nome simile: controlla (${prop.length})</h3><p class="tenue piccolo">Queste voci della cassa non erano mai state collegate: ho scelto la ricetta col nome più simile. Se è sbagliata cambiala; salvando me le ricordo per le prossime volte.</p>
-          ${Vd.map((v, i) => v.proposta && v.scelta ? `<div class="riga-ed cc-riga"><span>${esc(v.sku)}<small>${qta(v.q)} pezzi · ${euro(v.incasso, 0)}</small></span><select data-cc-vv="${i}"><option value="">Lascia fuori</option>${opzioniRicette(v.scelta, '')}</select></div>` : '').join('')}</div>` : ''}
+          ${Vd.map((v, i) => v.proposta && v.scelta ? `<div class="riga-ed cc-riga"><span>${esc(v.sku)}<small>${qta(v.q)} pezzi · ${euro(v.incasso, 0)}</small></span><select data-cc-vv="${i}"><option value="">Lascia fuori</option><option value="__nuova">＋ Ricetta nuova con questo nome</option>${opzioniRicette(v.scelta, '')}</select></div>` : '').join('')}</div>` : ''}
         ${non.length ? `<div class="card"><h3>Voci senza ricetta (${non.length})</h3><p class="tenue piccolo">Se una di queste è una ricetta con un altro nome, collegala: me lo ricordo per le prossime volte. Le altre (coperto, consegne…) restano fuori.</p>
-          ${Vd.map((v, i) => v.scelta ? '' : `<div class="riga-ed cc-riga"><span>${esc(v.sku)}<small>${qta(v.q)} pezzi · ${euro(v.incasso, 0)}</small></span><select data-cc-vv="${i}"><option value="">Lascia fuori</option>${opzioniRicette('', '')}</select></div>`).join('')}</div>` : ''}`;
+          ${Vd.map((v, i) => v.scelta && v.scelta !== '__nuova' ? '' : `<div class="riga-ed cc-riga"><span>${esc(v.sku)}<small>${qta(v.q)} pezzi · ${euro(v.incasso, 0)}</small></span><select data-cc-vv="${i}"><option value="">Lascia fuori</option><option value="__nuova" ${v.scelta === '__nuova' ? 'selected' : ''}>＋ Ricetta nuova con questo nome</option>${opzioniRicette('', '')}</select></div>`).join('')}</div>` : ''}`;
     }
     const tipoL = ui.lsTipo || 'semilavorato';
     let lista = `<div class="card form"><h3>3. Ricette da una lista scritta</h3>
@@ -2858,6 +2947,18 @@
     ui.ccListino = null; M.svuota(); salva(); ridisegnaMantenendo(); window.scrollTo(0, 0);
     avviso(`Fatto: ${nuove} ricette nuove, ${agg} aggiornate${spostate ? `, ${spostate} spostate nella categoria della cassa` : ''}${gruppiNuovi ? `, ${gruppiNuovi} gruppi nuovi` : ''}${tolti ? `, ${tolti} gruppi vecchi vuoti tolti` : ''}.`);
   };
+  // voce della cassa senza ricetta: la creo con il nome della cassa, nel gruppo della ricetta più simile (poi la sposti se serve)
+  function ricettaDaVoceCassa(v) {
+    const gia = ricettaDiSku(v.sku); if (gia) return gia;
+    const k = v.sku.lastIndexOf(' - '), base = k > 0 ? v.sku.slice(0, k) : v.sku, var_ = k > 0 ? v.sku.slice(k + 3) : '';
+    const bello = (t) => t.toLowerCase().replace(/\s*\+\s*/g, ' + ').replace(/\s+/g, ' ').trim().replace(/^./, c => c.toUpperCase());
+    const nome = bello(base) + (var_ && !/^base$/i.test(var_) ? ' (' + var_.toLowerCase() + ')' : '');
+    let tipo = 'altro', punti = 0;
+    const parole = normCassa(base).split(' ').filter(x => x.length > 2);
+    S.ricette.forEach(x => { if (x.tipo === 'semilavorato') return; const B = normCassa(x.nome).split(' '); const sc = parole.filter(w => B.includes(w)).length + (/\bpata\b/.test(normCassa(v.sku)) === /\bpata\b/.test(normCassa(x.nomeCassa || x.nome)) ? 0.5 : 0); if (sc > punti) { punti = sc; tipo = x.tipo; } });
+    const r = { id: M.uid('r'), nome, tipo, nomeCassa: v.sku, prezzo: v.q && v.incasso ? Math.round(v.incasso / v.q * 2) / 2 : null, righe: [], asporto: [], vendite: {}, costiExtra: [], note: 'Ricetta da completare: creata dalla vendita della cassa «' + v.sku + '». Metti gli ingredienti e controlla gruppo e prezzo.' };
+    S.ricette.push(r); return r;
+  }
   AZ['cc-vendite-ok'] = () => {
     const Vd = ui.ccVendite;
     if (!ui.ccDal || !ui.ccAl) { alert('Prima scegli le date «Dal» e «Al» del periodo.'); return; }
@@ -2877,6 +2978,7 @@
     let n = 0;
     Vd.forEach(v => {
       if (!v.scelta || v.scelta === '__salta' || !v.q) return;
+      if (v.scelta === '__nuova') v.scelta = ricettaDaVoceCassa(v).id;
       const r = M.ricetta(v.scelta); if (!r) return;
       r.vendite = r.vendite || {}; r.vendite[nome] = (r.vendite[nome] || 0) + v.q; n++;
       // collegamento fatto a mano: me lo ricordo
@@ -3988,7 +4090,7 @@
     if (d.ccV != null) { const [gi, vi] = d.ccV.split(',').map(Number); ui.ccAperto = gi; ui.ccListino.gruppi[gi].voci[vi].scelta = el.value; ridisegnaMantenendo(); return; }
     if (d.lsTipo) { ui.lsTipo = el.value; return; }
     if (d.ls != null) { const [i, j] = d.ls.split(',').map(Number); ui.lsAnte[i].ingr[j].rif = el.value; return; }
-    if (d.ccVv != null) { ui.ccVendite[+d.ccVv].scelta = el.value; if (!el.value) ui.ccVendite[+d.ccVv].proposta = false; ridisegnaMantenendo(); return; }
+    if (d.ccVv != null) { ui.ccVendite[+d.ccVv].scelta = el.value; if (!el.value || el.value === '__nuova') ui.ccVendite[+d.ccVv].proposta = false; ridisegnaMantenendo(); return; }
     if (d.ccData) { ui[d.ccData === 'dal' ? 'ccDal' : 'ccAl'] = el.value; ridisegnaMantenendo(); return; }
     if (d.carica === 'copia') {
       const fr = new FileReader(); fr.onload = () => { try { const x = JSON.parse(fr.result); if (!x.prodotti || !x.ricette) throw 0; if (!confirm('Sostituisco tutti i dati con questa copia?')) return; prepara(x); salva(); disegna(); avviso('Copia caricata.'); } catch (er) { alert('Il file non è una copia valida.'); } }; fr.readAsText(el.files[0]); el.value = ''; return;
@@ -4046,7 +4148,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v113';
+  const VERSIONE_APP = 'repub-v114';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;

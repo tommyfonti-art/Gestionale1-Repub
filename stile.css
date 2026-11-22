@@ -469,3 +469,6 @@ select.chip-tendina.chip, select.chip-tendina.chip.on { background-repeat: no-re
 .salute-barra b.verde { background: #2e8b57; } .salute-barra b.giallo { background: #d9a21b; } .salute-barra b.rosso { background: #c0392b; }
 .salute-barra i { position: absolute; top: 0; bottom: 0; width: 2px; background: rgba(0,0,0,.35); }
 .incasso-man { display: block; margin-top: 12px; }
+/* allergeni nella modifica della ricetta: vanno a capo, quelli dagli ingredienti non si toccano */
+.chips.a-capo { flex-wrap: wrap; overflow: visible; }
+.chip.bloccato { opacity: .75; cursor: default; }

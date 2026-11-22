@@ -174,6 +174,8 @@
       if (rg.rif.startsWith('p:')) (o.allergeni || []).forEach(a => set.add(a));
       else M.allergeniRicetta(o, pila.concat(r.id)).forEach(a => set.add(a));
     });
+    // allergeni segnati a mano sulla ricetta (es. olio di frittura condiviso, tracce)
+    (r.allergeni || []).forEach(a => set.add(a));
     return M.ALLERGENI.filter(a => set.has(a));
   };
   // Ricette che usano un prodotto o una ricetta (anche indirettamente)
