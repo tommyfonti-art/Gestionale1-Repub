@@ -443,3 +443,9 @@ button.piu { border: 0; background: none; padding: 0 2px; font: inherit; font-si
 .riga .ch-cp { background: var(--sfondo, #f3f1ec); border-radius: 999px; padding: 3px 10px; font-size: 13px; color: var(--tenue); white-space: nowrap; line-height: 1.35; }
 .riga .ch-cp b { color: var(--testo); font-weight: 600; font-variant-numeric: tabular-nums; margin-left: 2px; }
 .riga .destra .badge { font-size: 14px; padding: 4px 11px; }
+/* «Preparazioni»: tasto staccato che si accende e si spegne, insieme a Tutte / Bar / Cucina */
+.filtri-ric { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.btn-prep { all: unset; cursor: pointer; background: #ebe6dc; border-radius: 12px; padding: 3px; }
+.btn-prep::after { content: 'Preparazioni'; display: block; padding: 8px 14px; border-radius: 9px; font-size: 14.5px; font-weight: 500; color: var(--testo); }
+.btn-prep { font-size: 0; }
+.btn-prep.on::after { content: '✓ Preparazioni'; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .12); color: var(--accento); font-weight: 600; }

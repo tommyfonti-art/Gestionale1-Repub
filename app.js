@@ -1419,15 +1419,27 @@
   // scelta del gruppo: un gruppo solo, oppure tutte le ricette (o tutte quelle del bar o della cucina)
   const SCELTE_REP = { '*tutto': 'Tutte', '*bar': 'Bar', '*cucina': 'Cucina' };
   const tipiScelti = (t) => t === '*tutto' ? Object.keys(M.TIPI).filter(k => k !== 'semilavorato') : t === '*bar' ? M.tipiDi('bar') : t === '*cucina' ? M.tipiDi('cucina') : [t];
+  // reparto di una preparazione: quello scelto a mano, se no da chi la usa (drink → bar, panini → cucina), se no dagli ingredienti; '' = tutti e due
+  function repPrep(r) {
+    if (r.reparto === 'bar' || r.reparto === 'cucina') return r.reparto;
+    const usi = new Set(M.usatoIn('r:' + r.id).tutte.filter(x => x.tipo !== 'semilavorato').map(x => M.REPARTO_TIPO[x.tipo]).filter(Boolean));
+    if (usi.size === 1) return [...usi][0]; if (usi.size > 1) return '';
+    const conta = { bar: 0, cucina: 0 };
+    (r.righe || []).forEach(rg => { if (!rg.rif.startsWith('p:')) return; const p = M.prodotto(rg.rif.slice(2)); const x = p ? String(M.reparto(p)).toLowerCase() : ''; if (conta[x] != null) conta[x]++; });
+    return conta.bar > conta.cucina ? 'bar' : conta.cucina > conta.bar ? 'cucina' : '';
+  }
+  const prepNelReparto = (r, rep) => { if (!rep || rep === '*tutto') return true; const x = repPrep(r); return !x || x === rep.slice(1); };
   const nomeScelta = (t) => t === '*tutto' ? 'ricette' : t === '*bar' ? 'ricette del bar' : t === '*cucina' ? 'ricette della cucina' : (M.TIPI[t] || 'ricette').toLowerCase();
   const daCompletareR = (r) => { if (!(r.righe || []).length || /^Ricetta da completare/.test(r.note || '')) return true; const c = M.costoRicetta(r); return !!c.mancanti.length || !(c.totale > 0); };
   function chipsGruppi(az, conDaCompletare) {
     const t = ui.tipoRicette, rep = ui.repRicette || (SCELTE_REP[t] ? t : '*tutto');
     const gruppi = Object.keys(M.TIPI).filter(k => k !== 'semilavorato' && (rep === '*tutto' || M.REPARTO_TIPO[k] === rep.slice(1)));
     const nDc = conDaCompletare ? S.ricette.filter(r => tipiScelti(t).includes(r.tipo) && daCompletareR(r)).length : 0;
-    const segm = [['*tutto', 'Tutte'], ['*bar', 'Bar'], ['*cucina', 'Cucina'], ['semilavorato', 'Preparazioni']];
+    const staccato = az === 'tipo-ricette';
+    const segm = [['*tutto', 'Tutte'], ['*bar', 'Bar'], ['*cucina', 'Cucina']].concat(staccato ? [] : [['semilavorato', 'Preparazioni']]);
     return `<div class="filtri-ric">
-      <div class="segmentato">${segm.map(([k, v]) => `<button class="${t === k || (rep === k && !SCELTE_REP[t] && t !== 'semilavorato') ? 'on' : ''}" data-az="${az}" data-v="${k}">${v}</button>`).join('')}</div>
+      <div class="segmentato">${segm.map(([k, v]) => `<button class="${t === k || (rep === k && !SCELTE_REP[t] && (t !== 'semilavorato' || staccato)) ? 'on' : ''}" data-az="${az}" data-v="${k}">${v}</button>`).join('')}</div>
+      ${staccato ? `<button class="btn-prep ${t === 'semilavorato' ? 'on' : ''}" data-az="ric-prep" aria-pressed="${t === 'semilavorato'}">Preparazioni</button>` : ''}
     </div>
     ${t !== 'semilavorato' ? `<div class="striscia-gruppi">${conDaCompletare ? `<button class="chip piccola giallo ${ui.ricDaComp ? 'on' : ''}" data-az="ric-dacomp">${ui.ricDaComp ? '✓ ' : ''}Da completare ${nDc}</button><span class="separa"></span>` : ''}${SCELTE_REP[t] ? `<button class="chip piccola on" data-az="${az}" data-v="${rep}">Tutti</button>` : `<button class="chip piccola" data-az="${az}" data-v="${rep}">Tutti</button>`}${gruppi.map(k => { const n = S.ricette.filter(r => r.tipo === k).length; return `<button class="chip piccola ${t === k ? 'on' : ''} ${n ? '' : 'vuoto'}" data-az="${az}" data-v="${k}">${esc(M.TIPI[k])} <span class="${t === k ? '' : 'tenue'}">${n}</span></button>`; }).join('')}</div>` : ''}`;
   }
@@ -1442,7 +1454,7 @@
   function listaRicette() {
     const f = ui.filtroRicette.toLowerCase();
     const scelti = tipiScelti(ui.tipoRicette), conGruppo = scelti.length > 1;
-    const l = S.ricette.filter(r => scelti.includes(r.tipo) && (!f || r.nome.toLowerCase().includes(f)) && (!ui.ricDaComp || daCompletareR(r))).sort((a, b) => a.nome.localeCompare(b.nome));
+    const l = S.ricette.filter(r => scelti.includes(r.tipo) && (r.tipo !== 'semilavorato' || prepNelReparto(r, ui.repRicette)) && (!f || r.nome.toLowerCase().includes(f)) && (!ui.ricDaComp || daCompletareR(r))).sort((a, b) => a.nome.localeCompare(b.nome));
     if (!l.length) { ui.scorriR = []; return `<p class="tenue centro">${ui.ricDaComp ? 'Nessuna ricetta da completare qui. Ottimo!' : 'Nessuna ricetta.'}</p>`; }
     // ordinamento come nei programmi per la ristorazione: popolarità (pezzi venduti), guadagno a pezzo, guadagno totale, costo in percentuale
     const ord = ordineRic();
@@ -1617,7 +1629,8 @@
         <label>Nome<input data-b="nome" value="${esc(b.nome)}"></label>
         <div class="due"><label>Tipo<select data-b="tipo" data-ridisegna="1">${Object.entries(M.TIPI_SINGOLARE).map(([k, v]) => `<option value="${k}" ${b.tipo === k ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></label>
         ${semi ? `<label>Quanto ne viene<input type="text" inputmode="decimal" autocomplete="off" data-b="resa" value="${esc(b.resa)}"></label>` : `<label>Prezzo di vendita<input type="text" inputmode="decimal" autocomplete="off" data-b="prezzo" value="${esc(b.prezzo)}"></label>`}</div>
-        ${semi ? `<label>Unità della preparazione<select data-b="unita">${['ml', 'g', 'pz'].map(u => `<option ${b.unita === u ? 'selected' : ''}>${u}</option>`).join('')}</select></label>` : ''}
+        ${semi ? `<div class="due"><label>Unità della preparazione<select data-b="unita">${['ml', 'g', 'pz'].map(u => `<option ${b.unita === u ? 'selected' : ''}>${u}</option>`).join('')}</select></label>
+          <label>Reparto<select data-b="reparto"><option value="" ${!b.reparto ? 'selected' : ''}>Da solo${(() => { const x = repPrep(Object.assign({}, b, { reparto: '' })); return x ? ' (' + (x === 'bar' ? 'bar' : 'cucina') + ')' : ' (tutti e due)'; })()}</option><option value="bar" ${b.reparto === 'bar' ? 'selected' : ''}>Bar</option><option value="cucina" ${b.reparto === 'cucina' ? 'selected' : ''}>Cucina</option></select></label></div>` : ''}
       </div>
       <div class="card form"><h3>Ingredienti</h3>
         ${b.tipo !== 'semilavorato' && b.media ? `<label class="spunta"><input type="checkbox" data-media="1" ${b.media ? 'checked' : ''}> <span>Il cliente ne sceglie uno (amari, rum, grappe…): il costo è la <b>media</b> degli ingredienti, non la somma</span></label>` : ''}
@@ -2337,7 +2350,12 @@
   AZ['prod-filtro'] = (el) => { cambiaReparti(PF(), el); ui.categoria = 'Tutte'; ridisegnaMantenendo(); };
   AZ['prod-vista'] = (el) => { ui.prodVista = el.dataset.v; ridisegnaMantenendo(); };
   AZ['forn-prod'] = (el) => { ui.fornProd = ui.fornProd === el.dataset.v ? '' : el.dataset.v; ridisegnaMantenendo(); };
-  AZ['tipo-ricette'] = (el) => { ui.tipoRicette = el.dataset.v; if (SCELTE_REP[el.dataset.v]) ui.repRicette = el.dataset.v; ridisegnaMantenendo(); };
+  AZ['tipo-ricette'] = (el) => {
+    // con «Preparazioni» acceso, Tutte/Bar/Cucina scelgono il reparto delle preparazioni
+    if (ui.tipoRicette === 'semilavorato' && SCELTE_REP[el.dataset.v]) { ui.repRicette = el.dataset.v; ridisegnaMantenendo(); return; }
+    ui.tipoRicette = el.dataset.v; if (SCELTE_REP[el.dataset.v]) ui.repRicette = el.dataset.v; ridisegnaMantenendo();
+  };
+  AZ['ric-prep'] = () => { ui.tipoRicette = ui.tipoRicette === 'semilavorato' ? (ui.repRicette || '*tutto') : 'semilavorato'; ridisegnaMantenendo(); };
   AZ.allergene = (el) => { const a = el.dataset.v, b = ui.bozza; b.allergeni = b.allergeni || []; b.allergeni = b.allergeni.includes(a) ? b.allergeni.filter(x => x !== a) : b.allergeni.concat(a); ridisegnaMantenendo(); };
   AZ['vd-attiva'] = (el) => { ui.bozza.venditaDiretta = el.checked ? { nomePorzione: ui.bozza.unita === 'ml' ? 'calice' : 'porzione', porzione: ui.bozza.unita === 'ml' ? 150 : 1, prezzoPorzione: null, prezzoIntero: null } : null; ridisegnaMantenendo(); };
   AZ.scorri = (el) => {
@@ -3843,7 +3861,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v107';
+  const VERSIONE_APP = 'repub-v108';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
