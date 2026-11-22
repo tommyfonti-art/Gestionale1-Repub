@@ -3471,30 +3471,65 @@
   const CAT_SPESA = {
     merce: ['Merce: bar e cucina', 'var(--verde)'],
     materiali: ['Non food e materiali', '#8a6d3b'],
-    attrezzatura: ['Attrezzatura e arredo', '#6b5b95'],
-    utenze: ['Luce, gas, acqua, telefono', '#c0392b'],
+    affitto: ['Affitto', '#4a235a'],
+    personale: ['Personale', '#1a5276'],
+    luce: ['Luce e gas', '#c0392b'],
+    acqua: ['Acqua', '#2e86c1'],
+    telefono: ['Telefono e internet', '#7d3c98'],
+    utenze: ['Altre bollette', '#cd6155'],
+    rifiuti: ['Immondizia e rifiuti', '#6e2c00'],
+    siae: ['SIAE e musica', '#d35400'],
+    abbonamenti: ['Abbonamenti, programmi e noleggi', '#117864'],
     consulenze: ['Commercialista e consulenze', '#2c3e8f'],
-    manutenzioni: ['Manutenzioni e servizi', '#16808a'],
-    pubblicita: ['Pubblicità e stampa', '#b9770e'],
+    manutenzioni: ['Manutenzioni e riparazioni', '#16808a'],
+    attrezzatura: ['Attrezzatura e arredo', '#6b5b95'],
+    pubblicita: ['Pubblicità e marketing', '#b9770e'],
+    assicurazioni: ['Assicurazioni', '#5d6d7e'],
+    tasse: ['Tasse e imposte', '#922b21'],
     banca: ['Banca e pagamenti', '#566573'],
     eventi: ['Eventi e spettacoli', '#a04000'],
-    affitto: ['Affitto e locali', '#4a235a'],
     altro: ['Altro', '#7f8c8d']
   };
-  // il tipo di spesa di un fornitore: quello scelto a mano, altrimenti lo indovino dal nome
+  // dalle righe delle fatture di un fornitore di servizi: cosa ci paghiamo (affitto, gas, acqua, buoni pasto…)
+  const RIGHE_SPESA = [
+    ['affitto', /affitto|locazion|canone (mensile )?(del )?(locale|azienda)/], ['personale', /buoni pasto|ordine buoni|buono pasto|\bbpe\b/], ['siae', /\bsiae\b|diritto d.?autore|\bscf\b/],
+    ['rifiuti', /rifiut|\btari\b|igiene ambientale|raccolta differenziata|smaltimento/], ['acqua', /servizio acqua|\bacqua\b.*(fornitura|servizio)|idric|fognatur|depurazion/],
+    ['luce', /energia|\bkwh\b|gas naturale|\bsmc\b|oneri generali di sistema|quota potenza/], ['telefono', /telefon|internet|fibra|adsl|\bsim\b|traffico/],
+    ['assicurazioni', /assicura|polizza|premio di/], ['consulenze', /notai|onorari|consulenza del lavoro|elaborazione (paghe|cedolini)|contabilit|commercialist/],
+    ['pubblicita', /marketing|promozione|pubblicit|sponsor|grafic|volantin|stampa/], ['abbonamenti', /abbonament|canone|licenza|noleggio|whatsapp|software|registratore|piattaforma|\bsky\b/],
+    ['manutenzioni', /riparazion|intervento|assistenza tecnica|manutenz|bonifica|pulizia|disinfest|estintor/]
+  ];
+  const cacheCatSpesa = {};
+  // il tipo di spesa di un fornitore: quello scelto a mano, altrimenti lo indovino dalle righe delle sue fatture e dal nome
   function categoriaSpesa(f) {
     if (!f) return 'altro';
     if (f.catSpesa) return f.catSpesa;
+    if (cacheCatSpesa[f.id]) return cacheCatSpesa[f.id];
     const n = normCassa(f.nome);
-    if (/\b(hera|enel|acea|engie|eni|enimoov|edison|iren|a2a|fastweb|tim|telecom|vodafone|wind|iliad|sky|acque|acqua|gas|energia|luce|aruba|estra|sorgenia|illumia)\b/.test(n)) return 'utenze';
-    if (/\b(studio|consulenz|commercialist|notai|avvocat|paghe|lavoro|sicura|caf)\b/.test(n)) return 'consulenze';
-    if (/\b(nexi|banca|bancario|sumup|satispay|paypal|pos|credit)\b/.test(n)) return 'banca';
-    if (/\b(grafic|flyeralarm|stampa|tipograf|pubblicit|xmenu|menu)\b/.test(n)) return 'pubblicita';
-    if (/\b(siae|associazione|asd|spettacol|musica|eventi|servicefest)\b/.test(n)) return 'eventi';
-    if (/\b(service|servizi|assistenza|termotecnic|ferramenta|manutenz|pulizi|ecologic|rifiuti|estintor|antincendio|idraulic|elettric)\b/.test(n)) return 'manutenzioni';
-    if (/\b(immobiliar|affitt|locazion)\b/.test(n)) return 'affitto';
-    if (/\b(amazon|ikea|iper|leroy|brico|mediaworld|unieuro)\b/.test(n)) return 'attrezzatura';
-    return f.servizi ? 'altro' : 'merce';
+    let c = /\b(siae|scf)\b|\bs i a e\b/.test(n) ? 'siae' : /\b(sky|dazn)\b/.test(n) ? 'abbonamenti' : null;
+    if (!c && f.servizi) {
+      const conta = {};
+      S.fatture.filter(x => x.fornitoreId === f.id).forEach(x => (x.righe || []).forEach(rg => { const t = normCassa(rg.descrizione); const k = (RIGHE_SPESA.find(([, re]) => re.test(t)) || [])[0]; if (k) conta[k] = (conta[k] || 0) + 1; }));
+      const top = Object.entries(conta).sort((a, b) => b[1] - a[1])[0]; if (top) c = top[0];
+    }
+    if (!c) {
+      if (/\b(siae|scf)\b/.test(n)) c = 'siae';
+      else if (/\b(hera|acque|acqua|acquedott)\b/.test(n)) c = 'acqua';
+      else if (/\b(enel|acea|engie|eni|enimoov|edison|iren|a2a|energia|luce|gas|estra|sorgenia|illumia|aeg)\b/.test(n)) c = 'luce';
+      else if (/\b(fastweb|tim|telecom|vodafone|wind|iliad|aruba)\b/.test(n)) c = 'telefono';
+      else if (/\b(sky|dazn|plateform|cassa in cloud|teamsystem)\b/.test(n)) c = 'abbonamenti';
+      else if (/\b(studio|consulenz|commercialist|notai|avvocat|paghe|lavoro|caf)\b/.test(n)) c = 'consulenze';
+      else if (/\b(assicura|generali|allianz|unipol|cattolica|reale mutua)\b/.test(n)) c = 'assicurazioni';
+      else if (/\b(nexi|banca|bancario|sumup|satispay|paypal|pos|credit)\b/.test(n)) c = 'banca';
+      else if (/\b(grafic|flyeralarm|stampa|tipograf|pubblicit|xmenu|menu|marketing)\b/.test(n)) c = 'pubblicita';
+      else if (/\b(associazione|asd|spettacol|musica|eventi|servicefest)\b/.test(n)) c = 'eventi';
+      else if (/\b(ecologic|rifiuti|ambiente)\b/.test(n)) c = 'rifiuti';
+      else if (/\b(service|servizi|assistenza|termotecnic|ferramenta|manutenz|pulizi|estintor|antincendio|idraulic|elettric)\b/.test(n)) c = 'manutenzioni';
+      else if (/\b(immobiliar|affitt|locazion)\b/.test(n)) c = 'affitto';
+      else if (/\b(amazon|ikea|iper|leroy|brico|mediaworld|unieuro)\b/.test(n)) c = 'attrezzatura';
+      else c = f.servizi ? 'altro' : 'merce';
+    }
+    cacheCatSpesa[f.id] = c; return c;
   }
   // quanto pesa ogni fattura su ogni tipo di spesa (senza IVA; le note di credito tolgono)
   function speseFattura(f) {
@@ -3517,32 +3552,76 @@
     });
     return { per, perForn, perMese, totale: Object.values(per).reduce((s, v) => s + v, 0) };
   }
+  // spese fisse che non arrivano in fattura (personale, TARI, assicurazione…): le scrive Tommi, al mese o all'anno
+  const fissiDi = () => (S.costiFissi = S.costiFissi || []);
+  const mesiTra = (dal, al) => { if (!dal || !al) return 0; const a = new Date(dal + 'T00:00:00'), b = new Date(al + 'T00:00:00'); return Math.max(0, (b - a) / 86400000 + 1) / 30.4375; };
+  const fissiAlMese = () => fissiDi().reduce((t, x) => t + (Number(x.euro) || 0) / (x.ogni === 'anno' ? 12 : 1), 0);
+  // margine medio a pezzo e pezzi venduti al mese, dalle vendite caricate dalla cassa
+  function venditeMedie() {
+    const pers = senzaDoppi(S.periodiVendita.slice()); let pezzi = 0, marg = 0, pezziM = 0, incasso = 0, mesi = 0;
+    pers.forEach(pp => { const d = dateDiPeriodo(pp); if (d) mesi += mesiTra(d.dal, d.al); });
+    S.ricette.forEach(r => { if (r.tipo === 'semilavorato') return; const i = M.indicatori(r);
+      pers.forEach(pp => { const q = Number((r.vendite || {})[pp]) || 0; if (!q) return; pezzi += q; incasso += q * (i.netto || 0); if (i.margine != null && i.molt != null) { marg += q * i.margine; pezziM += q; } }); });
+    return { mesi, pezziAlMese: mesi ? pezzi / mesi : null, incassoAlMese: mesi ? incasso / mesi : null, margineMedio: pezziM ? marg / pezziM : null };
+  }
   const coperturaFatture = () => { const d = S.fatture.map(f => f.data).filter(Boolean).sort(); return d.length ? { dal: d[0], al: d[d.length - 1] } : null; };
   PAGINE.costi = function () {
     const anni = Array.from(new Set(S.fatture.map(f => (f.data || '').slice(0, 4)).filter(Boolean))).sort();
     const sel = ui.costiSel || { tipo: 'anno', anno: anni[anni.length - 1] };
+    const mesiFatt = Array.from(new Set(S.fatture.map(f => (f.data || '').slice(0, 7)).filter(m => m.length === 7))).sort().reverse();
+    const nomeMeseLungo = (m) => ['Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno', 'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'][+m.slice(5) - 1] + ' ' + m.slice(0, 4);
     let dal = null, al = null, etich = 'Tutto';
     if (sel.tipo === 'anno') { dal = sel.anno + '-01-01'; al = sel.anno + '-12-31'; etich = sel.anno; }
-    if (sel.tipo === 'mese') { dal = sel.mese + '-01'; al = sel.mese + '-31'; etich = sel.mese; }
+    if (sel.tipo === 'mese') { dal = sel.mese + '-01'; al = sel.mese + '-31'; etich = nomeMeseLungo(sel.mese); }
     if (sel.tipo === 'date') { dal = sel.dal || null; al = sel.al || null; etich = 'dal ' + (dal ? dataIt(dal) : '…') + ' al ' + (al ? dataIt(al) : '…'); }
     const X = speseTra(dal, al), cop = coperturaFatture();
+    // mesi del periodo scelto (l'anno in corso conta fino all'ultima fattura)
+    const finoA = al && cop && al > cop.al ? cop.al : al, daA = dal || (cop && cop.dal), mesiP = sel.tipo === 'mese' ? 1 : mesiTra(daA, finoA || (cop && cop.al));
+    const fissi = fissiDi().filter(x => Number(x.euro) > 0).map(x => ({ nome: x.nome || 'Spesa fissa', v: (Number(x.euro) || 0) / (x.ogni === 'anno' ? 12 : 1) * mesiP, cat: x.cat || 'altro' }));
+    fissi.forEach(x => { X.per[x.cat] = (X.per[x.cat] || 0) + x.v; X.perForn[x.cat + '|fisso:' + x.nome] = (X.perForn[x.cat + '|fisso:' + x.nome] || 0) + x.v; X.totale += x.v; });
     const cats = Object.keys(CAT_SPESA).filter(c => X.per[c]).sort((a, b) => X.per[b] - X.per[a]);
     const max = Math.max(1, ...cats.map(c => X.per[c]));
     const mesi = Object.keys(X.perMese).sort(), maxM = Math.max(1, ...mesi.map(m => X.perMese[m]));
     const nomeMese = (m) => { const [a, mm] = m.split('-'); return ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'][+mm - 1] + ' ' + a; };
     return { titolo: 'Costi del locale', indietro: '#/altro', html: `
-      <div class="chips"><button class="chip ${sel.tipo === 'tutto' ? 'on' : ''}" data-az="costi-sel" data-tipo="tutto">Tutto</button>${anni.map(a => `<button class="chip ${sel.tipo === 'anno' && sel.anno === a ? 'on' : ''}" data-az="costi-sel" data-tipo="anno" data-v="${a}">${a}</button>`).join('')}<button class="chip ${sel.tipo === 'date' ? 'on' : ''}" data-az="costi-sel" data-tipo="date">📅 Scegli le date</button></div>
+      <div class="chips"><button class="chip ${sel.tipo === 'tutto' ? 'on' : ''}" data-az="costi-sel" data-tipo="tutto">Tutto</button>${anni.map(a => `<button class="chip ${sel.tipo === 'anno' && sel.anno === a ? 'on' : ''}" data-az="costi-sel" data-tipo="anno" data-v="${a}">${a}</button>`).join('')}<select class="chip chip-tendina ${sel.tipo === 'mese' ? 'on' : ''}" data-costi-mese data-no-cerca="1" aria-label="Un mese"><option value="">Un mese…</option>${mesiFatt.map(m => `<option value="${m}" ${sel.tipo === 'mese' && sel.mese === m ? 'selected' : ''}>${nomeMeseLungo(m)}</option>`).join('')}</select><button class="chip ${sel.tipo === 'date' ? 'on' : ''}" data-az="costi-sel" data-tipo="date">📅 Scegli le date</button></div>
       ${sel.tipo === 'date' ? `<div class="card form"><div class="due"><label>Dal<input type="date" data-costi-data="dal" value="${esc(sel.dal || '')}"></label><label>Al<input type="date" data-costi-data="al" value="${esc(sel.al || '')}"></label></div></div>` : ''}
       <div class="kpi-griglia">${kpi('Spese totali', euro(X.totale, 0), 'senza IVA, da tutte le fatture · ' + esc(etich))}${kpi('Merce', euro(X.per.merce || 0, 0), X.totale ? Math.round((X.per.merce || 0) / X.totale * 100) + '% del totale' : '')}${kpi('Tutto il resto', euro(X.totale - (X.per.merce || 0), 0), 'bollette, servizi, materiali…')}</div>
-      ${cop ? `<p class="tenue piccolo">Fatture caricate dal ${dataIt(cop.dal)} al ${dataIt(cop.al)}. Mancano stipendi, contributi, tasse e quello che si paga senza fattura elettronica: qui c'è solo quello che arriva in fattura.</p>` : ''}
+      ${cop ? `<p class="tenue piccolo">Fatture caricate dal ${dataIt(cop.dal)} al ${dataIt(cop.al)}. Qui sotto puoi scegliere un solo mese o le date che vuoi. Attenzione: alcune bollette arrivano ogni due mesi e alcune spese una volta l'anno, quindi un mese da solo può sembrare più caro o più leggero del vero; due o tre mesi insieme danno un conto più giusto. Quello che non arriva in fattura (personale, TARI…) scrivilo in «Spese fisse senza fattura».</p>` : ''}
       <div class="card larga"><h3>Per tipo di spesa</h3>
         ${cats.length ? cats.map(c => { const fs = Object.entries(X.perForn).filter(([k]) => k.startsWith(c + '|')).map(([k, v]) => { const id = k.slice(c.length + 1); const f = M.fornitore(id); return { id, nome: f ? f.nome : id, v }; }).sort((a, b) => b.v - a.v);
           return `<details class="costo-cat"><summary><span class="costo-nome"><i style="background:${CAT_SPESA[c][1]}"></i>${CAT_SPESA[c][0]}</span><span class="costo-barra"><b style="width:${Math.max(2, X.per[c] / max * 100)}%;background:${CAT_SPESA[c][1]}"></b></span><span class="costo-val">${euro(X.per[c], 0)}</span></summary>
-            ${fs.map(x => `<a class="riga piccola" href="#/fornitore/${esc(x.id)}"><span>${esc(x.nome)}</span><span>${euro(x.v, 0)}</span></a>`).join('')}</details>`; }).join('') : '<p class="tenue">Nessuna fattura in queste date.</p>'}
+            ${fs.map(x => x.id.startsWith('fisso:') ? `<div class="riga piccola"><span>${esc(x.id.slice(6))} <small class="tenue">scritta a mano</small></span><span>${euro(x.v, 0)}</span></div>` : `<a class="riga piccola" href="#/fornitore/${esc(x.id)}"><span>${esc(x.nome)}</span><span>${euro(x.v, 0)}</span></a>`).join('')}</details>`; }).join('') : '<p class="tenue">Nessuna fattura in queste date.</p>'}
         <p class="tenue piccolo">Tocca un tipo per vedere i fornitori. Se un fornitore è nel tipo sbagliato, aprilo e cambia «Tipo di spesa».</p></div>
-      ${mesi.length > 1 ? `<div class="card larga"><h3>Mese per mese</h3>${mesi.map(m => `<div class="costo-cat"><div class="costo-riga"><span class="costo-nome">${nomeMese(m)}</span><span class="costo-barra"><b style="width:${Math.max(2, X.perMese[m] / maxM * 100)}%"></b></span><span class="costo-val">${euro(X.perMese[m], 0)}</span></div></div>`).join('')}</div>` : ''}` };
+      ${schedaFissi()}
+      ${schedaPareggio(X, mesiP)}
+      ${mesi.length > 1 ? `<div class="card larga"><h3>Mese per mese <small class="tenue">· tocca un mese per vederlo da solo</small></h3>${mesi.map(m => `<div class="costo-cat"><div class="costo-riga cliccabile" data-az="costi-sel" data-tipo="mese" data-v="${m}" role="button" tabindex="0"><span class="costo-nome">${nomeMese(m)}</span><span class="costo-barra"><b style="width:${Math.max(2, X.perMese[m] / maxM * 100)}%"></b></span><span class="costo-val">${euro(X.perMese[m], 0)}</span></div></div>`).join('')}</div>` : ''}` };
   };
-  AZ['costi-sel'] = (el) => { const t = el.dataset.tipo, p = ui.costiSel || {}; ui.costiSel = t === 'anno' ? { tipo: t, anno: el.dataset.v } : t === 'date' ? { tipo: t, dal: p.dal || '', al: p.al || '' } : { tipo: t }; ridisegnaMantenendo(); };
+  function schedaFissi() {
+    const l = fissiDi(), opz = (sel) => Object.entries(CAT_SPESA).filter(([k]) => k !== 'merce' && k !== 'materiali').map(([k, v]) => `<option value="${k}" ${sel === k ? 'selected' : ''}>${v[0]}</option>`).join('');
+    const proposte = [['Personale (stipendi, contributi, TFR)', 'personale'], ['Immondizia (TARI)', 'rifiuti'], ['Assicurazione', 'assicurazioni'], ['Tasse e imposte', 'tasse']].filter(([n]) => !l.some(x => x.nome === n));
+    return `<div class="card larga form"><h3>Spese fisse senza fattura</h3>
+      <p class="tenue piccolo">Quello che paghi ma che non arriva in fattura: il costo totale del personale, la TARI, l'assicurazione… Scrivi il nome che vuoi e quanto, al mese o all'anno. Entra nei conti qui sopra e nel conto per andare in pari.</p>
+      ${l.map((x, i) => `<div class="fisso-riga"><input data-fisso="${i}" data-k="nome" value="${esc(x.nome)}" placeholder="es. Personale" aria-label="Nome"><input type="text" inputmode="decimal" autocomplete="off" data-fisso="${i}" data-k="euro" value="${esc(x.euro)}" placeholder="0" aria-label="Euro">
+        <select data-fisso="${i}" data-k="ogni" aria-label="Ogni quanto"><option value="mese" ${x.ogni !== 'anno' ? 'selected' : ''}>€ al mese</option><option value="anno" ${x.ogni === 'anno' ? 'selected' : ''}>€ all'anno</option></select>
+        <select data-fisso="${i}" data-k="cat" aria-label="Tipo di spesa">${opz(x.cat || 'altro')}</select><button class="x" data-az="fisso-togli" data-i="${i}" aria-label="Togli">✕</button></div>`).join('')}
+      <div class="bottoni">${proposte.map(([n, c]) => `<button class="btn piccolo" data-az="fisso-nuovo" data-nome="${esc(n)}" data-cat="${c}">＋ ${esc(n.replace(/ \(.*$/, ''))}</button>`).join('')}<button class="btn piccolo" data-az="fisso-nuovo" data-nome="" data-cat="altro">＋ Altra spesa</button></div>
+      ${l.length ? `<p class="kpi-riga">In tutto: <b>${euro(fissiAlMese(), 0)} al mese</b></p>` : ''}</div>`;
+  }
+  function schedaPareggio(X, mesiP) {
+    const V = venditeMedie();
+    const fissiMese = mesiP ? (X.totale - (X.per.merce || 0)) / mesiP : 0; // la merce è già nel costo dei drink; i materiali (detersivi, carta…) no
+    if (!fissiMese) return '';
+    const pezzi = V.margineMedio ? fissiMese / V.margineMedio : null;
+    const stato = pezzi && V.pezziAlMese ? V.pezziAlMese - pezzi : null;
+    return `<div class="card larga"><h3>Quanto vendere per andare in pari</h3>
+      <div class="kpi-griglia">${kpi('Spese del locale al mese', euro(fissiMese, 0), 'tutto tranne la merce (che è già nel costo dei drink), in media nel periodo scelto')}${kpi('Guadagno medio a pezzo', V.margineMedio != null ? euro(V.margineMedio) : '—', 'prezzo senza IVA meno merce, sulle ricette vendute')}${kpi('Pezzi da vendere al mese', pezzi ? qta(Math.round(pezzi)) : '—', 'per coprire le spese del locale')}${kpi('Pezzi venduti al mese', V.pezziAlMese ? qta(Math.round(V.pezziAlMese)) : '—', 'in media, dalle vendite della cassa', stato == null ? '' : stato >= 0 ? 'verde' : 'rosso')}</div>
+      ${stato != null ? `<p class="msg ${stato >= 0 ? 'verde' : 'rosso'}">${stato >= 0 ? `Sei sopra di circa <b>${qta(Math.round(stato))} pezzi al mese</b>: quelli sono il guadagno del locale (circa ${euro(stato * V.margineMedio, 0)} al mese, prima delle tasse sull'utile).` : `Mancano circa <b>${qta(Math.round(-stato))} pezzi al mese</b> per coprire le spese.`}</p>` : '<p class="tenue piccolo">Per il conto servono le vendite della cassa e le ricette con il costo.</p>'}
+      <p class="tenue piccolo">È una stima: usa il guadagno medio di quello che vendi. Più ricette complete hai e più spese hai scritto (personale compreso), più è giusta.</p></div>`;
+  }
+  AZ['fisso-nuovo'] = (el) => { fissiDi().push({ id: M.uid('cf'), nome: el.dataset.nome || '', euro: '', ogni: 'mese', cat: el.dataset.cat || 'altro' }); salva(); ridisegnaMantenendo(); };
+  AZ['fisso-togli'] = (el) => { fissiDi().splice(+el.dataset.i, 1); salva(); ridisegnaMantenendo(); };
+  AZ['costi-sel'] = (el) => { const t = el.dataset.tipo, p = ui.costiSel || {}; ui.costiSel = t === 'anno' ? { tipo: t, anno: el.dataset.v } : t === 'mese' ? { tipo: t, mese: el.dataset.v } : t === 'date' ? { tipo: t, dal: p.dal || '', al: p.al || '' } : { tipo: t }; ridisegnaMantenendo(); };
   AZ['ordine-ricette'] = (el) => { ui.ordineRicette = el.dataset.v; ridisegnaMantenendo(); };
   AZ['ric-per'] = (el) => { ui.ricPer = el.dataset.v; ridisegnaMantenendo(); };
   AZ['ric-dacomp'] = () => { ui.ricDaComp = !ui.ricDaComp; ridisegnaMantenendo(); };
@@ -3828,7 +3907,9 @@
     }
     if (d.panData) { const sel = ui.panSel || { tipo: 'date' }; sel[d.panData] = el.value; ui.panSel = Object.assign({ tipo: 'date' }, sel); ridisegnaMantenendo(); return; }
     if (d.ordRicette) { ui.ordineRicette = el.value; ridisegnaMantenendo(); return; }
-    if (d.catSpesa) { const f = M.fornitore(d.catSpesa); if (f) { f.catSpesa = el.value; salva(); avviso('Tipo di spesa cambiato.'); } return; }
+    if (d.catSpesa) { const f = M.fornitore(d.catSpesa); if (f) { f.catSpesa = el.value; delete cacheCatSpesa[f.id]; salva(); avviso('Tipo di spesa cambiato.'); } return; }
+    if (d.fisso != null) { const x = fissiDi()[+d.fisso]; if (!x) return; x[d.k] = d.k === 'euro' ? (numDa(el.value) || 0) : el.value.trim(); salva(); ridisegnaMantenendo(); return; }
+    if (d.costiMese != null) { ui.costiSel = el.value ? { tipo: 'mese', mese: el.value } : { tipo: 'tutto' }; ridisegnaMantenendo(); return; }
     if (d.costiData) { const sel = Object.assign({ tipo: 'date' }, ui.costiSel || {}); sel.tipo = 'date'; sel[d.costiData] = el.value; ui.costiSel = sel; ridisegnaMantenendo(); return; }
     if (d.fgnome) { const p = M.prodotto(d.fgnome), v = el.value.trim(); if (p && v && v !== p.nomeBreve) { p.nomeBreve = v; salva(); avviso('Nome cambiato.'); } return; }
     if (d.fgprezzo) {
@@ -3906,7 +3987,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v110';
+  const VERSIONE_APP = 'repub-v111';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;

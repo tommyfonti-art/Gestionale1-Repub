@@ -449,3 +449,14 @@ button.piu { border: 0; background: none; padding: 0 2px; font: inherit; font-si
 .btn-prep::after { content: 'Preparazioni'; display: block; padding: 8px 14px; border-radius: 9px; font-size: 14.5px; font-weight: 500; color: var(--testo); }
 .btn-prep { font-size: 0; }
 .btn-prep.on::after { content: '✓ Preparazioni'; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .12); color: var(--accento); font-weight: 600; }
+/* spese fisse senza fattura */
+.fisso-riga { display: grid; grid-template-columns: minmax(0, 1.6fr) 90px 120px minmax(0, 1.4fr) 36px; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--linea); }
+.fisso-riga input, .fisso-riga select { width: 100%; min-width: 0; margin: 0; }
+@media (max-width: 620px) {
+  .fisso-riga { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 36px; grid-template-areas: "nome nome x" "euro ogni ogni" "cat cat cat"; padding: 10px 0; }
+  .fisso-riga [data-k="nome"] { grid-area: nome; } .fisso-riga [data-k="euro"] { grid-area: euro; } .fisso-riga [data-k="ogni"] { grid-area: ogni; } .fisso-riga [data-k="cat"] { grid-area: cat; } .fisso-riga .x { grid-area: x; }
+}
+.fisso-riga input, .fisso-riga select { max-width: none; justify-self: stretch; }
+.costo-riga.cliccabile { cursor: pointer; border-radius: 8px; } .costo-riga.cliccabile:hover { background: var(--carta-2, rgba(0,0,0,.04)); }
+.chips > select.chip-tendina, .chips > .chip { flex: 0 0 auto; }
+select.chip-tendina.chip, select.chip-tendina.chip.on { background-repeat: no-repeat !important; background-position: right 12px center !important; background-size: 11px 7px !important; padding-right: 34px; }
