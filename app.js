@@ -168,6 +168,8 @@
     // una volta: un gin tonic per ogni gin (50 ml + 1 tonica Goldberg) nel gruppo «Gin tonic»
     if (!S.ginTonic1) { creaGinTonic(); S.ginTonic1 = true; M.svuota(); }
     // una volta: i prezzi del listino Zonzini che Tommi ha controllato (solo bar, solo prodotti senza fattura)
+    // una volta: soglie del moltiplicatore per gruppo, dalla ricerca (prezzo con IVA ÷ costo senza IVA)
+    if (!S.soglieRicerca1) { S.esitoSoglie = soglieDaRicerca(); S.soglieRicerca1 = true; }
     if (!S.listinoZonz1) { S.esitoListinoZonz = prezziListinoZonzini(); S.listinoZonz1 = true; M.svuota(); }
     // una volta: i prezzi del foglio di Tommi erano IVA compresa (pagati al banco); i costi si fanno senza IVA, come in fattura
     if (!S.ivaFoglioTolta) {
@@ -461,6 +463,23 @@
       messi.push(p.nomeBreve + ' ' + (pezzi > 1 ? euro(pr) + ' a pezzo' : euro(pr) + ' (' + qta(p.contenuto) + ' ml)'));
     });
     return { data: oggi, messi, saltati };
+  }
+
+  // [parole nel nome del gruppo, soglia]: la prima che combacia vince (l'ordine conta: «gin tonic» prima di «tonic», «vini bottiglia» prima di «vini»)
+  const SOGLIE_RICERCA = [
+    [/\bgin ?tonic/, 5], [/cocktail|analcolic|drink|mocktail|spritz/, 5.5], [/amar|liquor|vermouth|bitter/, 5], [/whisk|\brum\b|tequila|mezcal|distillat/, 4.5], [/grapp/, 5],
+    [/birr|fust|spina/, 5], [/vin.*bottigli|bottigli/, 3], [/vin.*calice|calice/, 4], [/\bvin/, 4], [/bevand|bibit|acqu/, 8], [/caff/, 9], [/tisan|\bthe\b|\bte\b/, 7],
+    [/burger|panin|piadin|toast|baby/, 3.7], [/fritt|spizzic|patat|stuzzic/, 5], [/insalat/, 3.7], [/dolc|dessert/, 4.4], [/sals/, 5.5], [/combinaz|\bmenu\b|combo/, 3.4]
+  ];
+  function soglieDaRicerca() {
+    const nn = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+    const fatte = [];
+    Object.keys(M.TIPI).filter(k => k !== 'semilavorato').forEach(k => {
+      const n = nn(M.TIPI[k]); if (/copert/.test(n)) return;
+      const x = SOGLIE_RICERCA.find(([re]) => re.test(n)); if (!x) return;
+      S.impostazioni.soglie[k] = x[1]; fatte.push(M.TIPI[k] + ' ×' + String(x[1]).replace('.', ','));
+    });
+    return fatte;
   }
 
   // ---------- Salvataggio online (Firebase) ----------
@@ -3861,7 +3880,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v108';
+  const VERSIONE_APP = 'repub-v109';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
