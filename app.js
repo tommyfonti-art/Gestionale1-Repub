@@ -167,6 +167,8 @@
     if (!S.riordino3) { togliGruppoPanini(); S.riordino3 = true; M.svuota(); }
     // una volta: un gin tonic per ogni gin (50 ml + 1 tonica Goldberg) nel gruppo «Gin tonic»
     if (!S.ginTonic1) { creaGinTonic(); S.ginTonic1 = true; M.svuota(); }
+    // una volta: i prezzi del listino Zonzini che Tommi ha controllato (solo bar, solo prodotti senza fattura)
+    if (!S.listinoZonz1) { S.esitoListinoZonz = prezziListinoZonzini(); S.listinoZonz1 = true; M.svuota(); }
     // una volta: i prezzi del foglio di Tommi erano IVA compresa (pagati al banco); i costi si fanno senza IVA, come in fattura
     if (!S.ivaFoglioTolta) {
       S.prodotti.forEach(p => (p.prezzi || []).forEach(e => { if (/^Foglio/.test(e.origine || '') && !e.ivaTolta) { e.prezzo = Math.round(e.prezzo / (1 + (p.iva != null ? p.iva : 22) / 100) * 10000) / 10000; e.ivaTolta = true; } }));
@@ -429,6 +431,36 @@
       if (M.ricetta(id)) return;
       S.ricette.push({ id, nome: 'Gin tonic ' + nome, tipo: gt, prezzo: null, righe: [{ rif: 'p:' + p.id, quantita: 50 }].concat(goldberg ? [{ rif: 'p:' + goldberg.id, quantita: 1 }] : []), asporto: [], vendite: {}, costiExtra: [], note: '' });
     });
+  }
+
+  // [nome del prodotto nell'app, riga del listino, prezzo del listino senza IVA]
+  const LISTINO_ZONZINI_1 = [["Amaro Formidabile", "FORMIDABILE Amaro cl.70", 19.64], ["Anima Nera", "MARZADRO Anima Nera cl.70", 13.21], ["Averna", "AVERNA cl.70", 10.23], ["Braulio", "BRAULIO Amaro cl.70", 11.4], ["Borghetti", "BORGHETTI Caffe` cl.70", 9.23], ["Frangelico", "FRANGELICO cl.70", 12.4], ["Irish Mist", "IRISH MIST cl.70", 17.01], ["Liquore Strega", "STREGA cl.70", 10.77], ["Stravecchio", "STRAVECCHIO cl.70", 9.77], ["Carlo Alberto", "CARLO ALBERTO RIS.Sup cl.70", 19.55], ["Campari", "BITTER Campari cl.100", 13.67], ["Select", "SELECT Bitter cl.100", 11.49], ["Carpano", "CARPANO Vermouth cl.100", 8.42], ["Fernet", "FERNET cl.100", 16.65], ["Jägermeister", "JAGERMAISTER cl.100", 14.03], ["Kahlúa", "KAHLUA cl.100", 13.58], ["Aurum", "AURUM cl.70", 15.57], ["Angostura", "ANGOSTURA Grande ml.200", 11.77], ["Prime Uve bianca", "MASCHIO Prime Uve BIANCA cl70", 20.36], ["J. Bally Bianco", "BALLY Rum bianco cl.70", 18.19], ["Herradura Reposado", "TEQUILA HERRADURA Repos. cl 70", 32.22], ["Buffalo Trace", "BUFFALO TRACE Kentucky cl.70", 18.01], ["Jack Daniel's", "JACK DANIEL'S cl 100", 20.63], ["Jameson", "JAMESON cl.100", 19.64], ["Nikka Days", "NIKKA DAYS Blended cl 70", 28.51], ["Rare Breed", "WILD TURKEY RARE BREED cl.70", 42.26], ["Talisker Skye", "TALISKER SKYE cl.70", 28.96], ["Tullamore", "TULLAMORE DEW cl.70", 13.21], ["Wild Turkey", "WILD TURKEY 81 Proof cl 100", 22.99], ["Wild Turkey Rye", "WILD TURKEY Rye cl 70", 23.8], ["Gin Mare", "MARE Gin cl.100", 28.42], ["Tanqueray 0%", "TANQUERAY Senza Alcool cl.70", 11.13], ["Ginger ale", "SCHWEPPES Ginger Ale cl.18x24", 17.56], ["Ginger beer Schweppes", "SCHWEPPES Ginger Beer cl.18x24", 17.65], ["Pastis", "PASTIS-51 Citron cl.70", 9.32], ["Suntory", "SUNTORY SHIRO Kaku cl 70", 23.89], ["Antica Formula", "CARPANO Antica Formula cl.100", 23.8], ["Punt e Mes", "PUNT E MES cl.100", 8.87], ["Cynar", "CYNAR cl.100", 12.76], ["Varnelli", "VARNELLI Amaro cl.100", 21.72], ["Appleton 12", "APPLETON Estate 12 Anni cl.70", 34.21], ["Doorly's XO", "DOORLY'S XO Rhum", 19.37], ["Gosling", "GOSLING Black Seal cl.100", 21.45], ["Myers's", "MYER'S Rum cl.100", 13.85], ["Wray & Nephew", "WRAY & NEPHEW WHITE CL 70", 29.05], ["Talisker 10", "TALISKER 10 Anni cl.70", 31.04], ["Wild Turkey 101", "WILD TURKEY 101 50,5ø cl.70", 22.44], ["Laphroaig 10", "LAPHROAIG 10 anni cl.70", 30.5], ["Oban 14", "OBAN 14 anni cl.70", 51.4], ["Nikka From the Barrel", "NIKKA From The Barrel cl 50", 30.5], ["Red Bull", "RED BULL Classica x 24", 23.71], ["Caol Ila 12", "CAOL ILA 11YO SR 24 cl 70", 73.03], ["Sambuca", "MOLINARI  cl.100", 15.57]];
+  function prezziListinoZonzini() {
+    const nn = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+    const forn = S.fornitori.find(f => /zonzini/i.test(f.nome)); if (!forn) return { messi: [], saltati: LISTINO_ZONZINI_1.map(x => x[0] + ': manca il fornitore Zonzini') };
+    const oggi = M.oggi(), messi = [], saltati = [];
+    LISTINO_ZONZINI_1.forEach(([nome, descr, prezzo]) => {
+      const l = S.prodotti.filter(p => !p.speciale && nn(p.nomeBreve) === nn(nome));
+      const p = l.find(x => !M.daFattura(x)) || l[0];
+      if (!p) { saltati.push(nome + ': non trovato'); return; }
+      if (M.daFattura(p)) { saltati.push(nome + ': ha già il prezzo da fattura'); return; }
+      const f = formatoListino(descr), pezzi = f.pezzi > 1 ? f.pezzi : 1;
+      let misura = f.misura && f.unita === 'ml' ? f.misura : 0;
+      if (pezzi === 1 && !misura && p.unita !== 'ml') misura = 700;
+      // bottiglia: la misura del prodotto diventa quella del listino (a pezzo → in ml, le ricette a pezzi passano in ml)
+      if (pezzi === 1 && misura) {
+        if (p.unita === 'pz' && (Number(p.contenuto) || 1) === 1) S.ricette.forEach(x => [].concat(x.righe || [], x.asporto || []).forEach(rg => { if (rg.rif === 'p:' + p.id) rg.quantita = Math.round((Number(rg.quantita) || 0) * misura * 100) / 100; }));
+        if (p.unita === 'pz' || p.unita === 'ml') { p.unita = 'ml'; p.contenuto = misura; p.confezione = 'bottiglia'; }
+      } else if (pezzi > 1 && p.unita === 'pz') { p.contenuto = 1; }
+      else if (pezzi > 1 && p.unita === 'ml' && misura) { p.contenuto = misura; }
+      const pr = Math.round(prezzo / pezzi * 10000) / 10000;
+      p.prezzi = (p.prezzi || []).filter(e => !/^Foglio/.test(e.origine || '') && e.origine !== 'Listino ' + forn.nome);
+      p.prezzi.push({ data: oggi, prezzo: pr, fornitoreId: forn.id, origine: 'Listino ' + forn.nome });
+      p.fornitoreId = forn.id; delete p.daCompletare;
+      if (!(p.articoli || []).some(a => a.fornitoreId === forn.id && normCassa(a.descrizione) === normCassa(descr))) (p.articoli = p.articoli || []).push({ fornitoreId: forn.id, descrizione: descr, codice: '', confezioniPerUnita: pezzi });
+      messi.push(p.nomeBreve + ' ' + (pezzi > 1 ? euro(pr) + ' a pezzo' : euro(pr) + ' (' + qta(p.contenuto) + ' ml)'));
+    });
+    return { data: oggi, messi, saltati };
   }
 
   // ---------- Salvataggio online (Firebase) ----------
@@ -3809,7 +3841,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v105';
+  const VERSIONE_APP = 'repub-v106';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
