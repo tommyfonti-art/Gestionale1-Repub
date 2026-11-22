@@ -3697,15 +3697,15 @@
   }
   // le soglie: quanto di solito pesa ogni spesa su quello che incassi (bar e pub in Italia)
   const SOGLIE_LOCALE = [
-    { k: 'merce', nome: 'Merce', ok: 30, max: 35, cosa: (X) => X.per.merce || 0,
+    { k: 'merce', cat: () => ['merce'], nome: 'Merce', ok: 30, max: 35, cosa: (X) => X.per.merce || 0,
       rosso: 'La merce costa troppo rispetto a quello che incassi: alza i prezzi delle ricette sotto la soglia (Pannello → «Sotto la soglia»), controlla sprechi, omaggi e dosi.' },
-    { k: 'personale', nome: 'Personale', ok: 30, max: 35, cosa: (X) => X.per.personale || 0, manca: 'Scrivi il costo del personale in «Spese fisse senza fattura».',
+    { k: 'personale', cat: () => ['personale'], nome: 'Personale', ok: 30, max: 35, cosa: (X) => X.per.personale || 0, manca: 'Scrivi il costo del personale in «Spese fisse senza fattura».',
       rosso: 'Il personale pesa troppo: guarda i turni nelle sere più vuote, oppure servono più incassi nelle stesse ore.' },
-    { k: 'affitto', nome: 'Affitto', ok: 10, max: 12, cosa: (X) => X.per.affitto || 0,
+    { k: 'affitto', cat: () => ['affitto'], nome: 'Affitto', ok: 10, max: 12, cosa: (X) => X.per.affitto || 0,
       rosso: 'L\'affitto non si abbassa facilmente: l\'unica strada è incassare di più (più giorni o più serate piene, prezzi un po\' più alti).' },
-    { k: 'utenze', nome: 'Luce, gas e acqua', ok: 5, max: 7, cosa: (X) => (X.per.luce || 0) + (X.per.acqua || 0) + (X.per.utenze || 0),
+    { k: 'utenze', cat: () => ['luce', 'acqua', 'utenze'], nome: 'Luce, gas e acqua', ok: 5, max: 7, cosa: (X) => (X.per.luce || 0) + (X.per.acqua || 0) + (X.per.utenze || 0),
       rosso: 'Le bollette pesano tanto: confronta il prezzo della luce e del gas con altre offerte, e guarda cosa resta acceso a locale chiuso.' },
-    { k: 'resto', nome: 'Tutte le altre spese', ok: 12, max: 16, cosa: (X) => X.totale - ['merce', 'personale', 'affitto', 'luce', 'acqua', 'utenze'].reduce((t, c) => t + (X.per[c] || 0), 0),
+    { k: 'resto', cat: (X) => Object.keys(X.per).filter(c => !['merce', 'personale', 'affitto', 'luce', 'acqua', 'utenze'].includes(c)), nome: 'Tutte le altre spese', ok: 12, max: 16, cosa: (X) => X.totale - ['merce', 'personale', 'affitto', 'luce', 'acqua', 'utenze'].reduce((t, c) => t + (X.per[c] || 0), 0),
       rosso: 'Le altre spese sono alte: apri «Per tipo di spesa» qui sotto e guarda le più grosse (abbonamenti, pubblicità, consulenze…), una alla volta.' }
   ];
   function schedaSalute(X, mesiP, dal, al) {
@@ -3715,17 +3715,29 @@
     if (!inc) return `<div class="card larga form"><h3>Come va il locale</h3><p class="tenue">Per dirti se spendi troppo serve l'incasso: carica le vendite della cassa per queste date, oppure scrivilo qui.</p>${campo}</div>`;
     // vendite caricate a pezzi (meno di quanto si spende): non è un conto credibile, meglio chiedere l'incasso vero
     if (!man && X.totale / mesiP > inc) return `<div class="card larga form"><h3>Come va il locale</h3><p class="msg giallo">Le vendite caricate per queste date danno circa ${euro(inc, 0)} al mese, meno di quanto spendi (${euro(X.totale / mesiP, 0)} al mese): sembrano incomplete. Scrivi qui l'incasso vero al mese, senza IVA, e ti dico voce per voce se spendi troppo.</p>${campo}</div>`;
+    // da dove arriva il numero: fornitore per fornitore (e le spese scritte a mano), al mese e in tutto il periodo
+    const daDove = (cats) => {
+      const voci = [];
+      cats.forEach(c => Object.entries(X.perForn).forEach(([k, val]) => { if (!k.startsWith(c + '|') || !val) return; const id = k.slice(c.length + 1), f = M.fornitore(id); voci.push({ id, nome: id.startsWith('fisso:') ? id.slice(6) : (f ? f.nome : id), fisso: id.startsWith('fisso:'), cat: c, val }); }));
+      if (!voci.length) return '<p class="tenue piccolo salute-dove">Nessuna fattura di questo tipo in queste date.</p>';
+      voci.sort((a, b) => b.val - a.val);
+      const piu = cats.length > 1, primi = voci.slice(0, 40);
+      return `<div class="salute-dove"><p class="tenue piccolo">Da dove arriva, nelle date scelte (${Math.round(mesiP * 10) / 10 === 1 ? '1 mese' : String(Math.round(mesiP * 10) / 10).replace('.', ',') + ' mesi'}):</p>
+        ${primi.map(x => { const dentro = `<span>${esc(x.nome)}${x.fisso ? ' <small class="tenue">scritta a mano</small>' : ''}${piu && CAT_SPESA[x.cat] ? ` <small class="tenue">· ${CAT_SPESA[x.cat][0]}</small>` : ''}</span><span class="salute-dove-num">${euro(x.val / mesiP, 0)} al mese<small class="tenue">${euro(x.val, 0)} in tutto</small></span>`;
+          return x.fisso ? `<div class="riga piccola">${dentro}</div>` : `<a class="riga piccola" href="#/fornitore/${esc(x.id)}">${dentro}</a>`; }).join('')}
+        ${voci.length > primi.length ? `<p class="tenue piccolo">…e altri ${voci.length - primi.length}: li trovi tutti in «Per tipo di spesa» qui sotto.</p>` : ''}</div>`;
+    };
     const righe = SOGLIE_LOCALE.map(z => {
       const v = z.cosa(X) / mesiP, pc = v / inc * 100;
       if (!v && z.manca) return `<div class="salute-riga"><div class="salute-testa"><b>${z.nome}</b><span class="badge grigio">manca</span></div><p class="tenue piccolo">${z.manca}</p></div>`;
       const st = pc <= z.ok ? 'verde' : pc <= z.max ? 'giallo' : 'rosso';
-      return `<div class="salute-riga"><div class="salute-testa"><b>${z.nome}</b><span class="salute-num">${euro(v, 0)} al mese · <b class="badge ${st}">${Math.round(pc)}%</b></span></div>
+      return `<details class="salute-riga"><summary><div class="salute-testa"><b>${z.nome} <span class="salute-apri" aria-hidden="true">›</span></b><span class="salute-num">${euro(v, 0)} al mese · <b class="badge ${st}">${Math.round(pc)}%</b></span></div>
         <div class="salute-barra"><b class="${st}" style="width:${Math.min(100, pc / (z.max * 1.6) * 100)}%"></b><i style="left:${z.ok / (z.max * 1.6) * 100}%"></i><i style="left:${z.max / (z.max * 1.6) * 100}%"></i></div>
-        <p class="tenue piccolo">Va bene fino al ${z.ok}%, attenzione fino al ${z.max}%.${st === 'rosso' ? '' : st === 'giallo' ? ' Sei al limite.' : ''}</p>${st === 'rosso' ? `<p class="msg rosso">${z.rosso}</p>` : ''}</div>`;
+        <p class="tenue piccolo">Va bene fino al ${z.ok}%, attenzione fino al ${z.max}%.${st === 'rosso' ? '' : st === 'giallo' ? ' Sei al limite.' : ''}</p></summary>${daDove(z.cat(X))}</details>${st === 'rosso' ? `<p class="msg rosso">${z.rosso}</p>` : ''}`;
     }).join('');
     const spese = X.totale / mesiP, utile = inc - spese, pu = utile / inc * 100, stU = pu >= 10 ? 'verde' : pu >= 5 ? 'giallo' : 'rosso';
     return `<div class="card larga form"><h3>Come va il locale</h3>
-      <p class="tenue piccolo">Ogni spesa confrontata con quello che incassi: su 100 € incassati, quanti se ne vanno lì. Verde va bene, giallo attenzione, rosso c'è da intervenire.</p>
+      <p class="tenue piccolo">Ogni spesa confrontata con quello che incassi: su 100 € incassati, quanti se ne vanno lì. Verde va bene, giallo attenzione, rosso c'è da intervenire. Tocca una voce per vedere da dove arriva il numero.</p>
       <div class="kpi-griglia">${kpi('Incasso al mese', euro(inc, 0), man ? 'scritto da te' : 'dalle vendite della cassa, senza IVA')}${kpi('Spese al mese', euro(spese, 0), 'tutte, merce compresa')}${kpi('Resta al mese', euro(utile, 0), Math.round(pu) + '% dell\'incasso, prima delle tasse sull\'utile', stU)}</div>
       <p class="msg ${stU}">${stU === 'verde' ? 'Il locale guadagna bene: di solito un bar o un pub tiene tra il 10 e il 18% dell\'incasso.' : stU === 'giallo' ? 'Il locale sta in piedi ma guadagna poco: di solito si tiene almeno il 10% dell\'incasso. Guarda qui sotto la voce più rossa o più gialla.' : 'Il locale spende quasi tutto quello che incassa, o di più: guarda qui sotto la voce rossa, è da lì che si parte.'}</p>
       ${righe}
@@ -4157,7 +4169,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v116';
+  const VERSIONE_APP = 'repub-v117';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
