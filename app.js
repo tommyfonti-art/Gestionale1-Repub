@@ -3651,9 +3651,10 @@
     const forn = M.fornitore(f.fornitoreId), cat = categoriaSpesa(forn), out = {};
     // righe collegate a un prodotto: «Non food» nei materiali, il resto nella merce (anche da un fornitore di servizi, es. tovagliette dalla tipografia)
     const foC = M.fornitore(f.fornitoreId), cassa = foC && foC.casseAMeta ? M.prodottiACassa(foC.id) : null;
-    let nf = 0, me = 0, extra = 0; f.righe.forEach(rg => { const k = cassa && !rg.ignora ? M.moltiplicaRiga(f, rg, cassa) : 1, t = (Number(rg.totale) || 0) * k; extra += t - (Number(rg.totale) || 0); const p = rg.prodottoId && M.prodotto(rg.prodottoId); if (!p || rg.ignora) return; if (M.reparto(p) === 'Non food' && !(usatiInRicette || prodottiInRicette()).has(p.id)) nf += t; else me += t; });
+    let nf = 0, me = 0, meRic = 0, extra = 0; f.righe.forEach(rg => { const k = cassa && !rg.ignora ? M.moltiplicaRiga(f, rg, cassa) : 1, t = (Number(rg.totale) || 0) * k; extra += t - (Number(rg.totale) || 0); const p = rg.prodottoId && M.prodotto(rg.prodottoId); if (!p || rg.ignora) return; const inRic = (usatiInRicette || prodottiInRicette()).has(p.id); if (inRic) meRic += t; if (M.reparto(p) === 'Non food' && !inRic) nf += t; else me += t; });
     tot += extra;
-    if (cat !== 'merce') { out.materiali = segno * nf; out.merce = segno * me; out[cat] = (out[cat] || 0) + segno * (tot - nf - me); return out; }
+    // fornitore di servizi (commercialista, tipografia…): nella merce solo quello che sta davvero in una ricetta (es. le tovagliette del coperto), il resto è del suo tipo di spesa
+    if (cat !== 'merce') { if (cat === 'materiali') { out.merce = segno * meRic; out.materiali = segno * (tot - meRic); return out; } out.materiali = segno * nf; out.merce = segno * meRic; out[cat] = (out[cat] || 0) + segno * (tot - nf - meRic); return out; }
     // fornitore di merce: il resto (anche trasporti e sconti) va nella merce
     out.materiali = segno * nf; out.merce = segno * (tot - nf); return out;
   }
@@ -4171,7 +4172,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v118';
+  const VERSIONE_APP = 'repub-v119';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
