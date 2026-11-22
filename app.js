@@ -3662,6 +3662,8 @@
     usatiInRicette = prodottiInRicette();
     S.fatture.forEach(f => {
       if (!f.data || (dal && f.data < dal) || (al && f.data > al)) return;
+      // note di credito fatte dal locale stesso per «storno corrispettivi» (buoni pasto dei clienti): sono incasso, non spese
+      if ((f.righe || []).some(rg => /storno\s+(dei\s+)?corrispettiv/i.test(rg.descrizione || ''))) return;
       const x = speseFattura(f), m = f.data.slice(0, 7);
       Object.entries(x).forEach(([c, v]) => { if (!v) return; per[c] = (per[c] || 0) + v; const k = c + '|' + (f.fornitoreId || f.fornitoreNome); perForn[k] = (perForn[k] || 0) + v; perMese[m] = (perMese[m] || 0) + v; });
     });
@@ -4169,7 +4171,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v117';
+  const VERSIONE_APP = 'repub-v118';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
