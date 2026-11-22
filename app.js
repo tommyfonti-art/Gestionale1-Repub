@@ -1910,7 +1910,8 @@
     ['impostazioni', 'Impostazioni', 'soglie, IVA, esportazione', 'M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2']
   ];
   PAGINE.altro = function () {
-    return { titolo: 'Altro', html: `<div class="griglia-voci">${VOCI_ALTRO.map(v => `<a class="voce con-icona" href="#/${v[0]}"><svg viewBox="0 0 24 24"><path d="${v[3]}"/></svg><b>${v[1]}</b><span>${v[2]}</span></a>`).join('')}</div>` };
+    return { titolo: 'Altro', html: `<div class="griglia-voci">${VOCI_ALTRO.map(v => `<a class="voce con-icona" href="#/${v[0]}"><svg viewBox="0 0 24 24"><path d="${v[3]}"/></svg><b>${v[1]}</b><span>${v[2]}</span></a>`).join('')}</div>
+      <p class="versione-app">Versione ${VERSIONE_APP.replace(/^repub-v/, '')}</p>` };
   };
 
   // ----- Fornitori -----
@@ -4156,7 +4157,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v115';
+  const VERSIONE_APP = 'repub-v116';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;

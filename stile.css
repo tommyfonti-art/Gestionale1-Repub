@@ -472,3 +472,4 @@ select.chip-tendina.chip, select.chip-tendina.chip.on { background-repeat: no-re
 /* allergeni nella modifica della ricetta: vanno a capo, quelli dagli ingredienti non si toccano */
 .chips.a-capo { flex-wrap: wrap; overflow: visible; }
 .chip.bloccato { opacity: .75; cursor: default; }
+.versione-app { text-align: center; color: var(--tenue, #7a746a); font-size: 13px; margin: 18px 0 6px; }
