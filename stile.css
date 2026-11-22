@@ -438,3 +438,8 @@ button.piu { border: 0; background: none; padding: 0 2px; font: inherit; font-si
 @media (max-width: 520px) { .gr-riga { grid-template-columns: minmax(0, 1fr) 104px auto 36px; gap: 6px; } .gr-riga select { padding-right: 28px !important; background-position: right 10px center; } }
 }
 .kpi-riga { margin: 10px 0 0; font-size: 15px; }
+/* righe delle ricette: costo e prezzo di vendita in due etichette */
+.riga .cp { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 3px; }
+.riga .ch-cp { background: var(--sfondo, #f3f1ec); border-radius: 999px; padding: 3px 10px; font-size: 13px; color: var(--tenue); white-space: nowrap; line-height: 1.35; }
+.riga .ch-cp b { color: var(--testo); font-weight: 600; font-variant-numeric: tabular-nums; margin-left: 2px; }
+.riga .destra .badge { font-size: 14px; padding: 4px 11px; }

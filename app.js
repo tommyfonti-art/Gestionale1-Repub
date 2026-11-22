@@ -649,6 +649,8 @@
   }
 
   // ---------- Pezzi grafici ----------
+  // costo e prezzo di vendita in due etichette, ben in vista nelle righe delle ricette
+  const etichetteCP = (i) => `<span class="cp"><span class="ch-cp">costo <b>${i.costo > 0 ? euro(i.costo) : '—'}</b></span><span class="ch-cp">vendo <b>${i.prezzo ? euro(i.prezzo) : '—'}</b></span></span>`;
   function badgeMolt(ind) {
     if (ind.molt == null) return `<span class="badge grigio">${ind.costo > 0 && !ind.prezzo ? 'senza prezzo' : 'senza costo'}</span>`;
     return `<span class="badge ${ind.sotto ? 'rosso' : 'verde'}">× ${n2(ind.molt)}</span>`;
@@ -983,7 +985,7 @@
       })()}
       ${daFare.length ? `<div class="card"><h3>Fatture da completare</h3>${daFare.map(f => `<a class="riga" href="#/fattura/${f.id}"><span>${esc(f.fornitoreNome)} · n. ${esc(f.numero)}</span><span class="badge giallo">${M.daAbbinare(f)} righe da collegare</span></a>`).join('')}</div>` : ''}
       <div class="card"><h3>Prezzi cambiati</h3>${aumenti.length ? aumenti.slice(0, 8).map(x => `<a class="riga" href="#/prodotto/${x.p.id}"><span>${esc(x.p.nomeBreve)}<small>${dataIt(x.data)}</small></span><span class="badge ${x.v > 0 ? 'rosso' : 'verde'}">${x.v > 0 ? '+' : ''}${n2(x.v, 1)}%</span></a>`).join('') : '<p class="tenue">Nessun cambio di prezzo. Compariranno qui quando registri le fatture.</p>'}</div>
-      <div class="card"><h3>Sotto la soglia del moltiplicatore</h3>${sotto.length ? sotto.map(r => { const i = M.indicatori(r); return `<a class="riga" href="#/ricetta/${r.id}"><span>${esc(r.nome)}<small>${M.TIPI_SINGOLARE[r.tipo]} · soglia × ${n2(i.soglia)}</small></span>${badgeMolt(i)}</a>`; }).join('') : '<p class="tenue">Tutte le ricette complete sono sopra la soglia.</p>'}</div>
+      <div class="card"><h3>Sotto la soglia del moltiplicatore</h3>${sotto.length ? sotto.map(r => { const i = M.indicatori(r); return `<a class="riga" href="#/ricetta/${r.id}"><span>${esc(r.nome)}<small>${M.TIPI_SINGOLARE[r.tipo]} · soglia × ${n2(i.soglia)}</small>${etichetteCP(i)}</span><span class="destra">${badgeMolt(i)}<small>${i.margine != null && i.molt != null ? 'guadagni ' + euro(i.margine) : ''}</small></span></a>`; }).join('') : '<p class="tenue">Tutte le ricette complete sono sopra la soglia.</p>'}</div>
       ${scorta.length ? `<div class="card"><h3>Sotto la scorta minima</h3>${scorta.map(p => `<a class="riga" href="#/prodotto/${p.id}"><span>${esc(p.nomeBreve)}</span><span>${qta(p.giacenza)} / ${qta(p.scortaMinima)} ${esc(p.confezione)}</span></a>`).join('')}</div>` : ''}
 `
     };
@@ -1467,7 +1469,7 @@
       // ricette con solo una parte degli ingredienti: i numeri sono troppo belli, lo dico chiaro
       const parziale = /^Ricetta da completare/.test(r.note || '');
       const vv = conVend ? vendutiRic(r) : 0;
-      return `<a class="riga" href="#/ricetta/${r.id}"><span>${esc(r.nome)}<small>${conGruppo ? esc(M.TIPI[r.tipo] || '') + ' · ' : ''}costo ${i.costo > 0 ? euro(i.costo) : '—'} → prezzo ${i.prezzo ? euro(i.prezzo) : '—'}</small>${conVend ? `<small class="forn-riga">${vv ? qta(vv) + ' venduti' + (i.margine != null && ord === 'guadtot' ? ' · ' + euro(vv * i.margine, 0) + ' guadagnati' : '') : 'mai venduta'}</small>` : ''}</span><span class="destra">${parziale ? '<span class="badge giallo">ingredienti incompleti</span>' : badgeMolt(i)}<small>${i.margine != null && i.molt != null ? 'guadagni ' + euro(i.margine) : ''}</small></span></a>`;
+      return `<a class="riga" href="#/ricetta/${r.id}"><span>${esc(r.nome)}${conGruppo ? `<small>${esc(M.TIPI[r.tipo] || '')}</small>` : ''}${etichetteCP(i)}${conVend ? `<small class="forn-riga">${vv ? qta(vv) + ' venduti' + (i.margine != null && ord === 'guadtot' ? ' · ' + euro(vv * i.margine, 0) + ' guadagnati' : '') : 'mai venduta'}</small>` : ''}</span><span class="destra">${parziale ? '<span class="badge giallo">ingredienti incompleti</span>' : badgeMolt(i)}<small>${i.margine != null && i.molt != null ? 'guadagni ' + euro(i.margine) : ''}</small></span></a>`;
     }).join('');
   }
   PAGINE.ricette = function () {
@@ -3841,7 +3843,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v106';
+  const VERSIONE_APP = 'repub-v107';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
