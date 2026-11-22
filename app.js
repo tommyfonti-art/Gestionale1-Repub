@@ -3569,6 +3569,58 @@
       pers.forEach(pp => { const q = Number((r.vendite || {})[pp]) || 0; if (!q) return; pezzi += q; incasso += q * (i.netto || 0); if (i.margine != null && i.molt != null) { marg += q * i.margine; pezziM += q; } }); });
     return { mesi, pezziAlMese: mesi ? pezzi / mesi : null, incassoAlMese: mesi ? incasso / mesi : null, margineMedio: pezziM ? marg / pezziM : null };
   }
+  // incasso senza IVA nelle date scelte, dalle vendite della cassa (solo i periodi che cadono in quelle date, in proporzione ai giorni)
+  function incassoTra(dal, al) {
+    const g = (x) => new Date(x + 'T00:00:00').getTime() / 86400000;
+    let incasso = 0, giorni = 0;
+    senzaDoppi(S.periodiVendita.slice()).forEach(pp => {
+      const d = dateDiPeriodo(pp); if (!d) return;
+      const a = Math.max(g(d.dal), dal ? g(dal) : -Infinity), b = Math.min(g(d.al), al ? g(al) : Infinity);
+      if (b < a) return;
+      const quota = (b - a + 1) / (g(d.al) - g(d.dal) + 1);
+      let tot = 0; S.ricette.forEach(r => { if (r.tipo === 'semilavorato') return; const q = Number((r.vendite || {})[pp]) || 0; if (q) tot += q * (M.indicatori(r).netto || 0); });
+      if (!tot) return;
+      incasso += tot * quota; giorni += b - a + 1;
+    });
+    return giorni ? { alMese: incasso / (giorni / 30.4375), mesi: giorni / 30.4375 } : null;
+  }
+  // le soglie: quanto di solito pesa ogni spesa su quello che incassi (bar e pub in Italia)
+  const SOGLIE_LOCALE = [
+    { k: 'merce', nome: 'Merce', ok: 30, max: 35, cosa: (X) => X.per.merce || 0,
+      rosso: 'La merce costa troppo rispetto a quello che incassi: alza i prezzi delle ricette sotto la soglia (Pannello → «Sotto la soglia»), controlla sprechi, omaggi e dosi.' },
+    { k: 'personale', nome: 'Personale', ok: 30, max: 35, cosa: (X) => X.per.personale || 0, manca: 'Scrivi il costo del personale in «Spese fisse senza fattura».',
+      rosso: 'Il personale pesa troppo: guarda i turni nelle sere più vuote, oppure servono più incassi nelle stesse ore.' },
+    { k: 'affitto', nome: 'Affitto', ok: 10, max: 12, cosa: (X) => X.per.affitto || 0,
+      rosso: 'L\'affitto non si abbassa facilmente: l\'unica strada è incassare di più (più giorni o più serate piene, prezzi un po\' più alti).' },
+    { k: 'utenze', nome: 'Luce, gas e acqua', ok: 5, max: 7, cosa: (X) => (X.per.luce || 0) + (X.per.acqua || 0) + (X.per.utenze || 0),
+      rosso: 'Le bollette pesano tanto: confronta il prezzo della luce e del gas con altre offerte, e guarda cosa resta acceso a locale chiuso.' },
+    { k: 'resto', nome: 'Tutte le altre spese', ok: 12, max: 16, cosa: (X) => X.totale - ['merce', 'personale', 'affitto', 'luce', 'acqua', 'utenze'].reduce((t, c) => t + (X.per[c] || 0), 0),
+      rosso: 'Le altre spese sono alte: apri «Per tipo di spesa» qui sotto e guarda le più grosse (abbonamenti, pubblicità, consulenze…), una alla volta.' }
+  ];
+  function schedaSalute(X, mesiP, dal, al) {
+    if (!mesiP) return '';
+    const auto = incassoTra(dal, al), man = Number(S.incassoMese) || 0, inc = man || (auto && auto.alMese) || 0;
+    const campo = `<label class="incasso-man">Incasso vero al mese, senza IVA <small class="tenue">(se lo sai dalla cassa o dal commercialista, è più giusto)</small><input type="text" inputmode="decimal" autocomplete="off" data-incasso-man value="${man ? esc(String(man)) : ''}" placeholder="${auto ? 'dalle vendite: ' + Math.round(auto.alMese) : 'es. 40000'}"></label>`;
+    if (!inc) return `<div class="card larga form"><h3>Come va il locale</h3><p class="tenue">Per dirti se spendi troppo serve l'incasso: carica le vendite della cassa per queste date, oppure scrivilo qui.</p>${campo}</div>`;
+    // vendite caricate a pezzi (meno di quanto si spende): non è un conto credibile, meglio chiedere l'incasso vero
+    if (!man && X.totale / mesiP > inc) return `<div class="card larga form"><h3>Come va il locale</h3><p class="msg giallo">Le vendite caricate per queste date danno circa ${euro(inc, 0)} al mese, meno di quanto spendi (${euro(X.totale / mesiP, 0)} al mese): sembrano incomplete. Scrivi qui l'incasso vero al mese, senza IVA, e ti dico voce per voce se spendi troppo.</p>${campo}</div>`;
+    const righe = SOGLIE_LOCALE.map(z => {
+      const v = z.cosa(X) / mesiP, pc = v / inc * 100;
+      if (!v && z.manca) return `<div class="salute-riga"><div class="salute-testa"><b>${z.nome}</b><span class="badge grigio">manca</span></div><p class="tenue piccolo">${z.manca}</p></div>`;
+      const st = pc <= z.ok ? 'verde' : pc <= z.max ? 'giallo' : 'rosso';
+      return `<div class="salute-riga"><div class="salute-testa"><b>${z.nome}</b><span class="salute-num">${euro(v, 0)} al mese · <b class="badge ${st}">${Math.round(pc)}%</b></span></div>
+        <div class="salute-barra"><b class="${st}" style="width:${Math.min(100, pc / (z.max * 1.6) * 100)}%"></b><i style="left:${z.ok / (z.max * 1.6) * 100}%"></i><i style="left:${z.max / (z.max * 1.6) * 100}%"></i></div>
+        <p class="tenue piccolo">Va bene fino al ${z.ok}%, attenzione fino al ${z.max}%.${st === 'rosso' ? '' : st === 'giallo' ? ' Sei al limite.' : ''}</p>${st === 'rosso' ? `<p class="msg rosso">${z.rosso}</p>` : ''}</div>`;
+    }).join('');
+    const spese = X.totale / mesiP, utile = inc - spese, pu = utile / inc * 100, stU = pu >= 10 ? 'verde' : pu >= 5 ? 'giallo' : 'rosso';
+    return `<div class="card larga form"><h3>Come va il locale</h3>
+      <p class="tenue piccolo">Ogni spesa confrontata con quello che incassi: su 100 € incassati, quanti se ne vanno lì. Verde va bene, giallo attenzione, rosso c'è da intervenire.</p>
+      <div class="kpi-griglia">${kpi('Incasso al mese', euro(inc, 0), man ? 'scritto da te' : 'dalle vendite della cassa, senza IVA')}${kpi('Spese al mese', euro(spese, 0), 'tutte, merce compresa')}${kpi('Resta al mese', euro(utile, 0), Math.round(pu) + '% dell\'incasso, prima delle tasse sull\'utile', stU)}</div>
+      <p class="msg ${stU}">${stU === 'verde' ? 'Il locale guadagna bene: di solito un bar o un pub tiene tra il 10 e il 18% dell\'incasso.' : stU === 'giallo' ? 'Il locale sta in piedi ma guadagna poco: di solito si tiene almeno il 10% dell\'incasso. Guarda qui sotto la voce più rossa o più gialla.' : 'Il locale spende quasi tutto quello che incassa, o di più: guarda qui sotto la voce rossa, è da lì che si parte.'}</p>
+      ${righe}
+      ${campo}
+      ${!man && auto ? '<p class="tenue piccolo">L\'incasso è calcolato dalle vendite delle ricette: se in cassa ci sono cose senza ricetta, l\'incasso vero è più alto e le percentuali sono un po\' più basse di così.</p>' : ''}</div>`;
+  }
   const coperturaFatture = () => { const d = S.fatture.map(f => f.data).filter(Boolean).sort(); return d.length ? { dal: d[0], al: d[d.length - 1] } : null; };
   PAGINE.costi = function () {
     const anni = Array.from(new Set(S.fatture.map(f => (f.data || '').slice(0, 4)).filter(Boolean))).sort();
@@ -3593,6 +3645,7 @@
       ${sel.tipo === 'date' ? `<div class="card form"><div class="due"><label>Dal<input type="date" data-costi-data="dal" value="${esc(sel.dal || '')}"></label><label>Al<input type="date" data-costi-data="al" value="${esc(sel.al || '')}"></label></div></div>` : ''}
       <div class="kpi-griglia">${kpi('Spese totali', euro(X.totale, 0), 'senza IVA, da tutte le fatture · ' + esc(etich))}${kpi('Merce', euro(X.per.merce || 0, 0), 'già nel costo delle ricette · ' + (X.totale ? Math.round((X.per.merce || 0) / X.totale * 100) + '% del totale' : ''))}${kpi('Tutto il resto', euro(X.totale - (X.per.merce || 0), 0), 'affitto, bollette, servizi, pulizia…')}</div>
       ${cop ? `<p class="tenue piccolo">Fatture caricate dal ${dataIt(cop.dal)} al ${dataIt(cop.al)}. Qui sotto puoi scegliere un solo mese o le date che vuoi. Attenzione: alcune bollette arrivano ogni due mesi e alcune spese una volta l'anno, quindi un mese da solo può sembrare più caro o più leggero del vero; due o tre mesi insieme danno un conto più giusto. Quello che non arriva in fattura (personale, TARI…) scrivilo in «Spese fisse senza fattura».</p>` : ''}
+      ${schedaSalute(X, mesiP, daA, finoA || (cop && cop.al))}
       <div class="card larga"><h3>Per tipo di spesa</h3>
         ${cats.length ? cats.map(c => { const fs = Object.entries(X.perForn).filter(([k]) => k.startsWith(c + '|')).map(([k, v]) => { const id = k.slice(c.length + 1); const f = M.fornitore(id); return { id, nome: f ? f.nome : id, v }; }).sort((a, b) => b.v - a.v);
           return `<details class="costo-cat"><summary><span class="costo-nome"><i style="background:${CAT_SPESA[c][1]}"></i>${CAT_SPESA[c][0]}</span><span class="costo-barra"><b style="width:${Math.max(2, X.per[c] / max * 100)}%;background:${CAT_SPESA[c][1]}"></b></span><span class="costo-val">${euro(X.per[c], 0)}</span></summary>
@@ -3914,6 +3967,7 @@
     if (d.ordRicette) { ui.ordineRicette = el.value; ridisegnaMantenendo(); return; }
     if (d.catSpesa) { const f = M.fornitore(d.catSpesa); if (f) { f.catSpesa = el.value; delete cacheCatSpesa[f.id]; salva(); avviso('Tipo di spesa cambiato.'); } return; }
     if (d.fisso != null) { const x = fissiDi()[+d.fisso]; if (!x) return; x[d.k] = d.k === 'euro' ? (numDa(el.value) || 0) : el.value.trim(); salva(); ridisegnaMantenendo(); return; }
+    if (d.incassoMan != null) { S.incassoMese = numDa(el.value) || 0; salva(); ridisegnaMantenendo(); return; }
     if (d.costiMese != null) { ui.costiSel = el.value ? { tipo: 'mese', mese: el.value } : { tipo: 'tutto' }; ridisegnaMantenendo(); return; }
     if (d.costiData) { const sel = Object.assign({ tipo: 'date' }, ui.costiSel || {}); sel.tipo = 'date'; sel[d.costiData] = el.value; ui.costiSel = sel; ridisegnaMantenendo(); return; }
     if (d.fgnome) { const p = M.prodotto(d.fgnome), v = el.value.trim(); if (p && v && v !== p.nomeBreve) { p.nomeBreve = v; salva(); avviso('Nome cambiato.'); } return; }
@@ -3992,7 +4046,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v112';
+  const VERSIONE_APP = 'repub-v113';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;

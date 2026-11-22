@@ -460,3 +460,12 @@ button.piu { border: 0; background: none; padding: 0 2px; font: inherit; font-si
 .costo-riga.cliccabile { cursor: pointer; border-radius: 8px; } .costo-riga.cliccabile:hover { background: var(--carta-2, rgba(0,0,0,.04)); }
 .chips > select.chip-tendina, .chips > .chip { flex: 0 0 auto; }
 select.chip-tendina.chip, select.chip-tendina.chip.on { background-repeat: no-repeat !important; background-position: right 12px center !important; background-size: 11px 7px !important; padding-right: 34px; }
+/* «Come va il locale»: ogni spesa in percentuale dell'incasso, con le soglie */
+.salute-riga { padding: 12px 0; border-top: 1px solid var(--linea); }
+.salute-testa { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.salute-num { font-size: 14px; color: var(--tenue, #6b665d); }
+.salute-barra { position: relative; height: 12px; background: var(--linea); border-radius: 6px; margin: 8px 0 4px; overflow: hidden; }
+.salute-barra b { display: block; height: 100%; border-radius: 6px; }
+.salute-barra b.verde { background: #2e8b57; } .salute-barra b.giallo { background: #d9a21b; } .salute-barra b.rosso { background: #c0392b; }
+.salute-barra i { position: absolute; top: 0; bottom: 0; width: 2px; background: rgba(0,0,0,.35); }
+.incasso-man { display: block; margin-top: 12px; }
