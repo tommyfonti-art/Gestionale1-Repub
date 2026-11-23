@@ -675,14 +675,14 @@
   function schermataAccesso(msg) {
     $('#testa').innerHTML = '<span></span><h1>Gestionale Repub</h1><span></span>';
     $('#tabbar').innerHTML = ''; $('#contenuto').className = '';
-    $('#contenuto').innerHTML = `<div class="card form accesso"><h3>Entra nel gestionale</h3>${msg ? `<p class="msg rosso">${esc(msg)}</p>` : ''}
-      <label>Email<input id="acc-email" type="email" autocomplete="username" autocapitalize="none"></label>
-      <label>Password<span class="campo-occhio"><input id="acc-pw" type="password" autocomplete="current-password"><button type="button" class="occhio" data-occhio="acc-pw" aria-label="Mostra la password">${OCCHIO}</button></span></label>
-      <div class="bottoni colonna"><button class="btn primario" id="acc-ok">Entra</button><button class="btn piccolo" id="acc-dim">Ho dimenticato la password</button></div></div>`;
+    $('#contenuto').innerHTML = `<form class="card form accesso" id="acc-form" autocomplete="on"><h3>Entra nel gestionale</h3>${msg ? `<p class="msg rosso">${esc(msg)}</p>` : ''}
+      <label>Email<input id="acc-email" name="email" type="email" inputmode="email" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false"></label>
+      <label>Password<span class="campo-occhio"><input id="acc-pw" name="password" type="password" autocomplete="current-password" autocapitalize="none" autocorrect="off" spellcheck="false"><button type="button" class="occhio" data-occhio="acc-pw" aria-label="Mostra la password">${OCCHIO}</button></span></label>
+      <div class="bottoni colonna"><button type="submit" class="btn primario" id="acc-ok">Entra</button><button type="button" class="btn piccolo" id="acc-dim">Ho dimenticato la password</button></div></form>`;
     const entra = () => firebase.auth().signInWithEmailAndPassword($('#acc-email').value.trim(), $('#acc-pw').value)
       .catch(e => schermataAccesso(/password|credential|user-not-found|invalid/i.test(e.code || '') ? 'Email o password sbagliate.' : 'Accesso non riuscito: ' + e.message));
-    $('#acc-ok').onclick = entra;
-    $('#acc-pw').onkeydown = (e) => { if (e.key === 'Enter') entra(); };
+    // un vero modulo: così il portachiavi di iPhone riconosce email e password e propone di salvarle
+    $('#acc-form').onsubmit = (e) => { e.preventDefault(); const b = $('#acc-ok'); b.disabled = true; b.textContent = 'Un attimo…'; entra(); };
     $('#acc-dim').onclick = () => { const em = $('#acc-email').value.trim(); if (!em) { alert('Scrivi prima la tua email.'); return; } firebase.auth().sendPasswordResetEmail(em).then(() => alert('Ti ho mandato una mail per cambiare la password.'), e => alert(e.message)); };
   }
   function sceltaPrimoAvvio() {
