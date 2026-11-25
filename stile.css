@@ -484,3 +484,4 @@ details.salute-riga[open] .salute-apri { transform: rotate(90deg); }
 .salute-dove-num small { font-size: 12px; }
 .riga-ed select.u-scelta { width: auto; min-width: 70px; flex: 0 0 auto; font-size: 13px; padding: 6px 24px 6px 8px; color: var(--testo, inherit); }
 .spunta-riga.da-unire { background: #e2efe7; }
+.versione-lato { color: var(--tenue, #7a746a); font-size: 12px; padding: 14px 16px 8px; }

@@ -2193,7 +2193,8 @@
           <button class="btn" data-az="scarica-copia">Scarica una copia dei dati</button>
           <label class="btn">Carica una copia dei dati<input type="file" accept=".json" hidden data-carica="copia"></label>
           <button class="btn pericolo" data-az="ripristina">Ricomincia con i dati della prova</button>
-        </div></div>`
+        </div></div>
+      <p class="versione-app">Versione ${VERSIONE_APP.replace(/^repub-v/, '')}</p>`
     };
   };
 
@@ -2221,7 +2222,8 @@
     $('#tabbar').innerHTML = '<div class="marchio">Gestionale <span>Repub</span></div>' +
       TAB.map(t => `<a href="#/${t[0]}" class="${sez === t[0] ? 'on' : ''} ${t[0] === 'altro' ? 'solo-stretto tab-altro' : ''}"><svg viewBox="0 0 24 24"><path d="${t[2]}"/></svg><span>${t[1]}</span></a>`).join('') +
       '<div class="gruppo solo-largo">Altro</div>' +
-      VOCI_ALTRO.map(v => `<a href="#/${v[0]}" class="solo-largo secondaria ${attiva === v[0] ? 'on' : ''}"><svg viewBox="0 0 24 24"><path d="${v[3]}"/></svg><span>${v[1]}</span></a>`).join('');
+      VOCI_ALTRO.map(v => `<a href="#/${v[0]}" class="solo-largo secondaria ${attiva === v[0] ? 'on' : ''}"><svg viewBox="0 0 24 24"><path d="${v[3]}"/></svg><span>${v[1]}</span></a>`).join('') +
+      `<div class="solo-largo versione-lato">Versione ${VERSIONE_APP.replace(/^repub-v/, '')}</div>`;
     $('#contenuto').className = ['pannello', 'prodotto', 'ricetta', 'fattura', 'fornitore', 'evento', 'impostazioni', 'mappa', 'scadenze', 'magazzino', 'modifica-prodotto', 'modifica-ricetta', undefined].includes(nome) && !(nome === 'magazzino' && ui.conta) ? 'colonne' : '';
     document.title = pag.titolo + ' · Gestionale Repub';
   }
@@ -4212,7 +4214,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v123';
+  const VERSIONE_APP = 'repub-v124';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
