@@ -49,6 +49,8 @@
     S.periodiVendita = S.periodiVendita || [];
     S.casella = S.casella || { url: '', chiave: '', ultimoControllo: null, visti: [] };
     M.usa(S);
+    // prodotti senza categoria (comparivano come un bottone vuoto con solo il numero): vanno in «Da classificare»
+    S.prodotti.forEach(p => { if (!String(p.categoria || '').trim()) p.categoria = 'Da classificare'; });
     // una volta: i fornitori di bollette e servizi già caricati non devono avere prodotti
     S.fornitori.forEach(f => { if (f.servizi === undefined && M.pareServizi(f.nome) && S.fatture.some(x => x.fornitoreId === f.id)) M.segnaServizi(f.id, true); });
     S.migrazioneServizi = true;
@@ -4172,7 +4174,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v119';
+  const VERSIONE_APP = 'repub-v121';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
