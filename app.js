@@ -1159,7 +1159,16 @@
   const inElimina = (t) => ui.elim && ui.elim.tipo === t;
   function rigaElimina(id, nome, info) {
     const on = ui.elim.sel.includes(id);
-    return `<label class="riga spunta-riga ${on ? 'da-togliere' : ''}"><input type="checkbox" data-elim="${id}" ${on ? 'checked' : ''}><span>${esc(nome)}<small>${info}</small></span></label>`;
+    return `<label class="riga spunta-riga ${on ? (ui.elim.tipo === 'u' ? 'da-unire' : 'da-togliere') : ''}"><input type="checkbox" data-elim="${id}" ${on ? 'checked' : ''}><span>${esc(nome)}<small>${info}</small></span></label>`;
+  }
+  function barraUnisci() {
+    const n = ui.elim.sel.length;
+    return `<div class="card evidenza sposta-barra elim-barra"><b>Spunta i prodotti da unire in uno solo: <span data-elim-n>${n}</span> ${n === 1 ? 'prodotto' : 'prodotti'}</b>
+      <div class="bottoni"><button class="btn primario" data-az="unisci-ok">Unisci quelli spuntati</button>
+      <button class="btn" data-az="elim-tutte">Spunta tutti quelli visibili</button>
+      ${n ? '<button class="btn" data-az="elim-nessuno">Togli le spunte</button>' : ''}
+      <button class="btn" data-az="elim-fine">Annulla</button></div>
+      <p class="tenue piccolo">Cerca per esempio «arance», spunta quelle da unire e tocca «Unisci». Resta un prodotto solo con i prezzi, le fatture e le ricette di tutti: vale l'ultimo prezzo pagato, e le prossime fatture con quei nomi finiscono lì.</p></div>`;
   }
   function barraElimina(t) {
     const cos = t === 'r' ? 'ricette' : 'prodotti', n = ui.elim.sel.length;
@@ -1188,6 +1197,7 @@
     ui.scorriP = l.map(p => p.id);
     if (!l.length) return '<p class="tenue centro">Nessun prodotto.</p>';
     if (inElimina('p')) return l.map(p => { const u = M.usatoIn('p:' + p.id).tutte.length; return rigaElimina(p.id, p.nomeBreve, `${esc((M.fornitore(p.fornitoreId) || {}).nome || 'senza fornitore')} · ${u ? `<b>usato in ${u} ${u === 1 ? 'ricetta' : 'ricette'}</b>` : 'non usato'}`); }).join('');
+    if (inElimina('u')) return l.map(p => { const v = M.prezzoVoce(p), rif = M.prezzoRiferimento(p); return rigaElimina(p.id, p.nomeBreve, `${esc((M.fornitore(p.fornitoreId) || {}).nome || 'senza fornitore')} · ${rif ? n2(rif.valore) + ' ' + rif.etichetta : 'senza prezzo'}${v && v.data ? ' · ' + dataIt(v.data) : ''}`); }).join('');
     return l.map(p => {
       const pr = M.prezzo(p), rif = M.prezzoRiferimento(p);
       const sc = p.scortaMinima > 0 && (p.giacenza || 0) < p.scortaMinima;
@@ -1208,10 +1218,10 @@
       <input class="cerca" type="search" placeholder="Cerca un prodotto" value="${esc(ui.filtroProdotti)}" data-filtro="prodotti">
       <div class="chips"><button class="chip ${ui.prodVista !== 'fornitori' ? 'on' : ''}" data-az="prod-vista" data-v="categorie">Per categoria</button><button class="chip ${ui.prodVista === 'fornitori' ? 'on' : ''}" data-az="prod-vista" data-v="fornitori">Per fornitore</button></div>
       ${ui.prodVista === 'fornitori' ? `<div class="chips">${fornitoriConProdotti().map(x => `<button class="chip ${ui.fornProd === x.f.id ? 'on' : ''}" data-az="forn-prod" data-v="${x.f.id}">${esc(x.f.nome)} (${x.n})</button>`).join('')}</div>` : chipsReparti(PF(), 'prod-filtro', nuoviDaCompletare() ? `<button class="chip ${ui.categoria === '__nuovi' ? 'on' : ''} giallo" data-az="categoria" data-v="__nuovi">Da completare (${nuoviDaCompletare()})</button>` : '', ui.categoria === '__nuovi')}
-      ${inElimina('p') ? barraElimina('p') : `<div class="azioni-riga">${ui.prodVista === 'fornitori'
+      ${inElimina('p') ? barraElimina('p') : inElimina('u') ? barraUnisci() : `<div class="azioni-riga">${ui.prodVista === 'fornitori'
         ? (ui.fornProd && M.fornitore(ui.fornProd) ? `<a class="btn primario piccolo" href="#/formati" data-az="fmt-fornitore" data-id="${ui.fornProd}">Metti a posto i prodotti di ${esc(nomeFornBreve(M.fornitore(ui.fornProd).nome))}, uno dopo l'altro</a>` : '')
         : `<a class="btn primario piccolo" href="#/formati" data-az="fmt-categoria">${ui.categoria !== '__nuovi' && PF().cats.length === 1 ? `Ricontrolla i formati: ${esc(PF().cats[0])}` : ui.categoria !== '__nuovi' && PF().rep ? `Ricontrolla i formati: ${esc(PF().rep)}` : 'Ricontrolla i formati, uno dopo l\'altro'}</a>`}
-        <details class="menu-azioni"><summary class="btn piccolo">Altro ▾</summary><div class="menu-azioni-voci"><button class="btn piccolo" data-az="elim-inizia" data-v="p">Elimina più prodotti</button><a class="btn piccolo" href="#/doppioni">Unisci i doppioni</a><a class="btn piccolo" href="#/foglio" data-az="fg-apri">Prodotti del foglio</a></div></details></div>`}
+        <details class="menu-azioni"><summary class="btn piccolo">Altro ▾</summary><div class="menu-azioni-voci"><button class="btn piccolo" data-az="elim-inizia" data-v="u">Unisci più prodotti in uno</button><button class="btn piccolo" data-az="elim-inizia" data-v="p">Elimina più prodotti</button><a class="btn piccolo" href="#/doppioni">Unisci i doppioni</a><a class="btn piccolo" href="#/foglio" data-az="fg-apri">Prodotti del foglio</a></div></details></div>`}
       ${avvisoCestino('p')}
       <div class="card lista" id="lista">${listaProdotti()}</div>`
     };
@@ -2157,6 +2167,9 @@
         <label>IVA sul prezzo di vendita (%)<input type="text" inputmode="decimal" autocomplete="off" data-imp="ivaVendita" value="${esc(im.ivaVendita)}"></label>
         <label>Quando un prodotto arriva da più fornitori, usa<select data-imp="metodoPrezzo">${[['ultimo', 'l\'ultimo prezzo pagato'], ['minimo', 'il prezzo più basso'], ['media', 'la media tra i fornitori']].map(([k, v]) => `<option value="${k}" ${im.metodoPrezzo === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
         <label>Segnala gli aumenti a partire da (%)<input type="text" inputmode="decimal" autocomplete="off" data-imp="sogliaAumento" value="${esc(im.sogliaAumento)}"></label></div>
+      <div class="card form"><h3>Misure da bar</h3><p class="tenue piccolo">Quanti ml valgono, per il costo delle ricette scritte in dash o drop.</p>
+        <div class="due"><label>1 dash = ml<input type="text" inputmode="decimal" autocomplete="off" data-imp="mlDash" value="${esc(String(M.mlMisura('dash')).replace('.', ','))}"></label>
+        <label>1 drop = ml<input type="text" inputmode="decimal" autocomplete="off" data-imp="mlDrop" value="${esc(String(M.mlMisura('drop')).replace('.', ','))}"></label></div></div>
       <div class="card form"><h3>Fatture</h3>
         <label class="interruttore"><input type="checkbox" data-az="imp-bool" data-k="autoCrea" ${im.autoCrea !== false ? 'checked' : ''}> Crea in automatico i prodotti nuovi che arrivano dalle fatture</label>
         <label class="interruttore"><input type="checkbox" data-az="imp-bool" data-k="autoRegistra" ${im.autoRegistra !== false ? 'checked' : ''}> Registra subito le fatture complete (i prezzi si aggiornano da soli)</label>
@@ -3529,6 +3542,23 @@
     ui.cestino = { tipo: t, n: sel.size, gruppo };
     ui.elim = null; M.svuota(); salva(); ridisegnaMantenendo(); window.scrollTo(0, 0);
   };
+  AZ['unisci-ok'] = () => {
+    const l = ui.elim.sel.map(id => M.prodotto(id)).filter(Boolean);
+    if (l.length < 2) { alert('Spunta almeno due prodotti.'); return; }
+    const unita = Array.from(new Set(l.map(p => p.unita)));
+    if (unita.length > 1) { alert('Non posso unirli, hanno unità diverse:\n' + unita.map(u => u + ': ' + l.filter(p => p.unita === u).map(p => p.nomeBreve).join(', ')).join('\n') + '\n\nTogli la spunta a quelli che non c\'entrano, o sistemane il formato.'); return; }
+    // resta quello con il prezzo più recente (è quello che conta)
+    const dataDi = (p) => { const v = M.prezzoVoce(p); return (v && v.data) || ''; };
+    const resta = l.slice().sort((a, b) => dataDi(b).localeCompare(dataDi(a)) || M.usatoIn('p:' + b.id).tutte.length - M.usatoIn('p:' + a.id).tutte.length)[0];
+    const nome = prompt(`Unisco ${l.length} prodotti in uno solo. Come lo chiamo?`, resta.nomeBreve);
+    if (nome == null) return;
+    const err = []; l.forEach(p => { if (p !== resta) { const e = M.unisciProdotti(p.id, resta.id); if (e) err.push(p.nomeBreve + ': ' + e); } });
+    if (nome.trim()) resta.nomeBreve = nome.trim();
+    delete resta.forseDoppioneDi;
+    ui.elim = null; if (ui.scorriP) ui.scorriP = ui.scorriP.filter(id => M.prodotto(id)); M.svuota(); salva();
+    if (err.length) alert('Non uniti:\n' + err.join('\n'));
+    vai('#/prodotto/' + resta.id); avviso(`Uniti in «${resta.nomeBreve}».`);
+  };
   AZ['elim-rimetti'] = () => {
     const c = ui.cestino; if (!c) return;
     (S.cestino || []).filter(x => x.gruppo === c.gruppo).forEach(rimettiDalCestino);
@@ -4113,7 +4143,7 @@
       M.svuota(); salva(); ridisegnaMantenendo(); avviso('Prezzo cambiato: le ricette che lo usano sono aggiornate.'); return;
     }
     if (d.fgsel) { const set = new Set(ui.fgSel || []); if (el.checked) set.add(d.fgsel); else set.delete(d.fgsel); ui.fgSel = Array.from(set); el.closest('.riga').classList.toggle('da-togliere', el.checked); const n = document.querySelector('[data-fgsel-n]'); if (n) n.textContent = set.size; return; }
-    if (d.elim && ui.elim) { const set = new Set(ui.elim.sel); if (el.checked) set.add(d.elim); else set.delete(d.elim); ui.elim.sel = Array.from(set); el.closest('label').classList.toggle('da-togliere', el.checked); const n = document.querySelector('[data-elim-n]'); if (n) n.textContent = set.size; return; }
+    if (d.elim && ui.elim) { const set = new Set(ui.elim.sel); if (el.checked) set.add(d.elim); else set.delete(d.elim); ui.elim.sel = Array.from(set); el.closest('label').classList.toggle(ui.elim.tipo === 'u' ? 'da-unire' : 'da-togliere', el.checked); const n = document.querySelector('[data-elim-n]'); if (n) n.textContent = set.size; return; }
     if (d.sposta) { const set = new Set(ui.spostaSel || []); if (el.checked) set.add(d.sposta); else set.delete(d.sposta); ui.spostaSel = Array.from(set); const b = document.querySelector('.sposta-barra b'); if (b) b.textContent = `Sposta le ricette spuntate (${set.size})`; return; }
     if (d.grNome) { const v = el.value.trim(); if (!v) return; const t = (S.tipiExtra || []).find(x => x.id === d.grNome); if (t) t.nome = v; else { S.nomiTipi = S.nomiTipi || {}; S.nomiTipi[d.grNome] = v; } M.aggiornaTipi(); salva(); avviso('Nome cambiato.'); return; }
     if (d.grRep) { const t = (S.tipiExtra || []).find(x => x.id === d.grRep); if (t) t.reparto = el.value; else { S.repartiTipi = S.repartiTipi || {}; S.repartiTipi[d.grRep] = el.value; } M.aggiornaTipi(); salva(); avviso('Reparto cambiato.'); return; }
@@ -4165,7 +4195,7 @@
     if (d.forn) { const f = M.fornitore(d.forn); f[d.k] = el.value.trim(); salva(); return; }
     if (d.vend) { const r = M.ricetta(d.vend); r.vendite = r.vendite || {}; const x = numDa(el.value); if (x) r.vendite[d.p] = x; else delete r.vendite[d.p]; salva(); return; }
     if (d.soglia) { S.impostazioni.soglie[d.soglia] = numDa(el.value); salva(); return; }
-    if (d.imp) { const numerici = ['ivaVendita', 'sogliaAumento']; S.impostazioni[d.imp] = numerici.includes(d.imp) ? numDa(el.value) : el.value.trim(); salva(); avviso('Salvato.'); return; }
+    if (d.imp) { const numerici = ['ivaVendita', 'sogliaAumento', 'mlDash', 'mlDrop']; S.impostazioni[d.imp] = numerici.includes(d.imp) ? numDa(el.value) : el.value.trim(); if (d.imp === 'mlDash' || d.imp === 'mlDrop') M.svuota(); salva(); avviso('Salvato.'); return; }
     if (d.cas) { S.casella[d.cas] = el.value.trim(); salva(); avviso('Salvato.'); return; }
     if (d.olio) { S.impostazioni.olio[d.olio] = numDa(el.value) || 0; salva(); ridisegnaMantenendo(); return; }
     if (d.od != null) { const riga = S.impostazioni.olio.dettaglio[+d.od]; riga[+d.c] = d.c === '0' ? el.value : (numDa(el.value) || 0); salva(); ridisegnaMantenendo(); return; }
@@ -4182,7 +4212,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v122';
+  const VERSIONE_APP = 'repub-v123';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;

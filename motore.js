@@ -20,7 +20,8 @@
   M.UNITA = { ml: 'ml', g: 'g', pz: 'pz' };
   // misure da bar per i liquidi nelle ricette: si scrivono in dash o drop, il costo si fa in ml
   M.MISURE = { dash: 0.8, drop: 0.05 };
-  M.qtaRiga = (rg) => (Number(rg.quantita) || 0) * (rg.misura && M.MISURE[rg.misura] ? M.MISURE[rg.misura] : 1);
+  M.mlMisura = (m) => { const v = Number(((S && S.impostazioni) || {})[m === 'dash' ? 'mlDash' : 'mlDrop']); return v > 0 ? v : M.MISURE[m]; };
+  M.qtaRiga = (rg) => (Number(rg.quantita) || 0) * (rg.misura && M.MISURE[rg.misura] ? M.mlMisura(rg.misura) : 1);
 
   let S = null;            // stato
   let simulazione = null;  // { prodottoId: prezzo } per il simulatore
