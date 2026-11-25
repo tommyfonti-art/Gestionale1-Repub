@@ -1651,7 +1651,7 @@
       const link = rg.rif.startsWith('p:') ? '#/prodotto/' + rg.rif.slice(2) : '#/ricetta/' + rg.rif.slice(2);
       const quota = rg.costo != null && cr.totale ? rg.costo / cr.totale : null;
       const fonte = rg.rif.startsWith('p:') ? (o ? fontePrezzo(o) : '') : provvisoriaDaFoglio(o) ? '<small class="fonte giallo-t">preparazione con il costo provvisorio del tuo foglio</small>' : '';
-      return `<tr><td><a href="${link}">${esc(M.nomeRif(rg.rif))}</a>${rg.nota ? `<small>${esc(rg.nota)}</small>` : ''}${fonte}</td><td class="n">${qta(rg.quantita)} ${esc(M.unitaRif(rg.rif))}</td><td class="n">${rg.costo == null ? '<span class="badge rosso">manca</span>' : euro(rg.costo, 3)}</td><td class="n tenue">${perc(quota, 0)}</td></tr>`;
+      return `<tr><td><a href="${link}">${esc(M.nomeRif(rg.rif))}</a>${rg.nota ? `<small>${esc(rg.nota)}</small>` : ''}${fonte}</td><td class="n">${qta(rg.quantita)}${rg.misura && M.MISURE[rg.misura] ? misuraTesto(rg) : ' ' + esc(M.unitaRif(rg.rif))}</td><td class="n">${rg.costo == null ? '<span class="badge rosso">manca</span>' : euro(rg.costo, 3)}</td><td class="n tenue">${perc(quota, 0)}</td></tr>`;
     }).join('') + (r.costiExtra || []).map(e => `<tr><td>${esc(e.nome)}</td><td></td><td class="n">${euro(e.costo, 3)}</td><td class="n tenue">${perc(cr.totale ? e.costo / cr.totale : null, 0)}</td></tr>`).join('')
       + (cr.gruppo || []).map(g => `<tr><td>${g.rif ? `<a href="#/prodotto/${g.rif.slice(2)}">${esc(M.nomeRif(g.rif))}</a>` : esc(g.nome || 'costo')}<small class="fonte"><a href="#/costi-gruppo/${r.tipo}">dal gruppo ${esc(M.TIPI[r.tipo] || '')}</a></small></td><td class="n">${g.rif ? qta(g.quantita) + ' ' + esc(M.unitaRif(g.rif)) : ''}</td><td class="n">${g.costo == null ? '<span class="badge giallo">senza prezzo</span>' : euro(g.costo, 3)}</td><td class="n tenue">${perc(g.costo != null && cr.totale ? g.costo / cr.totale : null, 0)}</td></tr>`).join('');
     return {
@@ -1731,7 +1731,7 @@
         <h3>Ingredienti</h3>
         ${!semi && b.media ? `<label class="spunta"><input type="checkbox" data-media="1" ${b.media ? 'checked' : ''}> <span>Il cliente ne sceglie uno (amari, rum, grappe…): il costo è la <b>media</b> degli ingredienti, non la somma</span></label>` : ''}
         ${b.righe.map((rg, k) => `<div class="riga-ed">${campoIngrediente(rg, k)}
-          <input type="text" inputmode="decimal" autocomplete="off" data-r="${k}" data-k="quantita" value="${esc(rg.quantita)}" placeholder="dose"><span class="u">${esc(M.unitaRif(rg.rif))}</span>
+          <input type="text" inputmode="decimal" autocomplete="off" data-r="${k}" data-k="quantita" value="${esc(rg.quantita)}" placeholder="dose">${unitaRiga(rg, k)}
           <button class="x" data-az="togli-riga" data-k="${k}" aria-label="Togli">✕</button></div>`).join('')}
         <button class="btn piccolo" data-az="aggiungi-riga">＋ Aggiungi ingrediente</button>
         <p class="anteprima">Costo: <b>${euro(c, 3)}</b>${!semi && pr && c ? ` · moltiplicatore × ${n2(pr / c)}` : ''}</p>
@@ -1766,7 +1766,7 @@
       <div class="card form"><h3>Ingredienti</h3>
         ${b.tipo !== 'semilavorato' && b.media ? `<label class="spunta"><input type="checkbox" data-media="1" ${b.media ? 'checked' : ''}> <span>Il cliente ne sceglie uno (amari, rum, grappe…): il costo è la <b>media</b> degli ingredienti, non la somma</span></label>` : ''}
         ${b.righe.map((rg, k) => `<div class="riga-ed">${campoIngrediente(rg, k)}
-          <input type="text" inputmode="decimal" autocomplete="off" data-r="${k}" data-k="quantita" value="${esc(rg.quantita)}" placeholder="dose"><span class="u">${esc(M.unitaRif(rg.rif))}</span>
+          <input type="text" inputmode="decimal" autocomplete="off" data-r="${k}" data-k="quantita" value="${esc(rg.quantita)}" placeholder="dose">${unitaRiga(rg, k)}
           <button class="x" data-az="togli-riga" data-k="${k}" aria-label="Togli">✕</button></div>`).join('')}
         <button class="btn piccolo" data-az="aggiungi-riga">＋ Aggiungi ingrediente</button>
         <p class="anteprima">Costo: <b>${euro(anteprima.totale, 3)}</b>${!semi && b.prezzo && anteprima.totale ? ` · moltiplicatore × ${n2(b.prezzo / anteprima.totale)}` : ''}</p>
@@ -2463,7 +2463,7 @@
       const X = window.XLSX; const wb = X.utils.book_new();
       const r2 = (n) => n == null ? '' : Math.round(n * 1000) / 1000;
       X.utils.book_append_sheet(wb, X.utils.json_to_sheet(S.prodotti.map(p => ({ 'Nome breve': p.nomeBreve, 'Nome completo': p.nomeCompleto, Categoria: p.categoria, Fornitore: (M.fornitore(p.fornitoreId) || {}).nome || '', Confezione: p.confezione, Contenuto: p.contenuto, Unità: p.unita, 'Prezzo senza IVA': r2(M.prezzo(p)), 'IVA %': p.iva, 'In casa': p.giacenza, 'Valore': r2(M.valoreGiacenza(p)), 'Scorta minima': p.scortaMinima, Allergeni: (p.allergeni || []).join(', ') }))), 'Prodotti');
-      X.utils.book_append_sheet(wb, X.utils.json_to_sheet(S.ricette.map(r => { const i = M.indicatori(r); return { Ricetta: r.nome, Tipo: M.TIPI_SINGOLARE[r.tipo], Costo: r2(i.costo), Prezzo: r.prezzo || '', 'Prezzo senza IVA': r2(i.netto), Moltiplicatore: r2(i.molt), 'Incidenza %': i.incidenza == null ? '' : r2(i.incidenza * 100), 'Margine a pezzo': r2(i.margine), Ingredienti: (r.righe || []).map(rg => `${M.nomeRif(rg.rif)} ${rg.quantita} ${M.unitaRif(rg.rif)}`).join('; '), Allergeni: M.allergeniRicetta(r).join(', ') }; })), 'Ricette');
+      X.utils.book_append_sheet(wb, X.utils.json_to_sheet(S.ricette.map(r => { const i = M.indicatori(r); return { Ricetta: r.nome, Tipo: M.TIPI_SINGOLARE[r.tipo], Costo: r2(i.costo), Prezzo: r.prezzo || '', 'Prezzo senza IVA': r2(i.netto), Moltiplicatore: r2(i.molt), 'Incidenza %': i.incidenza == null ? '' : r2(i.incidenza * 100), 'Margine a pezzo': r2(i.margine), Ingredienti: (r.righe || []).map(rg => `${M.nomeRif(rg.rif)} ${rg.quantita} ${rg.misura || M.unitaRif(rg.rif)}`).join('; '), Allergeni: M.allergeniRicetta(r).join(', ') }; })), 'Ricette');
       X.utils.book_append_sheet(wb, X.utils.json_to_sheet(S.fatture.map(f => ({ Fornitore: (M.fornitore(f.fornitoreId) || {}).nome || f.fornitoreNome, Numero: f.numero, Data: f.data, Tipo: f.tipoDoc === 'TD04' ? 'Nota di credito' : 'Fattura', Imponibile: f.imponibile, Totale: f.totale, Stato: f.stato === 'registrata' ? 'Registrata' : 'Da registrare' }))), 'Fatture');
       X.writeFile(wb, 'Gestionale Repub ' + M.oggi() + '.xlsx');
     } catch (e) { alert(e.message); }
@@ -2666,9 +2666,16 @@
   AZ['aggiungi-asporto'] = () => { (ui.bozza.asporto = ui.bozza.asporto || []).push({ rif: '', quantita: 1 }); ridisegnaMantenendo(); };
   AZ['togli-asporto'] = (el) => { ui.bozza.asporto.splice(+el.dataset.k, 1); ridisegnaMantenendo(); };
   AZ['salva-ricetta'] = () => { const b = salvaBozzaRicetta(); if (b) vai('#/ricetta/' + b.id); };
+  // unità di una riga di ricetta: per i liquidi si può scegliere ml, dash o drop
+  function unitaRiga(rg, k) {
+    const u = M.unitaRif(rg.rif);
+    if (u !== 'ml') return `<span class="u">${esc(u)}</span>`;
+    return `<select class="u u-scelta" data-r="${k}" data-k="misura" aria-label="Misura">${[['', 'ml'], ['dash', 'dash'], ['drop', 'drop']].map(([v, t]) => `<option value="${v}" ${(rg.misura || '') === v ? 'selected' : ''}>${t}</option>`).join('')}</select>`;
+  }
+  const misuraTesto = (rg) => rg.misura && M.MISURE[rg.misura] ? ` ${rg.misura} <small class="tenue">(${String(Math.round(M.qtaRiga(rg) * 100) / 100).replace('.', ',')} ml)</small>` : '';
   function salvaBozzaRicetta() {
     const b = ui.bozza; if (!b.nome.trim()) { alert('Scrivi il nome.'); return null; }
-    b.righe = b.righe.filter(rg => rg.rif).map(rg => Object.assign(rg, { quantita: numDa(rg.quantita) || 0 }));
+    b.righe = b.righe.filter(rg => rg.rif).map(rg => { Object.assign(rg, { quantita: numDa(rg.quantita) || 0 }); if (!rg.misura || M.unitaRif(rg.rif) !== 'ml') delete rg.misura; return rg; });
     b.costiExtra = (b.costiExtra || []).filter(e => e.nome || e.costo).map(e => Object.assign(e, { costo: numDa(e.costo) || 0 }));
     b.asporto = (b.asporto || []).filter(a => a.rif).map(a => Object.assign(a, { quantita: numDa(a.quantita) || 1 }));
     b.prezzo = numDa(b.prezzo); b.resa = numDa(b.resa);
@@ -4122,6 +4129,7 @@
       const fr = new FileReader(); fr.onload = () => { try { const x = JSON.parse(fr.result); if (!x.prodotti || !x.ricette) throw 0; if (!confirm('Sostituisco tutti i dati con questa copia?')) return; prepara(x); salva(); disegna(); avviso('Copia caricata.'); } catch (er) { alert('Il file non è una copia valida.'); } }; fr.readAsText(el.files[0]); el.value = ''; return;
     }
     if (d.r != null && d.k === 'rif' && ui.bozza) { ui.bozza.righe[+d.r].rif = el.value; ridisegnaMantenendo(); return; }
+    if (d.r != null && d.k === 'misura' && ui.bozza) { ui.bozza.righe[+d.r].misura = el.value; aggiornaAnteprima(); return; }
     if (d.a != null && d.k === 'rif' && ui.bozza) { ui.bozza.asporto[+d.a].rif = el.value; return; }
     if (d.b != null && ui.bozza && el.tagName === 'SELECT') { ui.bozza[d.b] = el.value; if (d.ridisegna) ridisegnaMantenendo(); return; }
     if (d.fr != null) {
@@ -4174,7 +4182,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v121';
+  const VERSIONE_APP = 'repub-v122';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;

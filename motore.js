@@ -18,6 +18,9 @@
   };
   M.tipiDi = (reparto) => Object.keys(M.TIPI).filter(k => k !== 'semilavorato' && M.REPARTO_TIPO[k] === reparto);
   M.UNITA = { ml: 'ml', g: 'g', pz: 'pz' };
+  // misure da bar per i liquidi nelle ricette: si scrivono in dash o drop, il costo si fa in ml
+  M.MISURE = { dash: 0.8, drop: 0.05 };
+  M.qtaRiga = (rg) => (Number(rg.quantita) || 0) * (rg.misura && M.MISURE[rg.misura] ? M.MISURE[rg.misura] : 1);
 
   let S = null;            // stato
   let simulazione = null;  // { prodottoId: prezzo } per il simulatore
@@ -122,8 +125,8 @@
     pila = pila.concat(r.id);
     let tot = 0; const mancanti = []; const righe = [];
     (r.righe || []).forEach(rg => {
-      const c = M.costoRiga(rg.rif, Number(rg.quantita) || 0, data, pila);
-      righe.push({ rif: rg.rif, quantita: rg.quantita, nota: rg.nota, costo: c.costo });
+      const c = M.costoRiga(rg.rif, M.qtaRiga(rg), data, pila);
+      righe.push({ rif: rg.rif, quantita: rg.quantita, misura: rg.misura, nota: rg.nota, costo: c.costo });
       if (c.costo == null) mancanti.push(c.mancante); else tot += c.costo;
       if (c.mancanti) c.mancanti.forEach(m => mancanti.includes(m) || mancanti.push(m));
     });
@@ -213,7 +216,7 @@
     if (pila.includes(r.id)) return acc;
     (r.righe || []).forEach(rg => {
       const o = M.rif(rg.rif); if (!o) return;
-      const q = (Number(rg.quantita) || 0) * molt;
+      const q = M.qtaRiga(rg) * molt;
       if (rg.rif.startsWith('p:')) acc[o.id] = (acc[o.id] || 0) + q;
       else {
         const f = o.tipo === 'semilavorato' && o.resa ? q / o.resa : q;
