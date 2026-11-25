@@ -1189,11 +1189,25 @@
     const n = String(fo.nome || '').replace(/[,\s]+(S\.?\s?N\.?\s?C\.?|S\.?\s?R\.?\s?L\.?(\s?S\.?)?|S\.?\s?P\.?\s?A\.?|S\.?\s?A\.?\s?S\.?|S\.?\s?A\.?\s?R\.?\s?L\.?|S\.a\.? r\.l\.?|SOC\.?\s|SOCIET[AÀ]\s).*$/i, '').trim();
     return n || fo.nome;
   }
+  // ordine della lista prodotti
+  const ORDINI_PROD = [['nome', 'Nome, dalla A alla Z'], ['recenti', 'Ultima fattura, dalla più recente'], ['prezzoSu', 'Prezzo al kg o al litro, dal più basso'], ['prezzoGiu', 'Prezzo al kg o al litro, dal più alto'], ['fornitore', 'Fornitore']];
+  // data dell'ultima fattura del prodotto (se non ne ha, l'ultimo prezzo scritto)
+  const ultimaFattura = (p) => { let d = '', d2 = ''; (p.prezzi || []).forEach(e => { if (!e.data) return; if (e.fatturaId && e.data > d) d = e.data; if (e.data > d2) d2 = e.data; }); return d || d2; };
+  function ordinaProdotti() {
+    const perNome = (a, b) => a.nomeBreve.localeCompare(b.nomeBreve);
+    const pr = (p) => { const r = M.prezzoRiferimento(p); return r && r.valore != null ? r.valore : null; };
+    switch (ui.ordineProd) {
+      case 'recenti': return (a, b) => ultimaFattura(b).localeCompare(ultimaFattura(a)) || perNome(a, b);
+      case 'prezzoSu': case 'prezzoGiu': { const v = ui.ordineProd === 'prezzoSu' ? 1 : -1; return (a, b) => { const x = pr(a), y = pr(b); if (x == null && y == null) return perNome(a, b); if (x == null) return 1; if (y == null) return -1; return (x - y) * v || perNome(a, b); }; }
+      case 'fornitore': return (a, b) => fornitoreBreve(a).localeCompare(fornitoreBreve(b)) || perNome(a, b);
+      default: return perNome;
+    }
+  }
   function listaProdotti() {
     const f = ui.filtroProdotti.toLowerCase();
     const perForn = ui.prodVista === 'fornitori';
     const l = S.prodotti.filter(p => (perForn ? (!ui.fornProd || diFornitore(p, ui.fornProd)) : (ui.categoria === '__nuovi' ? p.daCompletare : passaReparti(p, PF()))) && (!f || (p.nomeBreve + ' ' + p.nomeCompleto + ' ' + (p.nomeFoglio || '')).toLowerCase().includes(f)))
-      .sort((a, b) => a.nomeBreve.localeCompare(b.nomeBreve));
+      .sort(ordinaProdotti());
     ui.scorriP = l.map(p => p.id);
     if (!l.length) return '<p class="tenue centro">Nessun prodotto.</p>';
     if (inElimina('p')) return l.map(p => { const u = M.usatoIn('p:' + p.id).tutte.length; return rigaElimina(p.id, p.nomeBreve, `${esc((M.fornitore(p.fornitoreId) || {}).nome || 'senza fornitore')} · ${u ? `<b>usato in ${u} ${u === 1 ? 'ricetta' : 'ricette'}</b>` : 'non usato'}`); }).join('');
@@ -1201,7 +1215,7 @@
     return l.map(p => {
       const pr = M.prezzo(p), rif = M.prezzoRiferimento(p);
       const sc = p.scortaMinima > 0 && (p.giacenza || 0) < p.scortaMinima;
-      return `<a class="riga" href="#/prodotto/${p.id}"><span>${esc(p.nomeBreve)}<small>${esc(p.nomeCompleto)}</small><small class="forn-riga">${esc(fornitoreBreve(p))}</small></span>
+      return `<a class="riga" href="#/prodotto/${p.id}"><span>${esc(p.nomeBreve)}<small>${esc(p.nomeCompleto)}</small><small class="forn-riga">${esc(fornitoreBreve(p))}${ui.ordineProd === 'recenti' && ultimaFattura(p) ? ' · ' + dataIt(ultimaFattura(p)) : ''}</small></span>
         <span class="destra">${p.speciale ? euro(rif && rif.valore, 2) + '<small>' + esc(rif ? rif.etichetta : '') + '</small>' : euro(pr) + `<small>${rif ? n2(rif.valore) + ' ' + rif.etichetta : 'senza prezzo'}</small>`}${sc ? '<span class="badge rosso">scorta</span>' : ''}${p.daCompletare ? '<span class="badge giallo">da completare</span>' : ''}</span></a>`;
     }).join('');
   }
@@ -1218,6 +1232,7 @@
       <input class="cerca" type="search" placeholder="Cerca un prodotto" value="${esc(ui.filtroProdotti)}" data-filtro="prodotti">
       <div class="chips"><button class="chip ${ui.prodVista !== 'fornitori' ? 'on' : ''}" data-az="prod-vista" data-v="categorie">Per categoria</button><button class="chip ${ui.prodVista === 'fornitori' ? 'on' : ''}" data-az="prod-vista" data-v="fornitori">Per fornitore</button></div>
       ${ui.prodVista === 'fornitori' ? `<div class="chips">${fornitoriConProdotti().map(x => `<button class="chip ${ui.fornProd === x.f.id ? 'on' : ''}" data-az="forn-prod" data-v="${x.f.id}">${esc(x.f.nome)} (${x.n})</button>`).join('')}</div>` : chipsReparti(PF(), 'prod-filtro', nuoviDaCompletare() ? `<button class="chip ${ui.categoria === '__nuovi' ? 'on' : ''} giallo" data-az="categoria" data-v="__nuovi">Da completare (${nuoviDaCompletare()})</button>` : '', ui.categoria === '__nuovi')}
+      <div class="filtri-tendine"><label><span>Ordina</span><select data-prod-ordine aria-label="Ordina">${ORDINI_PROD.map(([k, v]) => `<option value="${k}" ${(ui.ordineProd || 'nome') === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label></div>
       ${inElimina('p') ? barraElimina('p') : inElimina('u') ? barraUnisci() : `<div class="azioni-riga">${ui.prodVista === 'fornitori'
         ? (ui.fornProd && M.fornitore(ui.fornProd) ? `<a class="btn primario piccolo" href="#/formati" data-az="fmt-fornitore" data-id="${ui.fornProd}">Metti a posto i prodotti di ${esc(nomeFornBreve(M.fornitore(ui.fornProd).nome))}, uno dopo l'altro</a>` : '')
         : `<a class="btn primario piccolo" href="#/formati" data-az="fmt-categoria">${ui.categoria !== '__nuovi' && PF().cats.length === 1 ? `Ricontrolla i formati: ${esc(PF().cats[0])}` : ui.categoria !== '__nuovi' && PF().rep ? `Ricontrolla i formati: ${esc(PF().rep)}` : 'Ricontrolla i formati, uno dopo l\'altro'}</a>`}
@@ -4117,6 +4132,7 @@
         M.svuota(); salva(); ridisegnaMantenendo(); return; } }
     const el = e.target; const d = el.dataset;
     if (d.ricOrdine != null) { ui.ordineRicette = el.value; ridisegnaMantenendo(); return; }
+    if (d.prodOrdine != null) { ui.ordineProd = el.value; ridisegnaMantenendo(); return; }
     if (d.ricPeriodo != null) { ui.ricPer = el.value; ridisegnaMantenendo(); return; }
     if (d.panPeriodo != null) { if (el.value) { ui.panSel = { tipo: 'periodo', per: el.value }; ridisegnaMantenendo(); } return; }
     if (d.carica === 'xml') { caricaXML(Array.from(el.files)); el.value = ''; return; }
@@ -4214,7 +4230,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v124';
+  const VERSIONE_APP = 'repub-v125';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
