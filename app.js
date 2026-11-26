@@ -2400,7 +2400,7 @@
     const vuote = l.filter(r => !(r.righe || []).length).length;
     return {
       titolo: 'Allergeni', indietro: '#/altro', html: `
-      <div class="no-stampa"><div class="filtri-ric"><div class="segmentato">${[['*tutto', 'Tutto'], ['*bar', 'Bar'], ['*cucina', 'Cucina']].map(([k, v]) => `<button class="${rep === k ? 'on' : ''}" data-az="all-rep" data-v="${k}">${v}</button>`).join('')}</div><button class="btn primario" data-az="stampa">Stampa</button></div>
+      <div class="no-stampa"><div class="filtri-ric"><div class="segmentato">${[['*tutto', 'Tutto'], ['*bar', 'Bar'], ['*cucina', 'Cucina']].map(([k, v]) => `<button class="${rep === k ? 'on' : ''}" data-az="all-rep" data-v="${k}">${v}</button>`).join('')}</div><button class="btn primario" data-az="all-pdf">Stampa o salva in PDF</button></div>
         <p class="tenue piccolo">Gli allergeni arrivano dalle schede dei prodotti usati in ogni ricetta, più quelli segnati a mano nella ricetta. Prima di esporla, controlla che i prodotti abbiano gli allergeni giusti.${vuote ? ` <b>${vuote} ricette non hanno ancora gli ingredienti</b>: sono segnate con «da completare».` : ''}</p></div>
       <div class="stampa-testa"><h2>Repub · Allergeni</h2><p>Elenco delle sostanze che provocano allergie o intolleranze (Reg. UE 1169/2011), aggiornato al ${dataIt(M.oggi())}. Per informazioni chiedi al personale.</p></div>
       <div class="card larga tab-allergeni-box"><table class="tab tab-allergeni"><thead><tr><th class="all-nome">Piatto o drink</th>${M.ALLERGENI.map(a => `<th class="all-col"><span>${esc(a)}</span></th>`).join('')}</tr></thead>
@@ -4369,6 +4369,38 @@
   AZ['aum-per'] = (el) => { ui.aumGiorni = el.dataset.v; ridisegnaMantenendo(); };
   AZ['all-rep'] = (el) => { ui.allRep = el.dataset.v; ridisegnaMantenendo(); };
   AZ.stampa = () => window.print();
+  // tabella degli allergeni in PDF (su iPhone e iPad «stampa» dall'app sulla schermata Home non funziona: il PDF si condivide, si stampa o si salva)
+  AZ['all-pdf'] = async () => {
+    modale('<h3>Preparo il PDF…</h3><div class="rotella"></div>');
+    try {
+      if (!window.jspdf) await caricaScript('jspdf.umd.min.js');
+      if (!window.jspdf.jsPDF.API.autoTable) await caricaScript('jspdf.plugin.autotable.min.js');
+      const { jsPDF } = window.jspdf, doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      const rep = ui.allRep || '*tutto';
+      const l = S.ricette.filter(r => r.tipo !== 'semilavorato' && (rep === '*tutto' || M.REPARTO_TIPO[r.tipo] === rep.slice(1)) && (r.prezzo || (r.righe || []).length))
+        .sort((a, b) => (M.TIPI[a.tipo] || '').localeCompare(M.TIPI[b.tipo] || '') || a.nome.localeCompare(b.nome));
+      const body = []; let g = null;
+      l.forEach(r => { const gg = M.TIPI[r.tipo] || ''; if (gg !== g) { g = gg; body.push([{ content: gg, colSpan: M.ALLERGENI.length + 1, styles: { fillColor: [235, 230, 220], fontStyle: 'bold' } }]); } const al = M.allergeniRicetta(r); body.push([r.nome + (!(r.righe || []).length ? '  (da completare)' : '')].concat(M.ALLERGENI.map(a => al.includes(a) ? 'X' : ''))); });
+      doc.setFontSize(15); doc.text('Repub · Allergeni' + (rep === '*bar' ? ' · Bar' : rep === '*cucina' ? ' · Cucina' : ''), 10, 12);
+      doc.setFontSize(8.5); doc.text('Sostanze che provocano allergie o intolleranze (Reg. UE 1169/2011), aggiornato al ' + dataIt(M.oggi()) + '. Per informazioni chiedi al personale.', 10, 17);
+      doc.autoTable({
+        startY: 21, head: [['Piatto o drink'].concat(M.ALLERGENI)], body, theme: 'grid', margin: { left: 10, right: 10 },
+        styles: { fontSize: 7.5, cellPadding: 1.2, lineColor: [210, 205, 195], lineWidth: 0.1, valign: 'middle' },
+        headStyles: { fillColor: [255, 255, 255], textColor: [40, 40, 40], fontStyle: 'bold', minCellHeight: 26, valign: 'bottom' },
+        columnStyles: Object.assign({ 0: { cellWidth: 'auto' } }, ...M.ALLERGENI.map((a, k) => ({ [k + 1]: { cellWidth: 11.5, halign: 'center' } }))),
+        didParseCell: (d) => { if (d.section === 'head' && d.column.index > 0) { d.cell.raw0 = d.cell.text[0]; d.cell.text = ['']; } if (d.section === 'body' && d.column.index > 0 && d.cell.raw === 'X') { d.cell.text = ['']; d.cell.segno = true; } },
+        didDrawCell: (d) => {
+          if (d.section === 'head' && d.column.index > 0 && d.cell.raw0) { doc.setFontSize(7.5); doc.setFont(undefined, 'bold'); doc.text(d.cell.raw0, d.cell.x + d.cell.width / 2 + 1.2, d.cell.y + d.cell.height - 1.5, { angle: 90 }); }
+          if (d.section === 'body' && d.cell.segno) { doc.setFillColor(29, 84, 70); doc.circle(d.cell.x + d.cell.width / 2, d.cell.y + d.cell.height / 2, 1.4, 'F'); }
+        }
+      });
+      const nome = 'Allergeni Repub ' + M.oggi() + '.pdf', blob = doc.output('blob'), file = new File([blob], nome, { type: 'application/pdf' });
+      chiudiModale();
+      const ios = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Mac/.test(navigator.userAgent));
+      if (ios && navigator.canShare && navigator.canShare({ files: [file] })) { try { await navigator.share({ files: [file], title: 'Allergeni Repub' }); } catch (e) { /* chiuso */ } return; }
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = nome; document.body.appendChild(a); a.click(); a.remove();
+    } catch (e) { chiudiModale(); alert('Non sono riuscito a fare il PDF: ' + e.message); }
+  };
   AZ['copia-sheet'] = () => copiaSuSheet(true);
   AZ['copia-sheet-scarica'] = () => scaricaUltimaCopia();
   AZ['copia-codice'] = () => { const t = ($('#codice-sheet') || {}).textContent || ''; (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(() => avviso('Codice copiato.')).catch(() => { const r = document.createRange(); r.selectNodeContents($('#codice-sheet')); const sl = getSelection(); sl.removeAllRanges(); sl.addRange(r); alert('Il codice è selezionato: copialo con Comando + C.'); }); };
@@ -4611,7 +4643,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v135';
+  const VERSIONE_APP = 'repub-v136';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;

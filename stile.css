@@ -536,3 +536,7 @@ small.blocco { display: block; }
 .pc-strano { color: #8a6100; font-size: 13px; max-width: 260px; }
 .pc-riga.strano { opacity: .85; }
 .aum-dett { overflow-x: auto; max-width: 100%; } .aum-dett .tab { font-size: 13px; }
+/* allergeni sul telefono: colonne larghe abbastanza, la tabella scorre di lato */
+.tab-allergeni { min-width: 560px; }
+.tab-allergeni th.all-col { min-width: 26px; width: 26px; }
+.tab-allergeni th.all-col span { display: inline-block; line-height: 1.05; }
