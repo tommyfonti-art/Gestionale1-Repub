@@ -1852,9 +1852,9 @@
       <div class="card"><h3>Carica</h3>
         <div class="bottoni colonna">
           <label class="btn primario">Fatture elettroniche (.xml, .p7m o .zip)<input type="file" accept=".xml,.p7m,.zip,application/xml,text/xml,application/zip" multiple hidden data-carica="xml"></label>
-          <label class="btn">Foto o PDF di una fattura<input type="file" accept="image/*,application/pdf" hidden data-carica="foto"></label>
+          ${S.impostazioni.chiaveClaude ? '<label class="btn">Foto o PDF di una fattura<input type="file" accept="image/*,application/pdf" hidden data-carica="foto"></label>' : ''}
         </div>
-        <p class="tenue piccolo">Puoi scegliere più fatture insieme, anche il file .zip scaricato dal portale. Le foto le legge Claude: serve la chiave in Impostazioni.</p>
+        <p class="tenue piccolo">Puoi scegliere più fatture insieme, anche il file .zip scaricato dal portale.</p>
         <div class="casella">${S.casella.url ? `<div><b>Casella delle fatture</b><small>${S.casella.ultimoControllo ? 'ultimo controllo ' + new Date(S.casella.ultimoControllo).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'mai controllata'}${S.casella.fotoInAttesa ? ' · ' + S.casella.fotoInAttesa + ' foto in attesa' : ''}</small></div><button class="btn piccolo" data-az="controlla-casella">Controlla adesso</button>` : `<div><b>Casella delle fatture</b><small>non ancora collegata</small></div><a class="btn piccolo" href="#/impostazioni">Collega</a>`}</div>
         <details><summary>Fatture di esempio per la prova</summary><div class="bottoni">${window.FATTURE_ESEMPIO.map((x, i) => `<button class="btn piccolo" data-az="esempio" data-i="${i}">${esc(x.nome)}</button>`).join('')}</div></details>
       </div>
@@ -2187,18 +2187,14 @@
       <div class="card form"><h3>Misure da bar</h3><p class="tenue piccolo">Quanti ml valgono, per il costo delle ricette scritte in dash o drop.</p>
         <div class="due"><label>1 dash = ml<input type="text" inputmode="decimal" autocomplete="off" data-imp="mlDash" value="${esc(String(M.mlMisura('dash')).replace('.', ','))}"></label>
         <label>1 drop = ml<input type="text" inputmode="decimal" autocomplete="off" data-imp="mlDrop" value="${esc(String(M.mlMisura('drop')).replace('.', ','))}"></label></div></div>
-      <div class="card form"><h3>Soglie del moltiplicatore</h3><p class="tenue piccolo">Sotto questo numero la ricetta diventa rossa.</p>
-        <div class="due">${Object.keys(M.TIPI).filter(t => t !== 'semilavorato').map(t => `<label>${esc(M.TIPI[t])}<input type="text" inputmode="decimal" autocomplete="off" data-soglia="${t}" value="${esc((im.soglie || {})[t])}"></label>`).join('')}</div></div>
-      </div><div class="colonna">
       <div class="card form"><h3>Fatture</h3>
         <label class="interruttore"><input type="checkbox" data-az="imp-bool" data-k="autoCrea" ${im.autoCrea !== false ? 'checked' : ''}> Crea in automatico i prodotti nuovi che arrivano dalle fatture</label>
         <label class="interruttore"><input type="checkbox" data-az="imp-bool" data-k="autoRegistra" ${im.autoRegistra !== false ? 'checked' : ''}> Registra subito le fatture complete (i prezzi si aggiornano da soli)</label>
         <p class="tenue piccolo">Le spese di trasporto, le cauzioni e simili vengono saltate da sole. Le fatture lette da foto restano sempre da controllare prima di registrarle.</p></div>
       <div class="card"><h3>Dati dalla cassa</h3><p class="tenue piccolo">Listino dei prodotti in vendita e venduto di un periodo, dai file esportati da Cassa in Cloud.</p><a class="btn" href="#/importa">Importa dalla cassa</a></div>
-      <div class="card form"><h3>Lettura delle foto</h3>
-        <p class="tenue piccolo">Serve una chiave della piattaforma per sviluppatori di Anthropic (console.anthropic.com), a consumo: pochi centesimi a foto. Resta salvata solo su questo dispositivo.</p>
-        <label>Chiave<span class="campo-occhio"><input type="password" id="imp-chiave" autocomplete="off" data-imp="chiaveClaude" value="${esc(im.chiaveClaude)}" placeholder="sk-ant-…"><button type="button" class="occhio" data-occhio="imp-chiave" aria-label="Mostra">${OCCHIO}</button></span></label>
-        <label>Modello<input data-imp="modelloClaude" value="${esc(im.modelloClaude)}"></label></div>
+      </div><div class="colonna">
+      <div class="card form"><h3>Soglie del moltiplicatore</h3><p class="tenue piccolo">Sotto questo numero la ricetta diventa rossa.</p>
+        <div class="due">${Object.keys(M.TIPI).filter(t => t !== 'semilavorato').map(t => `<label>${esc(M.TIPI[t])}<input type="text" inputmode="decimal" autocomplete="off" data-soglia="${t}" value="${esc((im.soglie || {})[t])}"></label>`).join('')}</div></div>
       ${CLOUD && utente ? `<div class="card"><h3>Account</h3><p>Sei entrato come <b>${esc(utente.email)}</b>. I dati sono online e uguali su tutti i dispositivi.</p>
         <div class="bottoni colonna">${(datiDelDispositivo() || {}).fatture && datiDelDispositivo().fatture.length ? `<button class="btn" data-az="porta-locali">Porta online le fatture salvate su questo dispositivo (${datiDelDispositivo().fatture.length})</button>` : ''}<button class="btn" data-az="esci">Esci</button></div></div>` : ''}
       <div class="card"><h3>Dati</h3>
@@ -2208,7 +2204,6 @@
           <a class="btn" href="#/foglio">Prodotti del foglio: collegali a quelli delle fatture</a>
           <button class="btn" data-az="scarica-copia">Scarica una copia dei dati</button>
           <label class="btn">Carica una copia dei dati<input type="file" accept=".json" hidden data-carica="copia"></label>
-          <button class="btn pericolo" data-az="ripristina">Ricomincia con i dati della prova</button>
         </div></div>
       </div></div>
       <p class="versione-app">Versione ${VERSIONE_APP.replace(/^repub-v/, '')}</p>`
@@ -4249,7 +4244,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v130';
+  const VERSIONE_APP = 'repub-v131';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
