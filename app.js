@@ -1932,7 +1932,6 @@
     ['magazzino', 'Magazzino', 'inventario ogni sei mesi', 'M3 21V8l9-5 9 5v13M7 21v-8h10v8M7 17h10'],
     ['vendite', 'Vendite', 'pezzi venduti per periodo', 'M4 20V11M10 20V5M16 20v-6M2 20h20'],
     ['costi', 'Costi del locale', 'merce, bollette, servizi, materiali', 'M3 7h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H3zM3 7l12-4v4M16 13.5h2'],
-    ['simulatore', 'Simulatore', 'e se cambia un prezzo?', 'M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1M15 4v4M9 10v4M17 16v4'],
     ['eventi', 'Eventi', 'listini per le serate', 'M4 5h16v16H4zM4 10h16M8 3v4M16 3v4'],
     ['olio', 'Costo olio', 'quanto costa friggere', 'M12 3c4 5 6 8 6 11a6 6 0 0 1-12 0c0-3 2-6 6-11z'],
     ['ordine', 'Metti in ordine i dati', 'tutto quello da sistemare, in un posto', 'M10 6h10M10 12h10M10 18h10M3 6l1.5 1.5L7 5M3 12l1.5 1.5L7 11M3 18l1.5 1.5L7 17'],
@@ -2156,25 +2155,90 @@
   };
 
   // ----- Olio -----
+  // ----- Costo dell'olio: spesa delle fatture ÷ grammi fritti venduti, nello stesso periodo -----
+  const OLIO_FRITTURA = /\b(semi|girasol|giras|arachid|palma|frittur|alto oleico|a\.? ?oleico)\b/i;
+  const prodottiOlio = () => S.prodotti.filter(p => !p.speciale && /\bolio\b/i.test(p.nomeBreve + ' ' + (p.nomeCompleto || '')));
+  const olioScelti = () => { const o = S.impostazioni.olio; return o.prodotti || prodottiOlio().filter(p => OLIO_FRITTURA.test(p.nomeBreve + ' ' + (p.nomeCompleto || ''))).map(p => p.id); };
+  // grammi di cibo fritto in un pezzo di ogni ricetta (anche dentro le preparazioni e i panini con patatine):
+  // il costo è lineare nel costo dell'olio al grammo, quindi basta la differenza tra due costi
+  function grammiFrittiPerRicetta() {
+    const o = S.impostazioni.olio, prima = { spesaAnnua: o.spesaAnnua, grammiFritti: o.grammiFritti };
+    const out = {};
+    try {
+      o.spesaAnnua = 0; o.grammiFritti = 1; M.svuota(); const a = {}; S.ricette.forEach(r => { a[r.id] = M.costo(r) || 0; });
+      o.spesaAnnua = 1; M.svuota(); S.ricette.forEach(r => { const g = (M.costo(r) || 0) - a[r.id]; if (g > 0.5) out[r.id] = g; });
+    } finally { o.spesaAnnua = prima.spesaAnnua; o.grammiFritti = prima.grammiFritti; M.svuota(); }
+    return out;
+  }
+  function spesaOlio(d) {
+    const scelti = new Set(olioScelti());
+    let spesa = 0; const perProd = {};
+    S.fatture.forEach(f => { if (!f.data || f.data < d.dal || f.data > d.al) return; const segno = f.tipoDoc === 'TD04' ? -1 : 1;
+      f.righe.forEach(rg => { if (!scelti.has(rg.prodottoId) || rg.ignora) return; const t = segno * (Number(rg.totale) || 0); spesa += t; perProd[rg.prodottoId] = (perProd[rg.prodottoId] || 0) + t; }); });
+    return { spesa, perProd };
+  }
+  function calcoloOlio(per) {
+    const d = dateDiPeriodo(per); if (!d) return null;
+    const { spesa, perProd } = spesaOlio(d);
+    const g = grammiFrittiPerRicetta(); let grammi = 0; const perRic = [];
+    S.ricette.forEach(r => { const q = Number((r.vendite || {})[per]) || 0; if (!q || !g[r.id]) return; grammi += q * g[r.id]; perRic.push({ r, q, g: g[r.id], tot: q * g[r.id] }); });
+    perRic.sort((x, y) => y.tot - x.tot);
+    return { d, spesa, grammi, perProd, perRic, c: grammi ? spesa / grammi : null };
+  }
   PAGINE.olio = function () {
     const o = S.impostazioni.olio;
-    const tot = (o.dettaglio || []).reduce((s, d) => s + d[1] * d[2], 0);
     const c = M.costoOlioGrammo();
+    const pers = (S.periodiVendita || []).filter(p => dateDiPeriodo(p)).slice().sort((a, b) => dateDiPeriodo(b).dal.localeCompare(dateDiPeriodo(a).dal) || dateDiPeriodo(b).al.localeCompare(dateDiPeriodo(a).al));
+    // di partenza: il periodo più lungo che ha anche le fatture dell'olio
+    const lungo = (l) => l.slice().sort((a, b) => { const x = dateDiPeriodo(a), y = dateDiPeriodo(b); return (new Date(y.al) - new Date(y.dal)) - (new Date(x.al) - new Date(x.dal)) || y.al.localeCompare(x.al); })[0];
+    const per = ui.olioPer && pers.includes(ui.olioPer) ? ui.olioPer : (lungo(pers.filter(p => spesaOlio(dateDiPeriodo(p)).spesa > 0)) || pers[0]);
+    const k = per ? calcoloOlio(per) : null, scelti = olioScelti();
+    const tot = (o.dettaglio || []).reduce((t, d) => t + d[1] * d[2], 0);
     return {
       titolo: 'Costo dell\'olio', indietro: '#/altro', html: `
-      <p class="tenue">Il tuo metodo: quanto spendi di olio in un anno, diviso i grammi di cibo che friggi in un anno. Viene il costo dell'olio per ogni grammo fritto, che entra nelle ricette dei fritti.</p>
-      <div class="kpi-griglia">${kpi('Per kg fritto', euro(c * 1000))}${kpi('Su 255 g di patatine', euro(c * 255))}</div>
-      <div class="card form"><label>Spesa per l'olio in un anno (€)<input type="text" inputmode="decimal" autocomplete="off" data-olio="spesaAnnua" value="${esc(o.spesaAnnua)}"></label>
-        <label>Grammi fritti in un anno<input type="text" inputmode="numeric" autocomplete="off" data-olio="grammiFritti" value="${esc(o.grammiFritti)}"></label>
-        ${tot ? `<button class="btn piccolo" data-az="olio-da-tabella">Usa il totale della tabella (${qta(tot)} g)</button>` : ''}</div>
-      <div class="card scorri"><h3>Da dove vengono i grammi</h3><table class="tab"><tr><th>Piatto</th><th class="n">Porzioni</th><th class="n">Grammi</th><th class="n">Totale</th></tr>
-        ${(o.dettaglio || []).map((d, k) => `<tr><td><input class="mini largo" data-od="${k}" data-c="0" value="${esc(d[0])}"></td><td class="n"><input class="mini" type="text" inputmode="decimal" data-od="${k}" data-c="1" value="${esc(d[1])}"></td><td class="n"><input class="mini" type="text" inputmode="decimal" data-od="${k}" data-c="2" value="${esc(d[2])}"></td><td class="n">${qta(d[1] * d[2])}</td></tr>`).join('')}
-        <tr class="totale"><td>Totale</td><td></td><td></td><td class="n">${qta(tot)}</td></tr></table>
-        <button class="btn piccolo" data-az="olio-riga">＋ Aggiungi piatto</button></div>`
+      <p class="tenue">Quanto hai speso di olio da frittura nelle fatture, diviso i grammi di cibo fritto che hai venduto nello stesso periodo. Viene il costo dell'olio per ogni grammo fritto, che entra da solo nel costo di patatine, fritti e panini con patatine.</p>
+      <div class="kpi-griglia">${kpi('Adesso: olio per kg fritto', c == null ? '—' : euro(c * 1000))}${kpi('Su una porzione di patatine (255 g)', c == null ? '—' : euro(c * 255))}${o.origine ? kpi('Calcolato da', esc(o.origine)) : ''}</div>
+      ${pers.length ? `<div class="card form larga"><h3>Ricalcolo dalle fatture e dalle vendite</h3>
+        <label>Periodo<select data-olio-per>${pers.map(p => `<option ${p === per ? 'selected' : ''}>${esc(p)}</option>`).join('')}</select></label>
+        ${k ? `<div class="kpi-griglia">${kpi('Olio comprato', euro(k.spesa, 0), 'dal ' + dataIt(k.d.dal) + ' al ' + dataIt(k.d.al))}${kpi('Cibo fritto venduto', qta(Math.round(k.grammi / 1000)) + ' kg')}${kpi('Olio per kg fritto', k.c == null ? '—' : euro(k.c * 1000), k.c == null ? '' : euro(k.c * 255) + ' su 255 g di patatine')}</div>
+        ${k.c && k.spesa > 0 ? `<div class="bottoni"><button class="btn primario" data-az="olio-usa" data-per="${esc(per)}">Usa questo costo</button></div>` : '<p class="msg giallo">In questo periodo mancano le fatture dell\'olio o le vendite dei fritti.</p>'}
+        <p class="tenue piccolo">Attenzione: il periodo delle fatture e quello delle vendite devono essere gli stessi. Se mancano fatture dell'olio (comprato in contanti, o da un fornitore che non hai caricato), il costo viene più basso del vero.</p>` : ''}</div>` : '<p class="msg giallo">Per ricalcolarlo servono le vendite della cassa con le date (Altro › Importa dati).</p>'}
+      <details class="card"><summary><b>Quali oli conto</b> <span class="tenue">· ${scelti.length} ${scelti.length === 1 ? 'prodotto' : 'prodotti'}</span></summary>
+        <p class="tenue piccolo">Di solito solo quelli per friggere: semi, girasole, arachide, palma. L'extravergine per condire no.</p>
+        ${prodottiOlio().map(p => `<label class="interruttore"><input type="checkbox" data-olio-prod="${p.id}" ${scelti.includes(p.id) ? 'checked' : ''}> ${esc(p.nomeBreve)} <small class="tenue">${esc((M.fornitore(p.fornitoreId) || {}).nome || '')}${k && k.perProd[p.id] ? ' · ' + euro(k.perProd[p.id], 0) + ' nel periodo' : ''}</small></label>`).join('') || '<p class="tenue">Nessun prodotto con «olio» nel nome.</p>'}</details>
+      ${k && k.perRic.length ? `<details class="card"><summary><b>Da dove vengono i grammi fritti</b> <span class="tenue">· ${k.perRic.length} ricette</span></summary>
+        <table class="tab"><tr><th>Ricetta</th><th class="n">Venduti</th><th class="n">g fritti a pezzo</th><th class="n">Totale kg</th></tr>
+        ${k.perRic.map(x => `<tr><td><a href="#/ricetta/${x.r.id}">${esc(x.r.nome)}</a></td><td class="n">${qta(x.q)}</td><td class="n">${qta(Math.round(x.g))}</td><td class="n">${qta(Math.round(x.tot / 100) / 10)}</td></tr>`).join('')}</table>
+        <p class="tenue piccolo">I grammi fritti di ogni ricetta sono quelli della riga «Olio di frittura» nella ricetta (o nella preparazione che usa, per esempio le patatine dentro un panino con patatine). Se una ricetta fritta non compare, aggiungile quella riga.</p></details>` : ''}
+      <details class="card form"><summary><b>A mano</b> <span class="tenue">· spesa e grammi scritti da te</span></summary>
+        <label>Spesa per l'olio (€)<input type="text" inputmode="decimal" autocomplete="off" data-olio="spesaAnnua" value="${esc(o.spesaAnnua)}"></label>
+        <label>Grammi fritti nello stesso periodo<input type="text" inputmode="numeric" autocomplete="off" data-olio="grammiFritti" value="${esc(o.grammiFritti)}"></label>
+        ${tot ? `<button class="btn piccolo" data-az="olio-da-tabella">Usa il totale della vecchia tabella (${qta(tot)} g)</button>` : ''}</details>`
     };
   };
 
   // ----- Impostazioni -----
+  const CODICE_SHEET = "// Gestionale Repub · copia automatica\n// Cambia la parola qui sotto e scrivi la stessa nell'app (Impostazioni › Copia automatica su Google)\nconst PAROLA_SEGRETA = 'scrivi-qui-la-tua-parola';\nconst COPIE_DA_TENERE = 30;\n\nfunction doPost(e) {\n  try {\n    const d = JSON.parse(e.postData.contents);\n    if (d.chiave !== PAROLA_SEGRETA) return risposta({ errore: 'parola segreta sbagliata' });\n    const ss = SpreadsheetApp.getActiveSpreadsheet();\n    Object.keys(d.fogli).forEach(function (nome) {\n      const righe = d.fogli[nome];\n      const largh = Math.max.apply(null, righe.map(function (r) { return r.length; }));\n      const tab = righe.map(function (r) { while (r.length < largh) r.push(''); return r; });\n      const sh = ss.getSheetByName(nome) || ss.insertSheet(nome);\n      sh.clearContents();\n      sh.getRange(1, 1, tab.length, largh).setValues(tab);\n      sh.setFrozenRows(1);\n    });\n    const c = ss.getSheetByName('Copie complete') || ss.insertSheet('Copie complete');\n    const pezzi = [];\n    for (let i = 0; i < d.copia.length; i += 45000) pezzi.push(d.copia.slice(i, i + 45000));\n    c.appendRow([new Date(), d.versione, pezzi.length].concat(pezzi));\n    const n = c.getLastRow();\n    if (n > COPIE_DA_TENERE) c.deleteRows(1, n - COPIE_DA_TENERE);\n    return risposta({ ok: true });\n  } catch (err) {\n    return risposta({ errore: String(err) });\n  }\n}\n\nfunction doGet(e) {\n  if (!e.parameter || e.parameter.chiave !== PAROLA_SEGRETA) return risposta({ errore: 'parola segreta sbagliata' });\n  const c = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Copie complete');\n  if (!c || c.getLastRow() < 1) return risposta({ errore: 'nessuna copia ancora' });\n  const riga = c.getRange(c.getLastRow(), 1, 1, c.getLastColumn()).getValues()[0];\n  const pezzi = Number(riga[2]) || 0;\n  return risposta({ quando: riga[0], copia: riga.slice(3, 3 + pezzi).join('') });\n}\n\nfunction risposta(o) {\n  return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON);\n}\n";
+  PAGINE['copia-sheet'] = function () {
+    return {
+      titolo: 'Copia su Google', indietro: '#/impostazioni', html: `
+      <div class="card"><h3>Come si prepara (una volta sola, 5 minuti, dal computer)</h3>
+        <ol class="passi">
+          <li>Apri <b>Google Fogli</b> e crea un foglio nuovo. Chiamalo per esempio «Copie Gestionale Repub».</li>
+          <li>Dal menu in alto: <b>Estensioni › Apps Script</b>. Si apre una pagina con un po' di codice: cancellalo tutto.</li>
+          <li>Tocca <b>«Copia il codice»</b> qui sotto e incollalo al suo posto.</li>
+          <li>Nella terza riga cambia <b>scrivi-qui-la-tua-parola</b> con una parola segreta tua (senza spazi), e salva con il dischetto.</li>
+          <li>In alto a destra: <b>Esegui il deployment › Nuovo deployment</b>. Dall'ingranaggio scegli <b>App web</b>. «Esegui come»: <b>Me</b>. «Chi ha accesso»: <b>Chiunque</b>. Tocca <b>Esegui il deployment</b>.</li>
+          <li>Google ti chiede di autorizzare: scegli il tuo account, poi «Avanzate» › «Vai a … (non sicuro)» › «Consenti». È normale: lo script l'hai scritto tu e lavora solo su quel foglio.</li>
+          <li>Copia l'<b>URL dell'app web</b> (finisce con /exec) e incollalo in <b>Impostazioni › Copia automatica su Google</b>, insieme alla parola segreta.</li>
+          <li>Tocca <b>«Fai una copia adesso»</b>: nel foglio compaiono le schede Prodotti, Ricette, Fatture, Fornitori e Copie complete.</li>
+        </ol>
+        <p class="tenue piccolo">Da lì in poi l'app fa la copia da sola quando la apri, ogni settimana o ogni mese. Le schede leggibili vengono riscritte ogni volta; in «Copie complete» restano le ultime 30 copie, una per riga. Per rimettere tutto com'era: «Scarica l'ultima copia» e poi «Carica una copia dei dati».</p></div>
+      <div class="card"><h3>Il codice da incollare</h3>
+        <div class="bottoni"><button class="btn primario" data-az="copia-codice">Copia il codice</button></div>
+        <pre class="codice" id="codice-sheet">${esc(CODICE_SHEET)}</pre></div>`
+    };
+  };
   PAGINE.impostazioni = function () {
     const im = S.impostazioni;
     return {
@@ -2192,6 +2256,13 @@
         <label class="interruttore"><input type="checkbox" data-az="imp-bool" data-k="autoRegistra" ${im.autoRegistra !== false ? 'checked' : ''}> Registra subito le fatture complete (i prezzi si aggiornano da soli)</label>
         <p class="tenue piccolo">Le spese di trasporto, le cauzioni e simili vengono saltate da sole. Le fatture lette da foto restano sempre da controllare prima di registrarle.</p></div>
       <div class="card"><h3>Dati dalla cassa</h3><p class="tenue piccolo">Listino dei prodotti in vendita e venduto di un periodo, dai file esportati da Cassa in Cloud.</p><a class="btn" href="#/importa">Importa dalla cassa</a></div>
+      <div class="card form"><h3>Copia automatica su Google</h3>
+        <p class="tenue piccolo">Ogni tanto l'app salva da sola prodotti, ricette, fornitori e fatture in un tuo Foglio Google, più una copia completa per rimettere tutto com'era. <a href="#/copia-sheet">Come si prepara</a></p>
+        <label>Indirizzo dell'app web<input data-cs="url" value="${esc(CS().url)}" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off"></label>
+        <label>Parola segreta<span class="campo-occhio"><input type="password" id="cs-chiave" data-cs="chiave" value="${esc(CS().chiave)}" autocomplete="off"><button type="button" class="occhio" data-occhio="cs-chiave" aria-label="Mostra">👁</button></span></label>
+        <label>Ogni quanto<select data-cs="ogni">${[['settimana', 'Ogni settimana'], ['mese', 'Ogni mese'], ['mai', 'Mai (solo a mano)']].map(([k, v]) => `<option value="${k}" ${CS().ogni === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
+        <p class="tenue piccolo">${CS().ultima ? 'Ultima copia: ' + new Date(CS().ultima).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Nessuna copia ancora.'}${CS().errore ? ` <span class="rosso-t">L'ultima prova non è riuscita: ${esc(CS().errore)}</span>` : ''}</p>
+        <div class="bottoni"><button class="btn piccolo" data-az="copia-sheet">Fai una copia adesso</button><button class="btn piccolo" data-az="copia-sheet-scarica">Scarica l'ultima copia</button></div></div>
       </div><div class="colonna">
       <div class="card form"><h3>Soglie del moltiplicatore</h3><p class="tenue piccolo">Sotto questo numero la ricetta diventa rossa.</p>
         <div class="due">${Object.keys(M.TIPI).filter(t => t !== 'semilavorato').map(t => `<label>${esc(M.TIPI[t])}<input type="text" inputmode="decimal" autocomplete="off" data-soglia="${t}" value="${esc((im.soglie || {})[t])}"></label>`).join('')}</div></div>
@@ -2212,7 +2283,7 @@
 
   // ---------- Disegno ----------
   const TAB = [['pannello', 'Pannello', 'M3 12l9-8 9 8v8a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z'], ['prodotti', 'Prodotti', 'M4 7l8-4 8 4v10l-8 4-8-4zM4 7l8 4 8-4M12 11v10'], ['ricette', 'Ricette', 'M6 3h12M8 3v6l-4 12h16L16 9V3'], ['fatture', 'Fatture', 'M6 2h9l5 5v15H6zM14 2v6h6M9 13h8M9 17h8'], ['altro', 'Altro', 'M5 12h.01M12 12h.01M19 12h.01']];
-  const SEZIONE = { cestino: 'altro', mappa: 'pannello', costi: 'altro', ordine: 'altro', 'gruppi-ricette': 'ricette', 'costi-gruppo': 'ricette', foglio: 'prodotti', doppioni: 'prodotti', importa: 'altro', 'controllo-fatture': 'fatture', controllo: 'prodotti', pulizia: 'altro', formati: 'prodotti', prodotto: 'prodotti', 'modifica-prodotto': 'prodotti', ricetta: 'ricette', 'modifica-ricetta': 'ricette', 'rivedi-ricette': 'ricette', fattura: 'fatture' };
+  const SEZIONE = { 'copia-sheet': 'altro', cestino: 'altro', mappa: 'pannello', costi: 'altro', ordine: 'altro', 'gruppi-ricette': 'ricette', 'costi-gruppo': 'ricette', foglio: 'prodotti', doppioni: 'prodotti', importa: 'altro', 'controllo-fatture': 'fatture', controllo: 'prodotti', pulizia: 'altro', formati: 'prodotti', prodotto: 'prodotti', 'modifica-prodotto': 'prodotti', ricetta: 'ricette', 'modifica-ricetta': 'ricette', 'rivedi-ricette': 'ricette', fattura: 'fatture' };
   function disegna() {
     if (!S) return;
     const [, nome, arg] = (location.hash || '#/pannello').split('/');
@@ -2484,16 +2555,62 @@
 
   // ---------- Esportazione ----------
   function caricaScript(src) { return new Promise((ok, ko) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => ko(new Error('Serve la connessione per esportare.')); document.head.appendChild(s); }); }
+  // le tabelle leggibili (Excel e copia su Google): una lista di righe per foglio
+  function fogliLeggibili() {
+    const r2 = (n) => n == null ? '' : Math.round(n * 1000) / 1000;
+    return {
+      Prodotti: S.prodotti.map(p => ({ 'Nome breve': p.nomeBreve, 'Nome completo': p.nomeCompleto, Categoria: p.categoria, Fornitore: (M.fornitore(p.fornitoreId) || {}).nome || '', Confezione: p.confezione, Contenuto: p.contenuto, Unità: p.unita, 'Prezzo senza IVA': r2(M.prezzo(p)), 'IVA %': p.iva, 'In casa': p.giacenza, 'Valore': r2(M.valoreGiacenza(p)), 'Scorta minima': p.scortaMinima, Allergeni: (p.allergeni || []).join(', ') })),
+      Ricette: S.ricette.map(r => { const i = M.indicatori(r); return { Ricetta: r.nome, Tipo: M.TIPI_SINGOLARE[r.tipo], Costo: r2(i.costo), Prezzo: r.prezzo || '', 'Prezzo senza IVA': r2(i.netto), Moltiplicatore: r2(i.molt), 'Incidenza %': i.incidenza == null ? '' : r2(i.incidenza * 100), 'Margine a pezzo': r2(i.margine), Ingredienti: (r.righe || []).map(rg => `${M.nomeRif(rg.rif)} ${rg.quantita} ${rg.misura || M.unitaRif(rg.rif)}`).join('; '), Allergeni: M.allergeniRicetta(r).join(', ') }; }),
+      Fatture: S.fatture.map(f => ({ Fornitore: (M.fornitore(f.fornitoreId) || {}).nome || f.fornitoreNome, Numero: f.numero, Data: f.data, Tipo: f.tipoDoc === 'TD04' ? 'Nota di credito' : 'Fattura', Imponibile: f.imponibile, Totale: f.totale, Stato: f.stato === 'registrata' ? 'Registrata' : 'Da registrare' })),
+      Fornitori: S.fornitori.map(f => ({ Nome: f.nome, 'Partita IVA': f.piva || '', Telefono: f.telefono || '', Email: f.email || '', Referente: f.referente || '', 'Tipo di spesa': (CAT_SPESA[categoriaSpesa(f)] || [''])[0] }))
+    };
+  }
   async function esportaExcel() {
     try {
       if (!window.XLSX) { try { await caricaScript('xlsx.full.min.js'); } catch (e) { await caricaScript('https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js'); } }
-      const X = window.XLSX; const wb = X.utils.book_new();
-      const r2 = (n) => n == null ? '' : Math.round(n * 1000) / 1000;
-      X.utils.book_append_sheet(wb, X.utils.json_to_sheet(S.prodotti.map(p => ({ 'Nome breve': p.nomeBreve, 'Nome completo': p.nomeCompleto, Categoria: p.categoria, Fornitore: (M.fornitore(p.fornitoreId) || {}).nome || '', Confezione: p.confezione, Contenuto: p.contenuto, Unità: p.unita, 'Prezzo senza IVA': r2(M.prezzo(p)), 'IVA %': p.iva, 'In casa': p.giacenza, 'Valore': r2(M.valoreGiacenza(p)), 'Scorta minima': p.scortaMinima, Allergeni: (p.allergeni || []).join(', ') }))), 'Prodotti');
-      X.utils.book_append_sheet(wb, X.utils.json_to_sheet(S.ricette.map(r => { const i = M.indicatori(r); return { Ricetta: r.nome, Tipo: M.TIPI_SINGOLARE[r.tipo], Costo: r2(i.costo), Prezzo: r.prezzo || '', 'Prezzo senza IVA': r2(i.netto), Moltiplicatore: r2(i.molt), 'Incidenza %': i.incidenza == null ? '' : r2(i.incidenza * 100), 'Margine a pezzo': r2(i.margine), Ingredienti: (r.righe || []).map(rg => `${M.nomeRif(rg.rif)} ${rg.quantita} ${rg.misura || M.unitaRif(rg.rif)}`).join('; '), Allergeni: M.allergeniRicetta(r).join(', ') }; })), 'Ricette');
-      X.utils.book_append_sheet(wb, X.utils.json_to_sheet(S.fatture.map(f => ({ Fornitore: (M.fornitore(f.fornitoreId) || {}).nome || f.fornitoreNome, Numero: f.numero, Data: f.data, Tipo: f.tipoDoc === 'TD04' ? 'Nota di credito' : 'Fattura', Imponibile: f.imponibile, Totale: f.totale, Stato: f.stato === 'registrata' ? 'Registrata' : 'Da registrare' }))), 'Fatture');
+      const X = window.XLSX; const wb = X.utils.book_new(); const fl = fogliLeggibili();
+      ['Prodotti', 'Ricette', 'Fatture'].forEach(n => X.utils.book_append_sheet(wb, X.utils.json_to_sheet(fl[n]), n));
       X.writeFile(wb, 'Gestionale Repub ' + M.oggi() + '.xlsx');
     } catch (e) { alert(e.message); }
+  }
+
+  // ---------- Copia automatica su Google Sheet ----------
+  // un'app web di Google Apps Script dentro un Foglio Google: riceve le tabelle e la copia completa dei dati
+  const CS = () => (S.copiaSheet = S.copiaSheet || { url: '', chiave: '', ogni: 'settimana', ultima: '' });
+  const giorniCopia = () => CS().ogni === 'mese' ? 30 : 7;
+  const copiaDovuta = () => { const c = CS(); if (!c.url || !c.chiave || c.ogni === 'mai') return false; return !c.ultima || (Date.now() - new Date(c.ultima).getTime()) / 864e5 >= giorniCopia(); };
+  let copiaInCorso = false;
+  async function copiaSuSheet(manuale) {
+    const c = CS();
+    if (!c.url || !c.chiave) { if (manuale) alert('Prima scrivi l\'indirizzo dell\'app web e la parola segreta.'); return; }
+    if (copiaInCorso) return; copiaInCorso = true;
+    if (manuale) modale('<h3>Faccio la copia sul Foglio Google…</h3><div class="rotella"></div>');
+    try {
+      const fl = fogliLeggibili(), fogli = {};
+      // in tabella: prima riga i titoli; i testi che iniziano con «=» non devono diventare formule
+      const cella = (v) => typeof v === 'string' && /^[=+@-]/.test(v) ? ' ' + v : v == null ? '' : v;
+      Object.keys(fl).forEach(n => { const l = fl[n]; const tit = l.length ? Object.keys(l[0]) : ['Vuoto']; fogli[n] = [tit].concat(l.map(o => tit.map(t => cella(o[t])))); });
+      const r = await fetch(c.url, { method: 'POST', body: JSON.stringify({ chiave: c.chiave, versione: VERSIONE_APP, fogli, copia: JSON.stringify(S) }) });
+      const j = await r.json();
+      if (j.errore) throw new Error(j.errore);
+      c.ultima = new Date().toISOString(); c.errore = ''; salva();
+      if (manuale) { chiudiModale(); avviso('Copia fatta sul Foglio Google.'); ridisegnaMantenendo(); }
+    } catch (e) {
+      c.errore = e.message; salva();
+      if (manuale) { chiudiModale(); alert('La copia non è riuscita: ' + e.message); ridisegnaMantenendo(); }
+    } finally { copiaInCorso = false; }
+  }
+  // l'ultima copia completa salvata sul Foglio Google, da scaricare (poi «Carica una copia dei dati»)
+  async function scaricaUltimaCopia() {
+    const c = CS(); if (!c.url || !c.chiave) { alert('Prima scrivi l\'indirizzo dell\'app web e la parola segreta.'); return; }
+    modale('<h3>Prendo l\'ultima copia dal Foglio Google…</h3><div class="rotella"></div>');
+    try {
+      const r = await fetch(c.url + (c.url.includes('?') ? '&' : '?') + 'chiave=' + encodeURIComponent(c.chiave));
+      const t = await r.text(); let j; try { j = JSON.parse(t); } catch (e) { throw new Error('risposta non valida'); }
+      if (j.errore) throw new Error(j.errore);
+      const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([j.copia], { type: 'application/json' })); a.download = 'Gestionale Repub copia del ' + String(j.quando || '').slice(0, 10) + '.json'; a.click();
+      chiudiModale();
+    } catch (e) { chiudiModale(); alert('Non sono riuscito a prenderla: ' + e.message); }
   }
 
   // ---------- Azioni ----------
@@ -4008,10 +4125,14 @@
   AZ['nuovo-evento'] = () => { const n = prompt('Nome dell\'evento'); if (!n) return; const e = { id: M.uid('e'), nome: n.trim(), data: M.oggi(), righe: [], extraPerPezzo: [], note: '' }; S.eventi.push(e); salva(); vai('#/evento/' + e.id); };
   AZ['ev-togli'] = (el) => { const e = S.eventi.find(x => x.id === el.dataset.id); e.righe.splice(+el.dataset.k, 1); salva(); ridisegnaMantenendo(); };
   AZ['elimina-evento'] = (el) => { if (!confirm('Eliminare l\'evento? Finisce nel Cestino.')) return; const ev = S.eventi.find(x => x.id === el.dataset.id); if (ev) nelCestino('eventi', ev); S.eventi = S.eventi.filter(x => x.id !== el.dataset.id); salva(); vai('#/eventi'); };
+  AZ['olio-usa'] = (el) => { const k = calcoloOlio(el.dataset.per); if (!k || !k.c || k.spesa <= 0) return; const o = S.impostazioni.olio; o.spesaAnnua = Math.round(k.spesa * 100) / 100; o.grammiFritti = Math.round(k.grammi); o.origine = el.dataset.per; M.svuota(); salva(); ridisegnaMantenendo(); avviso('Costo dell\'olio aggiornato: le ricette dei fritti si ricalcolano.'); };
   AZ['olio-da-tabella'] = () => { const o = S.impostazioni.olio; o.grammiFritti = o.dettaglio.reduce((s, d) => s + d[1] * d[2], 0); salva(); ridisegnaMantenendo(); };
   AZ['olio-riga'] = () => { S.impostazioni.olio.dettaglio.push(['Nuovo piatto', 0, 0]); salva(); ridisegnaMantenendo(); };
   AZ['esporta-excel'] = esportaExcel;
   AZ['controlla-casella'] = () => controllaCasella(true);
+  AZ['copia-sheet'] = () => copiaSuSheet(true);
+  AZ['copia-sheet-scarica'] = () => scaricaUltimaCopia();
+  AZ['copia-codice'] = () => { const t = ($('#codice-sheet') || {}).textContent || ''; (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(() => avviso('Codice copiato.')).catch(() => { const r = document.createRange(); r.selectNodeContents($('#codice-sheet')); const sl = getSelection(); sl.removeAllRanges(); sl.addRange(r); alert('Il codice è selezionato: copialo con Comando + C.'); }); };
   AZ['scarica-copia'] = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(S, null, 1)], { type: 'application/json' })); a.download = 'gestionale-repub-' + M.oggi() + '.json'; a.click(); };
   AZ.ripristina = () => {
     if (!confirm('Cancello tutto quello che hai fatto e riparto dai dati della prova. Sicuro?')) return;
@@ -4068,6 +4189,7 @@
       return;
     }
     if (d.media && ui.bozza) { ui.bozza.media = el.checked; ridisegnaMantenendo(); return; }
+    if (d.cs) { CS()[d.cs] = el.value.trim(); salva(); return; }
     if (d.b != null && ui.bozza && el.value === '__nuovo') return; // lo gestisce il «change»
     if (d.b != null && ui.bozza) { ui.bozza[d.b] = el.value; if (d.ridisegna) ridisegnaMantenendo(); return; }
     if (d.vd != null && ui.bozza) { ui.bozza.venditaDiretta[d.vd] = el.value; return; }
@@ -4229,7 +4351,9 @@
     if (d.soglia) { S.impostazioni.soglie[d.soglia] = numDa(el.value); salva(); return; }
     if (d.imp) { const numerici = ['ivaVendita', 'sogliaAumento', 'mlDash', 'mlDrop']; S.impostazioni[d.imp] = numerici.includes(d.imp) ? numDa(el.value) : el.value.trim(); if (d.imp === 'mlDash' || d.imp === 'mlDrop') M.svuota(); salva(); avviso('Salvato.'); return; }
     if (d.cas) { S.casella[d.cas] = el.value.trim(); salva(); avviso('Salvato.'); return; }
-    if (d.olio) { S.impostazioni.olio[d.olio] = numDa(el.value) || 0; salva(); ridisegnaMantenendo(); return; }
+    if (d.olio) { S.impostazioni.olio[d.olio] = numDa(el.value) || 0; delete S.impostazioni.olio.origine; salva(); ridisegnaMantenendo(); return; }
+    if (d.olioPer != null) { ui.olioPer = el.value; ridisegnaMantenendo(); return; }
+    if (d.olioProd) { const o = S.impostazioni.olio; const l = new Set(olioScelti()); if (el.checked) l.add(d.olioProd); else l.delete(d.olioProd); o.prodotti = Array.from(l); salva(); ridisegnaMantenendo(); return; }
     if (d.od != null) { const riga = S.impostazioni.olio.dettaglio[+d.od]; riga[+d.c] = d.c === '0' ? el.value : (numDa(el.value) || 0); salva(); ridisegnaMantenendo(); return; }
     if (d.ev) { const ev = S.eventi.find(x => x.id === d.ev); ev.righe[+d.k][d.c] = numDa(el.value) || 0; salva(); ridisegnaMantenendo(); return; }
     if (d.evc) { const ev = S.eventi.find(x => x.id === d.evc); ev[d.c] = el.value; salva(); return; }
@@ -4241,10 +4365,11 @@
   function partenza() {
     disegna(); segnaStoria();
     if (S.casella.url && (!S.casella.ultimoControllo || Date.now() - new Date(S.casella.ultimoControllo) > 15 * 60e3)) setTimeout(() => controllaCasella(false), 800);
+    if (copiaDovuta()) setTimeout(() => copiaSuSheet(false), 4000);
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v131';
+  const VERSIONE_APP = 'repub-v132';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
