@@ -2609,7 +2609,51 @@
       pp.innerHTML = `${m[1]} <button type="button" class="piu" data-piu>Di più</button><span class="resto" hidden> ${m[2]}</span>`; }); };
   document.addEventListener('click', (e) => { const b = e.target.closest('[data-piu]'); if (!b) return; e.preventDefault(); const r = b.nextElementSibling; if (r) r.hidden = false; b.remove(); });
   new MutationObserver((ms) => ms.forEach(m => m.addedNodes.forEach(n => { virgola(n); accorcia(n); }))).observe(document.body, { childList: true, subtree: true });
-  new MutationObserver(() => document.querySelectorAll('#contenuto select').forEach(rendiCercabile)).observe(document.getElementById('contenuto') || document.body, { childList: true, subtree: true });
+  new MutationObserver(() => { document.querySelectorAll('#contenuto select').forEach(rendiCercabile); crocette(); }).observe(document.getElementById('contenuto') || document.body, { childList: true, subtree: true });
+  // ---------- Crocetta in fondo ai campi di ricerca: cancella quello che hai scritto ----------
+  const CAMPI_CERCA = 'input.cerca, input.cerca-rif, input[type=search], input[data-filtro]';
+  function mettiCrocetta(inp) {
+    const x = inp._crocetta; if (!x) return;
+    const vede = !!inp.value && inp.offsetParent !== null && !inp.disabled;
+    x.style.display = vede ? 'flex' : 'none';
+    inp.classList.toggle('ha-testo', vede);
+    if (!vede) return;
+    const tendina = inp.closest('.tendina-cerca');
+    // misuro rispetto al contenitore vero della crocetta, così sta sempre dentro il campo
+    const cb = x.offsetParent || document.body, ir = inp.getBoundingClientRect(), cr = cb.getBoundingClientRect();
+    x.style.top = (ir.top - cr.top - cb.clientTop + cb.scrollTop + (ir.height - 28) / 2) + 'px';
+    x.style.left = (ir.right - cr.left - cb.clientLeft + cb.scrollLeft - 28 - (tendina ? 34 : 8)) + 'px';
+  }
+  function crocette() {
+    document.querySelectorAll('#contenuto ' + CAMPI_CERCA.split(', ').join(', #contenuto ')).forEach(inp => {
+      if (!inp._crocetta) {
+        const x = document.createElement('button');
+        x.type = 'button'; x.className = 'crocetta'; x.setAttribute('aria-label', 'Cancella'); x.textContent = '✕';
+        x.addEventListener('mousedown', (e) => e.preventDefault());
+        x.addEventListener('click', (e) => {
+          e.preventDefault(); e.stopPropagation();
+          // in un filtro a tendina («Tutti i fornitori», «Tutte le categorie»…) la crocetta toglie anche il filtro
+          const box = inp.closest('.tendina-cerca'), sel = box && box.nextElementSibling;
+          if (sel && sel.tagName === 'SELECT' && sel.options[0] && /^tutt/i.test(sel.options[0].text.trim())) {
+            inp.value = '';
+            if (sel.value !== sel.options[0].value) { sel.value = sel.options[0].value; sel.dispatchEvent(new Event('input', { bubbles: true })); sel.dispatchEvent(new Event('change', { bubbles: true })); }
+            mettiCrocetta(inp); return;
+          }
+          inp.value = '';
+          inp.dispatchEvent(new Event('input', { bubbles: true }));
+          inp.focus();
+          mettiCrocetta(inp);
+        });
+        inp.insertAdjacentElement('afterend', x);
+        inp._crocetta = x;
+        inp.addEventListener('input', () => mettiCrocetta(inp));
+        inp.addEventListener('focus', () => mettiCrocetta(inp));
+        inp.addEventListener('blur', () => setTimeout(() => mettiCrocetta(inp), 200));
+      }
+      mettiCrocetta(inp);
+    });
+  }
+  window.addEventListener('resize', () => document.querySelectorAll('#contenuto ' + CAMPI_CERCA.split(', ').join(', #contenuto ')).forEach(mettiCrocetta));
   // ---------- Storia della navigazione: la freccia ‹ torna alla pagina da cui vieni (e allo stesso punto) ----------
   const storia = []; let tornando = null;
   const qui = () => location.hash || '#/pannello';
@@ -4720,7 +4764,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v138';
+  const VERSIONE_APP = 'repub-v139';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
