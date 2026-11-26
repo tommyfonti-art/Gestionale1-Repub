@@ -514,7 +514,7 @@ small.blocco { display: block; }
 .tab-allergeni.modifica td.tocca:active { background: rgba(0, 0, 0, .08); }
 .tab-allergeni.modifica td.a-mano { color: #d9822b; }
 .tab-allergeni { border-collapse: collapse; width: 100%; }
-.tab-allergeni th.all-col { height: 118px; vertical-align: bottom; padding: 4px 2px; white-space: nowrap; }
+.tab-allergeni th.all-col { height: 118px; vertical-align: bottom; padding: 4px 2px 8px; white-space: nowrap; text-align: center; border-left: 1px solid var(--linea); }
 .tab-allergeni th.all-col span { writing-mode: vertical-rl; transform: rotate(180deg); font-size: 12.5px; font-weight: 600; }
 .tab-allergeni td.all-c { text-align: center; font-size: 15px; color: var(--accento); border-left: 1px solid var(--linea); padding: 6px 2px; }
 .tab-allergeni td.all-nome, .tab-allergeni th.all-nome { text-align: left; width: 1%; min-width: 130px; max-width: 210px; }
@@ -566,3 +566,17 @@ input[type=search]::-webkit-search-cancel-button { -webkit-appearance: none; dis
 .tab-allergeni tbody tr:nth-child(even) td.all-nome { background: #f9f8f6; }
 .tab-allergeni thead th { box-shadow: inset 0 -1px 0 var(--linea); }
 .toast { max-width: calc(100vw - 40px); text-align: center; border-radius: 16px; }
+
+/* allergeni più leggibili: nomi grandi e scuri, colonne a strisce, tocco che evidenzia riga e colonna */
+.tab-allergeni th.all-col span { font-size: 14.5px; font-weight: 700; color: var(--testo); letter-spacing: .2px; }
+@media (min-width: 700px) { .tab-allergeni th.all-col { height: 150px; } .tab-allergeni th.all-col span { font-size: 15.5px; } .tab-allergeni td.all-nome { font-size: 15px; } }
+.tab-allergeni td.all-c { font-size: 19px; line-height: 1; }
+.tab-allergeni tbody tr:nth-child(even) td.all-c { background: transparent; }
+.tab-allergeni tr > :nth-child(odd):not(:first-child) { background-color: rgba(29, 84, 70, .055); }
+.tab-allergeni thead tr > th:nth-child(odd):not(:first-child) { background-color: #eef3f1; }
+.tab-allergeni tbody tr:not(.all-gruppo) td { border-bottom: 1px solid var(--linea); }
+.tab-allergeni .col-evid { background-color: rgba(217, 130, 43, .16) !important; }
+.tab-allergeni thead th.col-evid { background-color: #f7e6d3 !important; }
+.tab-allergeni tr.riga-evid td { background-color: rgba(217, 130, 43, .16) !important; }
+.tab-allergeni tr.riga-evid td.col-evid { background-color: rgba(217, 130, 43, .32) !important; }
+@media print { .tab-allergeni .col-evid, .tab-allergeni tr.riga-evid td { background: none !important; } }

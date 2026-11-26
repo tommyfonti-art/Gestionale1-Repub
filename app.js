@@ -4502,6 +4502,18 @@
     ui.prezziNuovi = {}; M.svuota(); salva(); ridisegnaMantenendo(); avviso('Prezzi cambiati.');
   };
   AZ['aum-per'] = (el) => { ui.aumGiorni = el.dataset.v; ridisegnaMantenendo(); };
+  // tocco su una casella o sul nome di un allergene: evidenzio la sua colonna (e la riga), così si legge meglio
+  document.addEventListener('click', (e) => {
+    const t = e.target.closest && e.target.closest('.tab-allergeni th.all-col, .tab-allergeni td.all-c, .tab-allergeni td.all-nome');
+    if (!t || t.closest('.modifica') && t.matches('td.all-c') || e.target.closest('label')) return;
+    const tab = t.closest('table'), riga = t.closest('tr');
+    const i = t.matches('td.all-nome') ? -1 : Array.from(riga.children).indexOf(t);
+    const giaR = riga.classList.contains('riga-evid'), giaC = i >= 0 && t.classList.contains('col-evid');
+    tab.querySelectorAll('.col-evid').forEach(x => x.classList.remove('col-evid'));
+    if (t.tagName === 'TD' || i < 0) tab.querySelectorAll('.riga-evid').forEach(x => x.classList.remove('riga-evid'));
+    if (i >= 0 && !(giaC && (t.tagName === 'TH' || giaR))) tab.querySelectorAll(`tr > :nth-child(${i + 1})`).forEach(x => { if (!x.hasAttribute('colspan')) x.classList.add('col-evid'); });
+    if (t.tagName === 'TD' && !(giaR && (i < 0 || giaC))) riga.classList.add('riga-evid');
+  });
   AZ['all-scegli'] = () => { ui.allScegli = !ui.allScegli; if (ui.allScegli) ui.allMod = false; ridisegnaMantenendo(); };
   AZ['all-mod'] = () => { if (!ui.allMod) ui.allScegli = false; ui.allMod = !ui.allMod; ridisegnaMantenendo(); };
   // quali prodotti (anche dentro le preparazioni) portano un allergene in una ricetta
@@ -4543,11 +4555,11 @@
       doc.autoTable({
         startY: 21, head: [['Piatto o drink'].concat(M.ALLERGENI)], body, theme: 'grid', margin: { left: 10, right: 10 },
         styles: { fontSize: 7.5, cellPadding: 1.2, lineColor: [210, 205, 195], lineWidth: 0.1, valign: 'middle' },
-        headStyles: { fillColor: [255, 255, 255], textColor: [40, 40, 40], fontStyle: 'bold', minCellHeight: 26, valign: 'bottom' },
+        headStyles: { fillColor: [255, 255, 255], textColor: [40, 40, 40], fontStyle: 'bold', minCellHeight: 30, valign: 'bottom' },
         columnStyles: Object.assign({ 0: { cellWidth: 'auto' } }, ...M.ALLERGENI.map((a, k) => ({ [k + 1]: { cellWidth: 14, halign: 'center' } }))),
         didParseCell: (d) => { if (d.section === 'head' && d.column.index > 0) { d.cell.raw0 = d.cell.text[0]; d.cell.text = ['']; } if (d.section === 'body' && d.column.index > 0 && d.cell.raw === 'X') { d.cell.text = ['']; d.cell.segno = true; } },
         didDrawCell: (d) => {
-          if (d.section === 'head' && d.column.index > 0 && d.cell.raw0) { doc.setFontSize(7.5); doc.setFont(undefined, 'bold'); doc.text(d.cell.raw0, d.cell.x + d.cell.width / 2 + 1.2, d.cell.y + d.cell.height - 1.5, { angle: 90 }); }
+          if (d.section === 'head' && d.column.index > 0 && d.cell.raw0) { doc.setFontSize(9); doc.setFont(undefined, 'bold'); doc.text(d.cell.raw0, d.cell.x + d.cell.width / 2 + 1.5, d.cell.y + d.cell.height - 1.5, { angle: 90 }); }
           if (d.section === 'body' && d.cell.segno) { doc.setFillColor(29, 84, 70); doc.circle(d.cell.x + d.cell.width / 2, d.cell.y + d.cell.height / 2, 1.4, 'F'); }
         }
       });
@@ -4818,7 +4830,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v141';
+  const VERSIONE_APP = 'repub-v142';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
