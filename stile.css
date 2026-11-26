@@ -493,3 +493,46 @@ pre.codice { background: #1f2a2e; color: #e8efe9; border-radius: 10px; padding: 
 .rosso-t { color: #b3261e; }
 .olio-tab tr.spento td { opacity: .45; } .olio-tab td.nowrap { white-space: nowrap; } .olio-aggiungi { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; } .olio-aggiungi select { flex: 1 1 220px; } .olio-aggiungi input.mini { width: 90px; }
 .olio-aggiungi > .tendina-cerca, .olio-aggiungi > select { flex: 1 1 100%; } .olio-tab .btn.piccolo { padding: 5px 9px; font-size: 12.5px; }
+/* ===== Strumenti: prezzi consigliati, aumenti, chi costa meno, allergeni ===== */
+small.blocco { display: block; }
+.prezzi-tab td, .prezzi-tab th { vertical-align: middle; }
+.prezzi-tab input.mini { width: 72px; text-align: right; }
+.aum-riga { border-top: 1px solid var(--linea); }
+.aum-riga > summary { list-style: none; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 0; }
+.aum-riga > summary::-webkit-details-marker { display: none; }
+.aum-nome { display: flex; flex-direction: column; min-width: 0; }
+.aum-num { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; text-align: right; white-space: nowrap; font-size: 14px; }
+.aum-dett { padding: 0 0 12px; }
+.riga-testa { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 4px; }
+.riga.migliore { background: #e2efe7; border-radius: 8px; padding-left: 8px; padding-right: 8px; }
+.stampa-testa { display: none; }
+.tab-allergeni-box { overflow-x: auto; }
+.tab-allergeni { border-collapse: collapse; width: 100%; }
+.tab-allergeni th.all-col { height: 118px; vertical-align: bottom; padding: 4px 2px; white-space: nowrap; }
+.tab-allergeni th.all-col span { writing-mode: vertical-rl; transform: rotate(180deg); font-size: 12.5px; font-weight: 600; }
+.tab-allergeni td.all-c { text-align: center; font-size: 15px; color: var(--accento); border-left: 1px solid var(--linea); width: 30px; padding: 6px 2px; }
+.tab-allergeni td.all-nome, .tab-allergeni th.all-nome { text-align: left; min-width: 150px; }
+.tab-allergeni tbody tr:nth-child(even) td { background: rgba(0, 0, 0, .025); }
+.tab-allergeni tr.all-gruppo td { font-weight: 700; background: #ebe6dc !important; padding-top: 8px; }
+@media print {
+  @page { size: A4 landscape; margin: 10mm; }
+  #testa, #tabbar, .no-stampa, .lato, aside, nav, .avviso { display: none !important; }
+  body, #contenuto { background: #fff !important; margin: 0 !important; padding: 0 !important; max-width: none !important; }
+  #contenuto.colonne { display: block !important; }
+  .stampa-testa { display: block; margin-bottom: 6px; }
+  .stampa-testa h2 { margin: 0 0 2px; font-size: 18px; } .stampa-testa p { margin: 0; font-size: 11px; }
+  .card { box-shadow: none !important; border: none !important; padding: 0 !important; }
+  .tab-allergeni { font-size: 10.5px; } .tab-allergeni td, .tab-allergeni th { padding: 2px 3px !important; border-bottom: 1px solid #ccc; }
+  .tab-allergeni th.all-col { height: 90px; } .tab-allergeni tr { break-inside: avoid; }
+  .tab-allergeni td.all-c { color: #000; }
+  .tab-allergeni thead { display: table-header-group; }
+}
+.pc-riga { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 16px; padding: 10px 0; border-top: 1px solid var(--linea); }
+.pc-riga:first-child { border-top: 0; }
+.pc-nome { display: flex; flex-direction: column; min-width: 180px; flex: 1 1 220px; }
+.pc-num { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 6px 16px; }
+.pc-num > span, .pc-nuovo { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; font-size: 14.5px; }
+.pc-nuovo input.mini { width: 80px; text-align: right; }
+.pc-strano { color: #8a6100; font-size: 13px; max-width: 260px; }
+.pc-riga.strano { opacity: .85; }
+.aum-dett { overflow-x: auto; max-width: 100%; } .aum-dett .tab { font-size: 13px; }

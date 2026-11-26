@@ -1115,8 +1115,8 @@
           ${ks.map(k => { const p = M.prodotto(k); return `<a class="riga" href="#/prodotto/${k}"><span>${esc(p.nomeBreve)}<small>${descrPrezzo(p)} · in ${colpevoli[k].slice(0, 4).map(esc).join(', ')}${colpevoli[k].length > 4 ? '…' : ''}</small></span><span class="badge rosso">${colpevoli[k].length} ricette</span></a>`; }).join('')}</div>` : '';
       })()}
       ${daFare.length ? `<div class="card"><h3>Fatture da completare</h3>${daFare.map(f => `<a class="riga" href="#/fattura/${f.id}"><span>${esc(f.fornitoreNome)} · n. ${esc(f.numero)}</span><span class="badge giallo">${M.daAbbinare(f)} righe da collegare</span></a>`).join('')}</div>` : ''}
-      <div class="card"><h3>Prezzi cambiati</h3>${aumenti.length ? aumenti.slice(0, 8).map(x => `<a class="riga" href="#/prodotto/${x.p.id}"><span>${esc(x.p.nomeBreve)}<small>${dataIt(x.data)}</small></span><span class="badge ${x.v > 0 ? 'rosso' : 'verde'}">${x.v > 0 ? '+' : ''}${n2(x.v, 1)}%</span></a>`).join('') : '<p class="tenue">Nessun cambio di prezzo. Compariranno qui quando registri le fatture.</p>'}</div>
-      <div class="card"><h3>Sotto la soglia del moltiplicatore</h3>${sotto.length ? sotto.map(r => { const i = M.indicatori(r); return `<a class="riga" href="#/ricetta/${r.id}"><span>${esc(r.nome)}<small>${M.TIPI_SINGOLARE[r.tipo]} · soglia × ${n2(i.soglia)}</small>${etichetteCP(i)}</span><span class="destra">${badgeMolt(i)}<small>${i.margine != null && i.molt != null ? 'guadagni ' + euro(i.margine) : ''}</small></span></a>`; }).join('') : '<p class="tenue">Tutte le ricette complete sono sopra la soglia.</p>'}</div>
+      <div class="card"><h3>Prezzi cambiati${aumenti.length ? ' <a class="piccolo" href="#/aumenti">quanto pesano ›</a>' : ''}</h3>${aumenti.length ? aumenti.slice(0, 8).map(x => `<a class="riga" href="#/prodotto/${x.p.id}"><span>${esc(x.p.nomeBreve)}<small>${dataIt(x.data)}</small></span><span class="badge ${x.v > 0 ? 'rosso' : 'verde'}">${x.v > 0 ? '+' : ''}${n2(x.v, 1)}%</span></a>`).join('') : '<p class="tenue">Nessun cambio di prezzo. Compariranno qui quando registri le fatture.</p>'}</div>
+      <div class="card"><h3>Sotto la soglia del moltiplicatore${sotto.length ? ' <a class="piccolo" href="#/prezzi-consigliati">prezzi consigliati ›</a>' : ''}</h3>${sotto.length ? sotto.map(r => { const i = M.indicatori(r); return `<a class="riga" href="#/ricetta/${r.id}"><span>${esc(r.nome)}<small>${M.TIPI_SINGOLARE[r.tipo]} · soglia × ${n2(i.soglia)}</small>${etichetteCP(i)}</span><span class="destra">${badgeMolt(i)}<small>${i.margine != null && i.molt != null ? 'guadagni ' + euro(i.margine) : ''}</small></span></a>`; }).join('') : '<p class="tenue">Tutte le ricette complete sono sopra la soglia.</p>'}</div>
       ${scorta.length ? `<div class="card"><h3>Sotto la scorta minima</h3>${scorta.map(p => `<a class="riga" href="#/prodotto/${p.id}"><span>${esc(p.nomeBreve)}</span><span>${qta(p.giacenza)} / ${qta(p.scortaMinima)} ${esc(p.confezione)}</span></a>`).join('')}</div>` : ''}
 `
     };
@@ -1706,6 +1706,8 @@
         ${kpi('Moltiplicatore', i.molt == null ? '—' : '× ' + n2(i.molt), 'prezzo con IVA ÷ costo' + (i.soglia ? ' · soglia × ' + n2(i.soglia) : ''), i.sotto ? 'rosso' : 'verde')}
         ${kpi('Incidenza', perc(i.incidenza), 'margine ' + euro(i.margine) + ' a pezzo')}
       </div>`}
+      ${!semi && i.sotto && prezzoConsigliato(r) && i.prezzo && prezzoConsigliato(r) > i.prezzo * 2.5 ? '<p class="msg giallo">Il moltiplicatore è molto basso: prima di cambiare il prezzo controlla che dosi e formati degli ingredienti siano giusti.</p>' : ''}
+      ${!semi && i.sotto && prezzoConsigliato(r) && !(i.prezzo && prezzoConsigliato(r) > i.prezzo * 2.5) ? `<p class="msg giallo">Prezzo consigliato: <b>${euro(prezzoConsigliato(r))}</b> per tornare alla soglia × ${n2(i.soglia)} (adesso ${euro(i.prezzo)}). <a href="#/prezzi-consigliati">Tutte le ricette da ritoccare</a></p>` : ''}
       ${cr.mancanti.length ? `<p class="msg rosso">Mancano i prezzi di: ${esc(cr.mancanti.join(', '))}.</p>` : ''}
       <div class="card"><h3>Ingredienti</h3>${r.media ? '<p class="msg grigio">Il cliente ne sceglie uno: il costo è la media di questi.</p>' : ''}<table class="tab"><tr><th>Ingrediente</th><th class="n">Dose</th><th class="n">Costo</th><th class="n">Peso</th></tr>${righe}
         <tr class="totale"><td>Totale</td><td></td><td class="n">${euro(cr.totale, 3)}</td><td></td></tr></table></div>
@@ -1947,6 +1949,11 @@
     ['vendite', 'Vendite', 'pezzi venduti per periodo', 'M4 20V11M10 20V5M16 20v-6M2 20h20'],
     ['costi', 'Costi del locale', 'merce, bollette, servizi, materiali', 'M3 7h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H3zM3 7l12-4v4M16 13.5h2'],
     ['eventi', 'Eventi', 'listini per le serate', 'M4 5h16v16H4zM4 10h16M8 3v4M16 3v4'],
+    ['aumenti', 'Cosa è aumentato', 'aumenti dei fornitori e quanto pesano', 'M3 17l6-6 4 4 8-8M15 7h6v6'],
+    ['prezzi-consigliati', 'Prezzi da ritoccare', 'prezzo consigliato per le ricette sotto la soglia', 'M20 12l-8 8-9-9V3h8zM7 7h.01'],
+    ['chi-costa-meno', 'Chi costa meno', 'stesso prodotto, fornitori diversi', 'M4 6h16M7 12h10M10 18h4'],
+    ['mappa', 'Mappa del menu', 'da tenere, far rendere, spingere, ripensare', 'M8 21h8M12 17v4M7 4h10v6a5 5 0 0 1-10 0zM7 6H4v2a3 3 0 0 0 3 3M17 6h3v2a3 3 0 0 1-3 3'],
+    ['allergeni', 'Allergeni', 'tabella da stampare per i clienti', 'M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z'],
     ['olio', 'Costo olio', 'quanto costa friggere', 'M12 3c4 5 6 8 6 11a6 6 0 0 1-12 0c0-3 2-6 6-11z'],
     ['ordine', 'Metti in ordine i dati', 'tutto quello da sistemare, in un posto', 'M10 6h10M10 12h10M10 18h10M3 6l1.5 1.5L7 5M3 12l1.5 1.5L7 11M3 18l1.5 1.5L7 17'],
     ['importa', 'Importa dati', 'cassa, ricette, listini dei fornitori', 'M12 3v12M7 10l5 5 5-5M4 20h16'],
@@ -2265,6 +2272,143 @@
     };
   };
 
+  // ===== Strumenti: prezzi consigliati, aumenti, chi costa meno, allergeni, classifica =====
+  // periodo di vendite di riferimento: tra quelli che finiscono nell'ultimo mese e mezzo, il più lungo (es. «Gen-nov 2026» invece di «Novembre 2026»)
+  function periodoRiferimento() {
+    const pers = S.periodiVendita.filter(pp => dateDiPeriodo(pp) && S.ricette.some(r => (r.vendite || {})[pp]));
+    const fine = pers.reduce((m, pp) => dateDiPeriodo(pp).al > m ? dateDiPeriodo(pp).al : m, ''), lim = fine ? new Date(new Date(fine) - 45 * 864e5).toISOString().slice(0, 10) : '';
+    const durata = (pp) => new Date(dateDiPeriodo(pp).al) - new Date(dateDiPeriodo(pp).dal);
+    return pers.filter(pp => dateDiPeriodo(pp).al >= lim).sort((x, y) => durata(y) - durata(x))[0] || null;
+  }
+  const giorniDi = (pp) => { const d = dateDiPeriodo(pp); return d ? (new Date(d.al) - new Date(d.dal)) / 864e5 + 1 : 365; };
+  const vendutiAnno = (r, pp) => pp ? (Number((r.vendite || {})[pp]) || 0) * 365 / giorniDi(pp) : 0;
+  const passoArrotonda = () => Number(S.impostazioni.arrotonda) || 0.5;
+  const arrotondaSu = (x) => { const a = passoArrotonda(); return Math.round(Math.ceil(x / a - 1e-9) * a * 100) / 100; };
+  // prezzo con IVA per tornare alla soglia del moltiplicatore, arrotondato per eccesso
+  function prezzoConsigliato(r) { const i = M.indicatori(r); return i.costo && i.soglia ? arrotondaSu(i.costo * i.soglia) : null; }
+  // quante confezioni di un prodotto entrano in un pezzo di ogni ricetta (anche dentro le preparazioni): il costo cresce in linea col prezzo
+  function quotaProdotto(p) {
+    const ric = M.usatoIn('p:' + p.id).tutte, out = {};
+    if (!ric.length) return out;
+    try {
+      M.simula({ [p.id]: 0 }); const a = {}; ric.forEach(r => { a[r.id] = M.costo(r) || 0; });
+      M.simula({ [p.id]: 1 }); ric.forEach(r => { const d = (M.costo(r) || 0) - a[r.id]; if (d > 1e-9) out[r.id] = d; });
+    } finally { M.simula(null); }
+    return out;
+  }
+
+  // ----- Prezzi da ritoccare -----
+  PAGINE['prezzi-consigliati'] = function () {
+    const per = periodoRiferimento();
+    const l = S.ricette.filter(r => r.tipo !== 'semilavorato' && completa(r) && M.indicatori(r).sotto).map(r => {
+      const i = M.indicatori(r), c = prezzoConsigliato(r), va = vendutiAnno(r, per);
+      const strano = !!(c && i.prezzo && c > i.prezzo * 2.5);
+      const piu = c && i.prezzo && !strano ? (c - i.prezzo) / (1 + (S.impostazioni.ivaVendita || 0) / 100) * va : 0;
+      return { r, i, c, va, piu, strano };
+    }).sort((a, b) => (a.strano - b.strano) || b.piu - a.piu || a.r.nome.localeCompare(b.r.nome));
+    const bozza = ui.prezziNuovi = ui.prezziNuovi || {};
+    const tot = l.reduce((t, x) => t + x.piu, 0);
+    return {
+      titolo: 'Prezzi da ritoccare', indietro: '#/altro', html: `
+      <p class="tenue">Le ricette sotto la soglia del moltiplicatore, con il prezzo per tornarci (arrotondato a ${euro(passoArrotonda())}). In cima quelle dove alzare il prezzo rende di più, in base a quanto le vendi.</p>
+      <div class="kpi-griglia">${kpi('Ricette sotto la soglia', String(l.length))}${per ? kpi('Guadagno in più in un anno', euro(tot, 0), 'se le porti tutte al prezzo consigliato, senza IVA, vendendone quante adesso (' + esc(per) + ')') : ''}</div>
+      ${l.length ? `<div class="card larga">
+        ${l.map(x => `<div class="pc-riga${x.strano ? ' strano' : ''}"><div class="pc-nome"><a href="#/ricetta/${x.r.id}"><b>${esc(x.r.nome)}</b></a><small class="tenue">${esc(M.TIPI[x.r.tipo] || '')} · soglia × ${n2(x.i.soglia)}${per ? ' · ' + qta(Math.round(x.va)) + ' venduti l\'anno' : ''}</small></div>
+          <div class="pc-num"><span><small class="tenue">costo</small>${euro(x.i.costo)}</span><span><small class="tenue">adesso</small>${euro(x.i.prezzo)} <span class="badge rosso">× ${n2(x.i.molt)}</span></span>
+          ${x.strano ? '<span class="pc-strano">Il costo sembra sbagliato (il prezzo dovrebbe più che raddoppiare): controlla gli ingredienti.</span>' : `<span><small class="tenue">consigliato</small><button class="btn piccolo" data-az="pc-usa" data-id="${x.r.id}" data-v="${x.c}">${euro(x.c)}</button></span>${per && x.piu > 0 ? `<span><small class="tenue">in più l'anno</small>${euro(x.piu, 0)}</span>` : ''}`}
+          <label class="pc-nuovo"><small class="tenue">nuovo prezzo</small><input class="mini" type="text" inputmode="decimal" data-pc="${x.r.id}" value="${bozza[x.r.id] != null ? esc(String(bozza[x.r.id]).replace('.', ',')) : ''}" placeholder="${esc(n2(x.i.prezzo))}"></label></div></div>`).join('')}
+        <div class="bottoni"><button class="btn primario" data-az="pc-salva">Salva i prezzi nuovi${Object.keys(bozza).length ? ' (' + Object.keys(bozza).length + ')' : ''}</button><button class="btn" data-az="pc-tutti">Metti il consigliato a tutte (tranne quelle da controllare)</button>${Object.keys(bozza).length ? '<button class="btn" data-az="pc-annulla">Annulla</button>' : ''}</div>
+        <p class="tenue piccolo">Tocca il prezzo consigliato per copiarlo nella colonna «Nuovo prezzo», o scrivine uno tuo. Niente cambia finché non tocchi «Salva». Ricordati di cambiarli anche nella cassa.</p></div>` : '<div class="card"><p>Tutte le ricette complete sono sopra la soglia. 👌</p></div>'}`
+    };
+  };
+
+  // ----- Cosa è aumentato -----
+  const PERIODI_AUMENTI = [['30', 'Ultimo mese'], ['90', 'Ultimi 3 mesi'], ['180', 'Ultimi 6 mesi'], ['365', 'Ultimo anno']];
+  function aumentiTra(giorni) {
+    const da = new Date(Date.now() - giorni * 864e5).toISOString().slice(0, 10), soglia = Number(S.impostazioni.sogliaAumento) || 3;
+    const per = periodoRiferimento(), out = [];
+    S.prodotti.forEach(p => {
+      if (p.speciale) return;
+      const ora = M.prezzoVoce(p);
+      let prima = M.prezzoVoce(p, da);
+      if (!prima) { const dentro = (p.prezzi || []).filter(e => e.data > da && e.prezzo > 0).sort((x, y) => x.data.localeCompare(y.data)); if (dentro.length > 1) prima = dentro[0]; }
+      if (!ora || !prima || !prima.prezzo || !ora.prezzo) return;
+      if (!(p.prezzi || []).some(e => e.data > da)) return;
+      const v = (ora.prezzo / prima.prezzo - 1) * 100;
+      if (Math.abs(v) < soglia) return;
+      out.push({ p, prima: prima.prezzo, ora: ora.prezzo, v, data: ora.data || '', forn: (M.fornitore(ora.fornitoreId) || M.fornitore(p.fornitoreId) || {}).nome || '' });
+    });
+    // quanto pesa in un anno: confezioni usate nelle ricette × pezzi venduti × differenza di prezzo
+    out.forEach(x => {
+      const q = quotaProdotto(x.p); x.ricette = []; x.annuo = 0;
+      Object.keys(q).forEach(id => { const r = M.ricetta(id); if (!r || r.tipo === 'semilavorato') return; const va = vendutiAnno(r, per), d = q[id] * (x.ora - x.prima); x.annuo += d * va; x.ricette.push({ r, d, va, i: M.indicatori(r) }); });
+      x.ricette.sort((a, b) => b.d * b.va - a.d * a.va);
+    });
+    return { lista: out, per, da };
+  }
+  PAGINE.aumenti = function () {
+    const g = ui.aumGiorni || '90', A = aumentiTra(+g);
+    const su = A.lista.filter(x => x.v > 0).sort((a, b) => b.annuo - a.annuo || b.v - a.v), giu = A.lista.filter(x => x.v < 0).sort((a, b) => a.annuo - b.annuo || a.v - b.v);
+    const tot = su.reduce((t, x) => t + x.annuo, 0), risp = giu.reduce((t, x) => t + x.annuo, 0);
+    const riga = (x) => `<details class="aum-riga"><summary><span class="aum-nome"><b>${esc(x.p.nomeBreve)}</b><small class="tenue">${esc(x.forn)} · ${x.data ? dataIt(x.data) : ''}</small></span>
+        <span class="aum-num"><span>${euro(x.prima)} → <b>${euro(x.ora)}</b></span><span class="badge ${x.v > 0 ? 'rosso' : 'verde'}">${x.v > 0 ? '+' : ''}${n2(x.v, 1)}%</span>${A.per && x.ricette.length ? `<small class="${x.v > 0 ? 'rosso-t' : 'verde-t'}">${x.annuo > 0 ? '+' : ''}${euro(x.annuo, 0)} l'anno</small>` : ''}</span></summary>
+        <div class="aum-dett">${x.ricette.length ? `<table class="tab"><tr><th>Ricetta</th><th class="n">Costo in più a pezzo</th>${A.per ? '<th class="n">Venduti l\'anno</th><th class="n">In un anno</th>' : ''}<th class="n">Molt. adesso</th></tr>${x.ricette.map(y => `<tr><td><a href="#/ricetta/${y.r.id}">${esc(y.r.nome)}</a></td><td class="n">${euro(y.d, 3)}</td>${A.per ? `<td class="n">${qta(Math.round(y.va))}</td><td class="n">${euro(y.d * y.va, 0)}</td>` : ''}<td class="n">${y.i.molt != null ? `<span class="badge ${y.i.sotto ? 'rosso' : 'verde'}">× ${n2(y.i.molt)}</span>` : '—'}</td></tr>`).join('')}</table>` : '<p class="tenue piccolo">Non è usato in nessuna ricetta.</p>'}
+        <a class="btn piccolo" href="#/prodotto/${x.p.id}">Apri il prodotto</a></div></details>`;
+    return {
+      titolo: 'Cosa è aumentato', indietro: '#/altro', html: `
+      <div class="segmentato">${PERIODI_AUMENTI.map(([k, v]) => `<button class="${g === k ? 'on' : ''}" data-az="aum-per" data-v="${k}">${v}</button>`).join('')}</div>
+      <p class="tenue piccolo">Prezzo di oggi confrontato con quello del ${dataIt(A.da)}, per i prodotti cambiati di almeno il ${n2(Number(S.impostazioni.sogliaAumento) || 3, 0)}% (lo cambi in Impostazioni).${A.per ? ' Quanto pesa in un anno lo calcolo da quanto vendi (' + esc(A.per) + ').' : ' Carica le vendite della cassa per vedere quanto pesa in un anno.'} Tocca un prodotto per vedere le ricette toccate.</p>
+      <div class="kpi-griglia">${kpi('Aumentati', String(su.length), A.per ? '+' + euro(tot, 0) + ' l\'anno' : '', su.length ? 'rosso' : '')}${kpi('Calati', String(giu.length), A.per && giu.length ? euro(risp, 0) + ' l\'anno' : '', giu.length ? 'verde' : '')}</div>
+      <div class="card larga"><h3>Aumentati</h3>${su.length ? su.map(riga).join('') : '<p class="tenue">Nessun aumento in questo periodo.</p>'}</div>
+      ${giu.length ? `<div class="card larga"><h3>Calati</h3>${giu.map(riga).join('')}</div>` : ''}`
+    };
+  };
+
+  // ----- Chi costa meno -----
+  PAGINE['chi-costa-meno'] = function () {
+    const per = periodoRiferimento();
+    const l = [];
+    S.prodotti.forEach(p => {
+      if (p.speciale) return;
+      const ult = Object.entries(M.ultimiPerFornitore(p)).filter(([k, e]) => k !== '_' && e.prezzo > 0);
+      if (ult.length < 2) return;
+      const voci = ult.map(([k, e]) => ({ f: M.fornitore(k), e })).filter(x => x.f).sort((a, b) => a.e.prezzo - b.e.prezzo);
+      if (voci.length < 2) return;
+      const min = voci[0], ora = M.prezzoVoce(p);
+      const q = quotaProdotto(p); let conf = 0; Object.keys(q).forEach(id => { const r = M.ricetta(id); if (r && r.tipo !== 'semilavorato') conf += q[id] * vendutiAnno(r, per); });
+      const diff = ora ? ora.prezzo - min.e.prezzo : 0;
+      l.push({ p, voci, min, ora, conf, risp: diff > 0 ? diff * conf : 0 });
+    });
+    l.sort((a, b) => b.risp - a.risp || a.p.nomeBreve.localeCompare(b.p.nomeBreve));
+    const tot = l.reduce((t, x) => t + x.risp, 0);
+    const unita = (p, prezzo) => { const c = p.contenuto || 1; return p.unita === 'pz' ? (c > 1 ? euro(prezzo / c) + ' al pezzo' : '') : euro(prezzo / c * 1000) + (p.unita === 'g' ? ' al kg' : ' al litro'); };
+    return {
+      titolo: 'Chi costa meno', indietro: '#/altro', html: `
+      <p class="tenue">I prodotti che compri da più fornitori, con l'ultimo prezzo di ciascuno. Il più conveniente è in verde. Se due prodotti uguali sono ancora separati (per esempio due Coca-Cola), uniscili in Prodotti › Altro › «Unisci più prodotti in uno» e compariranno qui.</p>
+      <div class="kpi-griglia">${kpi('Prodotti con più fornitori', String(l.length))}${per ? kpi('Risparmio in un anno', euro(tot, 0), 'comprando sempre dal più conveniente, con le vendite di ' + esc(per)) : ''}</div>
+      ${l.length ? l.map(x => `<div class="card"><div class="riga-testa"><a href="#/prodotto/${x.p.id}"><b>${esc(x.p.nomeBreve)}</b></a>${x.risp > 0.5 ? `<span class="badge verde">risparmi ${euro(x.risp, 0)} l'anno</span>` : ''}</div>
+        ${x.voci.map((v, k) => `<div class="riga piccola ${k === 0 ? 'migliore' : ''}"><span>${esc(v.f.nome)}<small>${dataIt(v.e.data)}${x.ora && Math.abs(x.ora.prezzo - v.e.prezzo) < 0.005 ? ' · è il prezzo che uso adesso' : ''}</small></span><span class="destra"><b>${euro(v.e.prezzo)}</b><small>${unita(x.p, v.e.prezzo)}${k > 0 ? ' · +' + n2((v.e.prezzo / x.min.e.prezzo - 1) * 100, 0) + '%' : ''}</small></span></div>`).join('')}</div>`).join('') : '<div class="card"><p class="tenue">Nessun prodotto comprato da più di un fornitore.</p></div>'}`
+    };
+  };
+
+  // ----- Tabella degli allergeni -----
+  PAGINE.allergeni = function () {
+    const rep = ui.allRep || '*tutto';
+    const l = S.ricette.filter(r => r.tipo !== 'semilavorato' && (rep === '*tutto' || M.REPARTO_TIPO[r.tipo] === rep.slice(1)) && (r.prezzo || (r.righe || []).length))
+      .sort((a, b) => (M.TIPI[a.tipo] || '').localeCompare(M.TIPI[b.tipo] || '') || a.nome.localeCompare(b.nome));
+    const gruppi = []; l.forEach(r => { const g = M.TIPI[r.tipo] || ''; if (!gruppi.length || gruppi[gruppi.length - 1].g !== g) gruppi.push({ g, l: [] }); gruppi[gruppi.length - 1].l.push(r); });
+    const vuote = l.filter(r => !(r.righe || []).length).length;
+    return {
+      titolo: 'Allergeni', indietro: '#/altro', html: `
+      <div class="no-stampa"><div class="filtri-ric"><div class="segmentato">${[['*tutto', 'Tutto'], ['*bar', 'Bar'], ['*cucina', 'Cucina']].map(([k, v]) => `<button class="${rep === k ? 'on' : ''}" data-az="all-rep" data-v="${k}">${v}</button>`).join('')}</div><button class="btn primario" data-az="stampa">Stampa</button></div>
+        <p class="tenue piccolo">Gli allergeni arrivano dalle schede dei prodotti usati in ogni ricetta, più quelli segnati a mano nella ricetta. Prima di esporla, controlla che i prodotti abbiano gli allergeni giusti.${vuote ? ` <b>${vuote} ricette non hanno ancora gli ingredienti</b>: sono segnate con «da completare».` : ''}</p></div>
+      <div class="stampa-testa"><h2>Repub · Allergeni</h2><p>Elenco delle sostanze che provocano allergie o intolleranze (Reg. UE 1169/2011), aggiornato al ${dataIt(M.oggi())}. Per informazioni chiedi al personale.</p></div>
+      <div class="card larga tab-allergeni-box"><table class="tab tab-allergeni"><thead><tr><th class="all-nome">Piatto o drink</th>${M.ALLERGENI.map(a => `<th class="all-col"><span>${esc(a)}</span></th>`).join('')}</tr></thead>
+        <tbody>${gruppi.map(G => `<tr class="all-gruppo"><td colspan="${M.ALLERGENI.length + 1}">${esc(G.g)}</td></tr>` + G.l.map(r => { const al = M.allergeniRicetta(r), vuota = !(r.righe || []).length;
+          return `<tr><td class="all-nome">${esc(r.nome)}${vuota ? ' <small class="giallo-t">da completare</small>' : ''}</td>${M.ALLERGENI.map(a => `<td class="all-c">${al.includes(a) ? '●' : ''}</td>`).join('')}</tr>`; }).join('')).join('')}</tbody></table></div>`
+    };
+  };
+
   // ----- Impostazioni -----
   const CODICE_SHEET = "// Gestionale Repub · copia automatica\n// Cambia la parola qui sotto e scrivi la stessa nell'app (Impostazioni › Copia automatica su Google)\nconst PAROLA_SEGRETA = 'scrivi-qui-la-tua-parola';\nconst COPIE_DA_TENERE = 30;\n\nfunction doPost(e) {\n  try {\n    const d = JSON.parse(e.postData.contents);\n    if (d.chiave !== PAROLA_SEGRETA) return risposta({ errore: 'parola segreta sbagliata' });\n    const ss = SpreadsheetApp.getActiveSpreadsheet();\n    Object.keys(d.fogli).forEach(function (nome) {\n      const righe = d.fogli[nome];\n      const largh = Math.max.apply(null, righe.map(function (r) { return r.length; }));\n      const tab = righe.map(function (r) { while (r.length < largh) r.push(''); return r; });\n      const sh = ss.getSheetByName(nome) || ss.insertSheet(nome);\n      sh.clearContents();\n      sh.getRange(1, 1, tab.length, largh).setValues(tab);\n      sh.setFrozenRows(1);\n    });\n    const c = ss.getSheetByName('Copie complete') || ss.insertSheet('Copie complete');\n    const pezzi = [];\n    for (let i = 0; i < d.copia.length; i += 45000) pezzi.push(d.copia.slice(i, i + 45000));\n    c.appendRow([new Date(), d.versione, pezzi.length].concat(pezzi));\n    const n = c.getLastRow();\n    if (n > COPIE_DA_TENERE) c.deleteRows(1, n - COPIE_DA_TENERE);\n    return risposta({ ok: true });\n  } catch (err) {\n    return risposta({ errore: String(err) });\n  }\n}\n\nfunction doGet(e) {\n  if (!e.parameter || e.parameter.chiave !== PAROLA_SEGRETA) return risposta({ errore: 'parola segreta sbagliata' });\n  const c = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Copie complete');\n  if (!c || c.getLastRow() < 1) return risposta({ errore: 'nessuna copia ancora' });\n  const riga = c.getRange(c.getLastRow(), 1, 1, c.getLastColumn()).getValues()[0];\n  const pezzi = Number(riga[2]) || 0;\n  return risposta({ quando: riga[0], copia: riga.slice(3, 3 + pezzi).join('') });\n}\n\nfunction risposta(o) {\n  return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON);\n}\n";
   PAGINE['copia-sheet'] = function () {
@@ -2295,7 +2439,8 @@
       <div class="card form"><h3>Prezzi</h3>
         <label>IVA sul prezzo di vendita (%)<input type="text" inputmode="decimal" autocomplete="off" data-imp="ivaVendita" value="${esc(im.ivaVendita)}"></label>
         <label>Quando un prodotto arriva da più fornitori, usa<select data-imp="metodoPrezzo">${[['ultimo', 'l\'ultimo prezzo pagato'], ['minimo', 'il prezzo più basso'], ['media', 'la media tra i fornitori']].map(([k, v]) => `<option value="${k}" ${im.metodoPrezzo === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
-        <label>Segnala gli aumenti a partire da (%)<input type="text" inputmode="decimal" autocomplete="off" data-imp="sogliaAumento" value="${esc(im.sogliaAumento)}"></label></div>
+        <label>Segnala gli aumenti a partire da (%)<input type="text" inputmode="decimal" autocomplete="off" data-imp="sogliaAumento" value="${esc(im.sogliaAumento)}"></label>
+        <label>Arrotonda i prezzi consigliati a<select data-imp="arrotonda">${[['0.1', '10 centesimi'], ['0.5', '50 centesimi'], ['1', '1 euro']].map(([k, v]) => `<option value="${k}" ${String(passoArrotonda()) === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label></div>
       <div class="card form"><h3>Misure da bar</h3><p class="tenue piccolo">Quanti ml valgono, per il costo delle ricette scritte in dash o drop.</p>
         <div class="due"><label>1 dash = ml<input type="text" inputmode="decimal" autocomplete="off" data-imp="mlDash" value="${esc(String(M.mlMisura('dash')).replace('.', ','))}"></label>
         <label>1 drop = ml<input type="text" inputmode="decimal" autocomplete="off" data-imp="mlDrop" value="${esc(String(M.mlMisura('drop')).replace('.', ','))}"></label></div></div>
@@ -2331,7 +2476,7 @@
 
   // ---------- Disegno ----------
   const TAB = [['pannello', 'Pannello', 'M3 12l9-8 9 8v8a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z'], ['prodotti', 'Prodotti', 'M4 7l8-4 8 4v10l-8 4-8-4zM4 7l8 4 8-4M12 11v10'], ['ricette', 'Ricette', 'M6 3h12M8 3v6l-4 12h16L16 9V3'], ['fatture', 'Fatture', 'M6 2h9l5 5v15H6zM14 2v6h6M9 13h8M9 17h8'], ['altro', 'Altro', 'M5 12h.01M12 12h.01M19 12h.01']];
-  const SEZIONE = { 'copia-sheet': 'altro', cestino: 'altro', mappa: 'pannello', costi: 'altro', ordine: 'altro', 'gruppi-ricette': 'ricette', 'costi-gruppo': 'ricette', foglio: 'prodotti', doppioni: 'prodotti', importa: 'altro', 'controllo-fatture': 'fatture', controllo: 'prodotti', pulizia: 'altro', formati: 'prodotti', prodotto: 'prodotti', 'modifica-prodotto': 'prodotti', ricetta: 'ricette', 'modifica-ricetta': 'ricette', 'rivedi-ricette': 'ricette', fattura: 'fatture' };
+  const SEZIONE = { aumenti: 'altro', 'prezzi-consigliati': 'altro', 'chi-costa-meno': 'altro', allergeni: 'altro', 'copia-sheet': 'altro', cestino: 'altro', mappa: 'pannello', costi: 'altro', ordine: 'altro', 'gruppi-ricette': 'ricette', 'costi-gruppo': 'ricette', foglio: 'prodotti', doppioni: 'prodotti', importa: 'altro', 'controllo-fatture': 'fatture', controllo: 'prodotti', pulizia: 'altro', formati: 'prodotti', prodotto: 'prodotti', 'modifica-prodotto': 'prodotti', ricetta: 'ricette', 'modifica-ricetta': 'ricette', 'rivedi-ricette': 'ricette', fattura: 'fatture' };
   function disegna() {
     if (!S) return;
     const [, nome, arg] = (location.hash || '#/pannello').split('/');
@@ -2606,12 +2751,7 @@
   // le tabelle leggibili (Excel e copia su Google): una lista di righe per foglio
   function fogliLeggibili() {
     const r2 = (n) => n == null || isNaN(n) ? '' : Math.round(n * 100) / 100, r3 = (n) => n == null || isNaN(n) ? '' : Math.round(n * 1000) / 1000;
-    // periodo di vendite di riferimento: quello che finisce più tardi (a pari fine, il più lungo)
-    const pers = S.periodiVendita.filter(pp => dateDiPeriodo(pp) && S.ricette.some(r => (r.vendite || {})[pp]));
-    // tra quelli che finiscono nell'ultimo mese e mezzo, il più lungo (es. «Gen-nov 2026» invece di «Novembre 2026»)
-    const fine = pers.reduce((m, pp) => dateDiPeriodo(pp).al > m ? dateDiPeriodo(pp).al : m, ''), lim = fine ? new Date(new Date(fine) - 45 * 864e5).toISOString().slice(0, 10) : '';
-    const durata = (pp) => new Date(dateDiPeriodo(pp).al) - new Date(dateDiPeriodo(pp).dal);
-    const per = pers.filter(pp => dateDiPeriodo(pp).al >= lim).sort((x, y) => durata(y) - durata(x))[0];
+    const per = periodoRiferimento();
     const ultimaData = (p) => (p.prezzi || []).reduce((d, e) => e.data && e.data > d ? e.data : d, '');
     const spesoForn = {};
     S.fatture.forEach(f => { const x = spesoForn[f.fornitoreId] = spesoForn[f.fornitoreId] || { tot: 0, n: 0, ultima: '' }; x.tot += (f.tipoDoc === 'TD04' ? -1 : 1) * (Number(f.imponibile) || 0); x.n++; if (f.data > x.ultima) x.ultima = f.data; });
@@ -4216,6 +4356,19 @@
   AZ['olio-riga'] = () => { S.impostazioni.olio.dettaglio.push(['Nuovo piatto', 0, 0]); salva(); ridisegnaMantenendo(); };
   AZ['esporta-excel'] = esportaExcel;
   AZ['controlla-casella'] = () => controllaCasella(true);
+  AZ['pc-usa'] = (el) => { ui.prezziNuovi = ui.prezziNuovi || {}; ui.prezziNuovi[el.dataset.id] = +el.dataset.v; ridisegnaMantenendo(); };
+  AZ['pc-tutti'] = () => { ui.prezziNuovi = {}; S.ricette.forEach(r => { if (r.tipo !== 'semilavorato' && completa(r) && M.indicatori(r).sotto) { const c = prezzoConsigliato(r), pr = M.indicatori(r).prezzo; if (c && !(pr && c > pr * 2.5)) ui.prezziNuovi[r.id] = c; } }); ridisegnaMantenendo(); };
+  AZ['pc-annulla'] = () => { ui.prezziNuovi = {}; ridisegnaMantenendo(); };
+  AZ['pc-salva'] = () => {
+    const l = Object.entries(ui.prezziNuovi || {}).filter(([id, v]) => M.ricetta(id) && v > 0);
+    if (!l.length) { alert('Non hai scritto nessun prezzo nuovo.'); return; }
+    if (!confirm(`Cambio il prezzo di ${l.length} ${l.length === 1 ? 'ricetta' : 'ricette'}? Ricordati di cambiarli anche nella cassa.`)) return;
+    l.forEach(([id, v]) => { M.ricetta(id).prezzo = v; });
+    ui.prezziNuovi = {}; M.svuota(); salva(); ridisegnaMantenendo(); avviso('Prezzi cambiati.');
+  };
+  AZ['aum-per'] = (el) => { ui.aumGiorni = el.dataset.v; ridisegnaMantenendo(); };
+  AZ['all-rep'] = (el) => { ui.allRep = el.dataset.v; ridisegnaMantenendo(); };
+  AZ.stampa = () => window.print();
   AZ['copia-sheet'] = () => copiaSuSheet(true);
   AZ['copia-sheet-scarica'] = () => scaricaUltimaCopia();
   AZ['copia-codice'] = () => { const t = ($('#codice-sheet') || {}).textContent || ''; (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(() => avviso('Codice copiato.')).catch(() => { const r = document.createRange(); r.selectNodeContents($('#codice-sheet')); const sl = getSelection(); sl.removeAllRanges(); sl.addRange(r); alert('Il codice è selezionato: copialo con Comando + C.'); }); };
@@ -4275,6 +4428,7 @@
       return;
     }
     if (d.media && ui.bozza) { ui.bozza.media = el.checked; ridisegnaMantenendo(); return; }
+    if (d.pc) { ui.prezziNuovi = ui.prezziNuovi || {}; const n = numDa(el.value); if (n > 0) ui.prezziNuovi[d.pc] = n; else delete ui.prezziNuovi[d.pc]; const b = document.querySelector('[data-az="pc-salva"]'); if (b) b.textContent = 'Salva i prezzi nuovi' + (Object.keys(ui.prezziNuovi).length ? ' (' + Object.keys(ui.prezziNuovi).length + ')' : ''); return; }
     if (d.spr) { ui['sposta' + d.spr] = el.value; return; }
     if (d.cs) { CS()[d.cs] = el.value.trim(); salva(); return; }
     if (d.b != null && ui.bozza && el.value === '__nuovo') return; // lo gestisce il «change»
@@ -4436,7 +4590,7 @@
     if (d.forn) { const f = M.fornitore(d.forn); f[d.k] = el.value.trim(); salva(); return; }
     if (d.vend) { const r = M.ricetta(d.vend); r.vendite = r.vendite || {}; const x = numDa(el.value); if (x) r.vendite[d.p] = x; else delete r.vendite[d.p]; salva(); return; }
     if (d.soglia) { S.impostazioni.soglie[d.soglia] = numDa(el.value); salva(); return; }
-    if (d.imp) { const numerici = ['ivaVendita', 'sogliaAumento', 'mlDash', 'mlDrop']; S.impostazioni[d.imp] = numerici.includes(d.imp) ? numDa(el.value) : el.value.trim(); if (d.imp === 'mlDash' || d.imp === 'mlDrop') M.svuota(); salva(); avviso('Salvato.'); return; }
+    if (d.imp) { const numerici = ['ivaVendita', 'sogliaAumento', 'mlDash', 'mlDrop', 'arrotonda']; S.impostazioni[d.imp] = numerici.includes(d.imp) ? numDa(el.value) : el.value.trim(); if (d.imp === 'mlDash' || d.imp === 'mlDrop') M.svuota(); salva(); avviso('Salvato.'); return; }
     if (d.cas) { S.casella[d.cas] = el.value.trim(); salva(); avviso('Salvato.'); return; }
     if (d.olio) { S.impostazioni.olio[d.olio] = numDa(el.value) || 0; delete S.impostazioni.olio.origine; salva(); ridisegnaMantenendo(); return; }
     if (d.olioData) { ui['olio' + (d.olioData === 'dal' ? 'Dal' : 'Al')] = el.value || null; ridisegnaMantenendo(); return; }
@@ -4457,7 +4611,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v134';
+  const VERSIONE_APP = 'repub-v135';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
