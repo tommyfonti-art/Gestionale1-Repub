@@ -488,7 +488,7 @@
   // reparti: ogni categoria sta sotto Bar, Cucina o Non food
   M.categoriaDa = (descrizione) => (CATEGORIE.find(([re]) => re.test(descrizione || '')) || [null, 'Da classificare'])[1];
   M.REPARTI = ['Bar', 'Cucina', 'Non food'];
-  const REP_BAR = /^(gin|vodka|rum|tequila|distillat|whisk|bitter|amari|liquor|birr|fust|vin|sode|succhi|sciropp|ghiaccio|bibite|acqua|caff)/i;
+  const REP_BAR = /^(gin|vodka|rum|tequila|distillat|whisk|bitter|amari|liquor|birr|fust|vin|sode|succhi|sciropp|ghiaccio|bibite|acqua|caff|tisan|infus|t[eèé]\b)/i;
   const REP_NONFOOD = /^(non alimentare|non food|materiale|pulizia|detersiv|monouso|imballagg)/i;
   M.reparto = function (p) {
     if (p.reparto) return p.reparto;

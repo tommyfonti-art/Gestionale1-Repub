@@ -1343,6 +1343,7 @@
         ${campo('Nome breve (quello delle ricette)', 'nomeBreve')}
         ${campo('Nome completo', 'nomeCompleto')}
         <label>Categoria<input list="cat-list" data-b="categoria" value="${esc(b.categoria)}"><datalist id="cat-list">${categorie().map(c => `<option value="${esc(c)}">`).join('')}</datalist></label>
+        <label>Reparto<select data-b="reparto"><option value="" ${!b.reparto ? 'selected' : ''}>Dalla categoria (${esc(M.reparto(Object.assign({}, b, { reparto: '' })))})</option>${M.REPARTI.map(r => `<option ${b.reparto === r ? 'selected' : ''}>${r}</option>`).join('')}</select></label>
         <div class="due">
           <label>Unità<select data-b="unita">${['ml', 'g', 'pz'].map(u => `<option ${b.unita === u ? 'selected' : ''}>${u}</option>`).join('')}</select></label>
           ${campo('Contenuto della confezione', 'contenuto', 'text', 'inputmode="decimal" autocomplete="off"')}
@@ -4239,7 +4240,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v127';
+  const VERSIONE_APP = 'repub-v128';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
