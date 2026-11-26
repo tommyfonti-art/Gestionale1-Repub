@@ -1319,6 +1319,8 @@
       ${!p.speciale && !M.daFattura(p) ? `<div class="card"><h3>È fatto da voi?</h3><p class="tenue piccolo">Se è una cosa che preparate voi (salse, sciroppi, cipolla tagliata…), trasformalo in preparazione: gli metti gli ingredienti e la resa, e le ricette che lo usano passano alla preparazione.</p><button class="btn piccolo" data-az="prod-prep" data-id="${p.id}">Diventa una preparazione</button></div>` : ''}
       ${!p.speciale ? `<div class="card form"><h3>È lo stesso di un altro prodotto?</h3><p class="tenue piccolo">Uniscilo: resta l'altro, con i prezzi, le fatture e le ricette di tutti e due.</p>
         <label>Unisci dentro<select data-az-change="ctrl-unisci" data-id="${p.id}"><option value="">scegli il prodotto…</option>${S.prodotti.filter(x => x.id !== p.id && !x.speciale).sort((a, b) => a.nomeBreve.localeCompare(b.nomeBreve)).map(x => `<option value="${x.id}">${esc(x.nomeBreve)} · ${esc(x.nomeCompleto)} · ${esc((M.fornitore(x.fornitoreId) || {}).nome || '')}</option>`).join('')}</select></label></div>` : ''}
+      ${(p.uniti || []).length ? `<div class="card"><h3>Prodotti uniti qui</h3><p class="tenue piccolo">Se ne hai unito uno per sbaglio, «Separa» lo rimette com'era, con i suoi prezzi, le sue fatture e le sue ricette.</p>
+        ${p.uniti.slice().reverse().map(u => `<div class="riga"><span>${esc(u.prodotto.nomeBreve)}<small>${esc((M.fornitore(u.prodotto.fornitoreId) || {}).nome || '')} · unito il ${dataIt(u.quando)}</small></span><button class="btn piccolo" data-az="prod-separa" data-id="${p.id}" data-u="${u.id}">Separa</button></div>`).join('')}</div>` : ''}
       ${(p.articoli || []).length ? `<div class="card"><h3>Come compare nelle fatture</h3>${p.articoli.map(a => `<div class="riga"><span>${esc(a.descrizione)}<small>${esc((M.fornitore(a.fornitoreId) || {}).nome || '')}${a.codice ? ' · codice ' + esc(a.codice) : ''}</small></span><span>${a.confezioniPerUnita > 1 ? a.confezioniPerUnita + ' ' + esc(p.confezione) + ' per unità' : ''}</span></div>`).join('')}</div>` : ''}
       ${p.note ? `<div class="card"><h3>Note</h3><p>${esc(p.note)}</p></div>` : ''}
       <button class="btn piccolo" data-az="simula-prodotto" data-id="${p.id}">Simula un cambio di prezzo</button>`
@@ -3560,6 +3562,12 @@
     ui.cestino = { tipo: t, n: sel.size, gruppo };
     ui.elim = null; M.svuota(); salva(); ridisegnaMantenendo(); window.scrollTo(0, 0);
   };
+  AZ['prod-separa'] = (el) => {
+    const p = M.prodotto(el.dataset.id), u = p && (p.uniti || []).find(x => x.id === el.dataset.u); if (!u) return;
+    if (!confirm(`Separo «${u.prodotto.nomeBreve}» da «${p.nomeBreve}»? Torna un prodotto a sé, con i suoi prezzi e le sue fatture.`)) return;
+    const e = M.separaProdotto(p.id, u.id); if (e) { alert(e); return; }
+    salva(); ridisegnaMantenendo(); avviso(`«${u.prodotto.nomeBreve}» è di nuovo un prodotto a sé.`);
+  };
   AZ['unisci-ok'] = () => {
     const l = ui.elim.sel.map(id => M.prodotto(id)).filter(Boolean);
     if (l.length < 2) { alert('Spunta almeno due prodotti.'); return; }
@@ -4231,7 +4239,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v126';
+  const VERSIONE_APP = 'repub-v127';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;

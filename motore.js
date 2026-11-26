@@ -669,13 +669,36 @@
     if (!da || !a || da === a) return 'Scegli un prodotto diverso.';
     if (da.unita !== a.unita) return `Non posso unirli: uno è in ${da.unita}, l'altro in ${a.unita}.`;
     const k = (da.contenuto || 1) / (a.contenuto || 1); // 1 confezione del doppione = k confezioni del prodotto giusto
-    (da.prezzi || []).forEach(e => a.prezzi.push(Object.assign({}, e, { prezzo: e.prezzo / k, listino: e.listino != null ? e.listino / k : e.listino, confezioni: e.confezioni != null ? e.confezioni * k : e.confezioni })));
-    (da.articoli || []).forEach(ar => { if (!(a.articoli || []).some(x => x.fornitoreId === ar.fornitoreId && x.descrizione === ar.descrizione)) (a.articoli = a.articoli || []).push(Object.assign({}, ar, { confezioniPerUnita: (ar.confezioniPerUnita || 1) * k })); });
+    // memoria dell'unione, per poterla annullare con «Separa»
+    const u = { id: 'u' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), quando: new Date().toISOString().slice(0, 10), prodotto: JSON.parse(JSON.stringify(da)), giacenzaPrima: Number(a.giacenza) || 0, allergeniAggiunti: (da.allergeni || []).filter(x => !(a.allergeni || []).includes(x)), fatture: [], ricette: [] };
+    S.fatture.forEach(f => f.righe.forEach((rg, i) => { if (rg.prodottoId === daId) u.fatture.push([f.id, i, rg.confezioniPerUnita]); }));
+    S.ricette.forEach(r => { (r.righe || []).forEach((rg, i) => { if (rg.rif === 'p:' + daId) u.ricette.push([r.id, 'righe', i]); }); (r.asporto || []).forEach((x, i) => { if (x.rif === 'p:' + daId) u.ricette.push([r.id, 'asporto', i]); }); });
+    a.prezzi = a.prezzi || [];
+    (da.prezzi || []).forEach(e => a.prezzi.push(Object.assign({}, e, { dalUnito: u.id, prezzo: e.prezzo / k, listino: e.listino != null ? e.listino / k : e.listino, confezioni: e.confezioni != null ? e.confezioni * k : e.confezioni })));
+    (da.articoli || []).forEach(ar => { if (!(a.articoli || []).some(x => x.fornitoreId === ar.fornitoreId && x.descrizione === ar.descrizione)) (a.articoli = a.articoli || []).push(Object.assign({ dalUnito: u.id },{}, ar, { confezioniPerUnita: (ar.confezioniPerUnita || 1) * k })); });
     a.giacenza = Math.round(((Number(a.giacenza) || 0) + (Number(da.giacenza) || 0) * k) * 1000) / 1000;
     (da.allergeni || []).forEach(x => { if (!(a.allergeni || []).includes(x)) (a.allergeni = a.allergeni || []).push(x); });
     S.fatture.forEach(f => f.righe.forEach(rg => { if (rg.prodottoId === daId) { rg.prodottoId = aId; rg.confezioniPerUnita = (Number(rg.confezioniPerUnita) || 1) * k; } }));
     S.ricette.forEach(r => { (r.righe || []).forEach(rg => { if (rg.rif === 'p:' + daId) rg.rif = 'p:' + aId; }); (r.asporto || []).forEach(x => { if (x.rif === 'p:' + daId) x.rif = 'p:' + aId; }); });
     S.prodotti = S.prodotti.filter(p => p.id !== daId);
+    a.uniti = (a.uniti || []).concat(u);
+    M.svuota();
+    return null;
+  };
+  // annulla un'unione: il prodotto tolto torna com'era, con i suoi prezzi, le righe delle fatture e delle ricette
+  M.separaProdotto = function (aId, uId) {
+    const a = M.prodotto(aId), u = a && (a.uniti || []).find(x => x.id === uId);
+    if (!u) return 'Unione non trovata.';
+    const da = JSON.parse(JSON.stringify(u.prodotto));
+    if (M.prodotto(da.id)) da.id = M.uid('p');
+    a.prezzi = (a.prezzi || []).filter(e => e.dalUnito !== uId);
+    a.articoli = (a.articoli || []).filter(x => x.dalUnito !== uId);
+    a.giacenza = Math.max(0, Math.round(((Number(a.giacenza) || 0) - (Number(da.giacenza) || 0) * ((da.contenuto || 1) / (a.contenuto || 1))) * 1000) / 1000);
+    a.allergeni = (a.allergeni || []).filter(x => !(u.allergeniAggiunti || []).includes(x));
+    u.fatture.forEach(([fid, i, cpu]) => { const f = S.fatture.find(x => x.id === fid), rg = f && f.righe[i]; if (rg && rg.prodottoId === aId) { rg.prodottoId = da.id; if (cpu == null) delete rg.confezioniPerUnita; else rg.confezioniPerUnita = cpu; } });
+    u.ricette.forEach(([rid, dove, i]) => { const r = S.ricette.find(x => x.id === rid), x = r && (r[dove] || [])[i]; if (x && x.rif === 'p:' + aId) x.rif = 'p:' + da.id; });
+    S.prodotti.push(da);
+    a.uniti = a.uniti.filter(x => x.id !== uId);
     M.svuota();
     return null;
   };
