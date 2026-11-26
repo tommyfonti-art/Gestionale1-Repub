@@ -2929,7 +2929,7 @@
     }
     const tipoL = ui.lsTipo || 'semilavorato';
     let lista = `<div class="card form"><h3>3. Ricette da una lista scritta</h3>
-      <p class="tenue piccolo">Scrivi (o incolla) una riga per ricetta: il nome, due punti, gli ingredienti separati da virgole. Le dosi sono facoltative: le puoi mettere dopo.<br>Esempio: <i>Cipolle stufate: cipolla affettata 3 kg, olio 200 ml, paprika</i></p>
+      <p class="tenue piccolo">Scrivi (o incolla) una riga per ricetta: il nome, due punti, gli ingredienti separati da virgole. Le dosi sono facoltative, e anche gli ingredienti: una riga con il solo nome crea la ricetta vuota, da completare dopo.<br>Esempio: <i>Cipolle stufate: cipolla affettata 3 kg, olio 200 ml, paprika</i></p>
       <label>Diventano<select data-ls-tipo="1">${Object.entries(M.TIPI).map(([k, v]) => `<option value="${k}" ${tipoL === k ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></label>
       <textarea id="ls-testo" rows="6" placeholder="Cipolle stufate: cipolla, olio, paprika&#10;Salsa del Repub: maionese, senape, paprika">${esc(ui.lsTesto || '')}</textarea>
       <div class="bottoni"><button class="btn" data-az="ls-leggi">Leggi la lista</button></div></div>`;
@@ -3059,7 +3059,8 @@
   function leggiListaRicette(testo) {
     const unita = { g: 'g', gr: 'g', grammi: 'g', kg: 'kg', ml: 'ml', cl: 'cl', l: 'l', lt: 'l', litri: 'l', pz: 'pz', pezzi: 'pz', pezzo: 'pz' };
     const fattore = { kg: 1000, cl: 10, l: 1000 };
-    return String(testo || '').split(/\n+/).map(r => r.trim()).filter(r => r && r.includes(':')).map(r => {
+    // una riga senza «:» è una ricetta con il solo nome: gli ingredienti li metti dopo
+    return String(testo || '').split(/\n+/).map(r => r.trim()).filter(Boolean).map(r => r.includes(':') ? r : r + ':').map(r => {
       const k = r.indexOf(':'); const nome = r.slice(0, k).replace(/^[-•*\d.)\s]+/, '').trim();
       const ingr = r.slice(k + 1).split(/[,;]+/).map(x => x.trim()).filter(Boolean).map(x => {
         // «olio 200 ml», «200 ml olio», «paprika»
@@ -4230,7 +4231,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v125';
+  const VERSIONE_APP = 'repub-v126';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
