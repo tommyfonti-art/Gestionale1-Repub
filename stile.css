@@ -486,3 +486,4 @@ details.salute-riga[open] .salute-apri { transform: rotate(90deg); }
 .spunta-riga.da-unire { background: #e2efe7; }
 .versione-lato { color: var(--tenue, #7a746a); font-size: 12px; padding: 14px 16px 8px; }
 @media (min-width: 700px) { .filtri-tendine { max-width: 560px; } }
+#contenuto.colonne > .versione-app { grid-column: 1 / -1; }

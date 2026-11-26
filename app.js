@@ -2179,9 +2179,7 @@
     const im = S.impostazioni;
     return {
       titolo: 'Impostazioni', indietro: '#/altro', html: `
-      <div class="card form"><h3>Soglie del moltiplicatore</h3><p class="tenue piccolo">Sotto questo numero la ricetta diventa rossa.</p>
-        <div class="due">${Object.keys(M.TIPI).filter(t => t !== 'semilavorato').map(t => `<label>${esc(M.TIPI[t])}<input type="text" inputmode="decimal" autocomplete="off" data-soglia="${t}" value="${esc((im.soglie || {})[t])}"></label>`).join('')}</div></div>
-      <div class="card"><h3>Dati dalla cassa</h3><p class="tenue piccolo">Listino dei prodotti in vendita e venduto di un periodo, dai file esportati da Cassa in Cloud.</p><a class="btn" href="#/importa">Importa dalla cassa</a></div>
+      <div class="due-colonne imp-colonne"><div class="colonna">
       <div class="card form"><h3>Prezzi</h3>
         <label>IVA sul prezzo di vendita (%)<input type="text" inputmode="decimal" autocomplete="off" data-imp="ivaVendita" value="${esc(im.ivaVendita)}"></label>
         <label>Quando un prodotto arriva da più fornitori, usa<select data-imp="metodoPrezzo">${[['ultimo', 'l\'ultimo prezzo pagato'], ['minimo', 'il prezzo più basso'], ['media', 'la media tra i fornitori']].map(([k, v]) => `<option value="${k}" ${im.metodoPrezzo === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
@@ -2189,15 +2187,14 @@
       <div class="card form"><h3>Misure da bar</h3><p class="tenue piccolo">Quanti ml valgono, per il costo delle ricette scritte in dash o drop.</p>
         <div class="due"><label>1 dash = ml<input type="text" inputmode="decimal" autocomplete="off" data-imp="mlDash" value="${esc(String(M.mlMisura('dash')).replace('.', ','))}"></label>
         <label>1 drop = ml<input type="text" inputmode="decimal" autocomplete="off" data-imp="mlDrop" value="${esc(String(M.mlMisura('drop')).replace('.', ','))}"></label></div></div>
+      <div class="card form"><h3>Soglie del moltiplicatore</h3><p class="tenue piccolo">Sotto questo numero la ricetta diventa rossa.</p>
+        <div class="due">${Object.keys(M.TIPI).filter(t => t !== 'semilavorato').map(t => `<label>${esc(M.TIPI[t])}<input type="text" inputmode="decimal" autocomplete="off" data-soglia="${t}" value="${esc((im.soglie || {})[t])}"></label>`).join('')}</div></div>
+      </div><div class="colonna">
       <div class="card form"><h3>Fatture</h3>
         <label class="interruttore"><input type="checkbox" data-az="imp-bool" data-k="autoCrea" ${im.autoCrea !== false ? 'checked' : ''}> Crea in automatico i prodotti nuovi che arrivano dalle fatture</label>
         <label class="interruttore"><input type="checkbox" data-az="imp-bool" data-k="autoRegistra" ${im.autoRegistra !== false ? 'checked' : ''}> Registra subito le fatture complete (i prezzi si aggiornano da soli)</label>
         <p class="tenue piccolo">Le spese di trasporto, le cauzioni e simili vengono saltate da sole. Le fatture lette da foto restano sempre da controllare prima di registrarle.</p></div>
-      <div class="card form"><h3>Casella delle fatture</h3>
-        <p class="tenue piccolo">L'indirizzo dell'app web creata nella casella Gmail delle fatture e la parola segreta scritta nel suo programma. Il gestionale la controlla da solo ogni volta che lo apri.</p>
-        <label>Indirizzo dell'app web<input data-cas="url" value="${esc(S.casella.url)}" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off"></label>
-        <label>Parola segreta<span class="campo-occhio"><input type="password" id="cas-chiave" data-cas="chiave" value="${esc(S.casella.chiave)}" autocomplete="off"><button type="button" class="occhio" data-occhio="cas-chiave" aria-label="Mostra">${OCCHIO}</button></span></label>
-        <button class="btn piccolo" data-az="controlla-casella">Prova adesso</button></div>
+      <div class="card"><h3>Dati dalla cassa</h3><p class="tenue piccolo">Listino dei prodotti in vendita e venduto di un periodo, dai file esportati da Cassa in Cloud.</p><a class="btn" href="#/importa">Importa dalla cassa</a></div>
       <div class="card form"><h3>Lettura delle foto</h3>
         <p class="tenue piccolo">Serve una chiave della piattaforma per sviluppatori di Anthropic (console.anthropic.com), a consumo: pochi centesimi a foto. Resta salvata solo su questo dispositivo.</p>
         <label>Chiave<span class="campo-occhio"><input type="password" id="imp-chiave" autocomplete="off" data-imp="chiaveClaude" value="${esc(im.chiaveClaude)}" placeholder="sk-ant-…"><button type="button" class="occhio" data-occhio="imp-chiave" aria-label="Mostra">${OCCHIO}</button></span></label>
@@ -2213,6 +2210,7 @@
           <label class="btn">Carica una copia dei dati<input type="file" accept=".json" hidden data-carica="copia"></label>
           <button class="btn pericolo" data-az="ripristina">Ricomincia con i dati della prova</button>
         </div></div>
+      </div></div>
       <p class="versione-app">Versione ${VERSIONE_APP.replace(/^repub-v/, '')}</p>`
     };
   };
@@ -4251,7 +4249,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v129';
+  const VERSIONE_APP = 'repub-v130';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
