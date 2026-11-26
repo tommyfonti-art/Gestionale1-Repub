@@ -1330,6 +1330,7 @@
   PAGINE['modifica-prodotto'] = function (id) {
     if (!ui.bozza || ui.bozza._per !== 'p:' + id) {
       const base = id === 'nuovo' ? { id: M.uid('p'), nomeBreve: '', nomeCompleto: '', categoria: PF().cats.length === 1 ? PF().cats[0] : '', unita: 'ml', contenuto: 1000, confezione: 'bottiglia', iva: 22, giacenza: 0, scortaMinima: 0, resa: 100, allergeni: [], venditaDiretta: null, fornitoreId: '', articoli: [], prezzi: [], note: '' } : JSON.parse(JSON.stringify(M.prodotto(id)));
+      if (id === 'nuovo' && M.REPARTI.includes(PF().rep)) base.reparto = PF().rep;
       base._per = 'p:' + id; const pr0 = id === 'nuovo' ? null : M.prezzo(M.prodotto(id)); base._prezzo = pr0 == null ? '' : n2(pr0); base._prezzoPrima = pr0;
       base._iniz = JSON.stringify(base); ui.bozza = base;
     }
@@ -1342,8 +1343,8 @@
       <div class="card form">
         ${campo('Nome breve (quello delle ricette)', 'nomeBreve')}
         ${campo('Nome completo', 'nomeCompleto')}
-        <label>Categoria<input list="cat-list" data-b="categoria" value="${esc(b.categoria)}"><datalist id="cat-list">${categorie().map(c => `<option value="${esc(c)}">`).join('')}</datalist></label>
-        <label>Reparto<select data-b="reparto"><option value="" ${!b.reparto ? 'selected' : ''}>Dalla categoria (${esc(M.reparto(Object.assign({}, b, { reparto: '' })))})</option>${M.REPARTI.map(r => `<option ${b.reparto === r ? 'selected' : ''}>${r}</option>`).join('')}</select></label>
+        <label>Reparto${id === 'nuovo' ? ' <small class="tenue">(bar, cucina o non food)</small>' : ''}<select data-b="reparto" data-ridisegna="1">${id === 'nuovo' ? `<option value="" ${!b.reparto ? 'selected' : ''}>Scegli…</option>` : `<option value="" ${!b.reparto ? 'selected' : ''}>Dalla categoria (${esc(M.reparto(Object.assign({}, b, { reparto: '' })))})</option>`}${M.REPARTI.map(r => `<option ${b.reparto === r ? 'selected' : ''}>${r}</option>`).join('')}</select></label>
+        <label>Categoria${id === 'nuovo' ? ' <small class="tenue">(scegline una o scrivine una nuova)</small>' : ''}<input list="cat-list" data-b="categoria" value="${esc(b.categoria)}" autocomplete="off"><datalist id="cat-list">${categorie().filter(c => c && (!b.reparto || S.prodotti.some(p => p.categoria === c && M.reparto(p) === b.reparto))).map(c => `<option value="${esc(c)}">`).join('')}</datalist></label>
         <div class="due">
           <label>Unità<select data-b="unita">${['ml', 'g', 'pz'].map(u => `<option ${b.unita === u ? 'selected' : ''}>${u}</option>`).join('')}</select></label>
           ${campo('Contenuto della confezione', 'contenuto', 'text', 'inputmode="decimal" autocomplete="off"')}
@@ -1352,7 +1353,7 @@
           <label>Tipo di confezione<input list="conf-list" data-b="confezione" value="${esc(b.confezione)}" autocomplete="off"><datalist id="conf-list">${['bottiglia', 'fusto', 'lattina', 'cartone', 'cassa', 'confezione', 'sacco', 'barattolo', 'busta', 'vaschetta', 'pezzo', 'kg', 'litro'].map(c => `<option value="${c}">`).join('')}</datalist></label>
           ${campo('IVA %', 'iva', 'text', 'inputmode="decimal" autocomplete="off"')}
         </div>
-        <label>Fornitore principale<select data-b="fornitoreId"><option value="">Fatto in casa / nessuno</option>${S.fornitori.slice().sort((a, c) => a.nome.localeCompare(c.nome)).map(f => `<option value="${f.id}" ${b.fornitoreId === f.id ? 'selected' : ''}>${esc(f.nome)}</option>`).join('')}</select></label>
+        <label>Fornitore principale<select data-b="fornitoreId"><option value="">Fatto in casa / nessuno</option><option value="__nuovo">＋ Nuovo fornitore…</option>${S.fornitori.slice().sort((a, c) => a.nome.localeCompare(c.nome)).map(f => `<option value="${f.id}" ${b.fornitoreId === f.id ? 'selected' : ''}>${esc(f.nome)}</option>`).join('')}</select></label>
         ${campo('Prezzo della confezione senza IVA (€)', '_prezzo', 'text', 'inputmode="decimal" autocomplete="off"')}
         ${id !== 'nuovo' ? '<p class="tenue piccolo" style="margin-top:-4px">Se lo cambi, lo segno come prezzo scritto a mano con la data di oggi. Quando arriva una fattura più nuova vale quella.</p>' : ''}
         <div class="due">
@@ -2268,7 +2269,7 @@
     const voci = () => Array.from(sel.options).map(o => ({ o, gruppo: o.parentNode && o.parentNode.tagName === 'OPTGROUP' ? o.parentNode.label : '' }));
     const mostra = (tutte) => {
       const t = normCassa(inp.value).split(' ').filter(Boolean);
-      const l = voci().filter(({ o, gruppo }) => tutte || !t.length || t.every(w => normCassa(o.text + ' ' + gruppo).includes(w))).slice(0, 40);
+      const l = voci().filter(({ o, gruppo }) => tutte || !t.length || o.value === '__nuovo' || t.every(w => normCassa(o.text + ' ' + gruppo).includes(w))).slice(0, 40);
       sugg.innerHTML = '';
       l.forEach(({ o, gruppo }, i) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'sugg-voce' + (i === 0 && t.length ? ' primo' : ''); b.innerHTML = `<b>${esc(o.text)}</b>${gruppo ? `<small>${esc(gruppo)}</small>` : ''}`;
         b.addEventListener('mousedown', (e) => e.preventDefault());
@@ -2549,6 +2550,8 @@
   AZ['salva-prodotto'] = () => { const b = salvaBozzaProdotto(); if (b) vai('#/prodotto/' + b.id); };
   function salvaBozzaProdotto() {
     const b = ui.bozza; if (!b.nomeBreve.trim()) { alert('Scrivi il nome breve.'); return null; }
+    if (b._per === 'p:nuovo' && !b.reparto) { alert('Scegli il reparto: bar, cucina o non food.'); return null; }
+    if (b._per === 'p:nuovo' && !String(b.categoria || '').trim()) { alert('Scegli la categoria (o scrivine una nuova).'); return null; }
     ['contenuto', 'iva', 'giacenza', 'scortaMinima', 'resa'].forEach(k => { b[k] = numDa(b[k]) || 0; });
     if (!b.contenuto) b.contenuto = 1; if (!b.resa) b.resa = 100;
     if (b.venditaDiretta) ['porzione', 'prezzoPorzione', 'prezzoIntero'].forEach(k => { b.venditaDiretta[k] = numDa(b.venditaDiretta[k]); });
@@ -4072,6 +4075,7 @@
       return;
     }
     if (d.media && ui.bozza) { ui.bozza.media = el.checked; ridisegnaMantenendo(); return; }
+    if (d.b != null && ui.bozza && el.value === '__nuovo') return; // lo gestisce il «change»
     if (d.b != null && ui.bozza) { ui.bozza[d.b] = el.value; if (d.ridisegna) ridisegnaMantenendo(); return; }
     if (d.vd != null && ui.bozza) { ui.bozza.venditaDiretta[d.vd] = el.value; return; }
     if (d.cr != null) { mostraSuggerimenti(el); return; }
@@ -4189,6 +4193,13 @@
     if (d.r != null && d.k === 'rif' && ui.bozza) { ui.bozza.righe[+d.r].rif = el.value; ridisegnaMantenendo(); return; }
     if (d.r != null && d.k === 'misura' && ui.bozza) { ui.bozza.righe[+d.r].misura = el.value; aggiornaAnteprima(); return; }
     if (d.a != null && d.k === 'rif' && ui.bozza) { ui.bozza.asporto[+d.a].rif = el.value; return; }
+    if (d.b === 'fornitoreId' && ui.bozza && el.value === '__nuovo') {
+      const n = prompt('Nome del fornitore nuovo'); if (!n || !n.trim()) { el.value = ui.bozza.fornitoreId || ''; return; }
+      const gia = S.fornitori.find(f => f.nome.trim().toLowerCase() === n.trim().toLowerCase());
+      const f = gia || { id: M.uid('f'), nome: n.trim(), piva: '', telefono: '', email: '', referente: '', giorniConsegna: '', note: '' };
+      if (!gia) S.fornitori.push(f);
+      ui.bozza.fornitoreId = f.id; salva(); ridisegnaMantenendo(); avviso(gia ? `«${f.nome}» c'era già: l'ho scelto.` : `Fornitore «${f.nome}» creato.`); return;
+    }
     if (d.b != null && ui.bozza && el.tagName === 'SELECT') { ui.bozza[d.b] = el.value; if (d.ridisegna) ridisegnaMantenendo(); return; }
     if (d.fr != null) {
       const f = S.fatture.find(x => location.hash.endsWith(x.id)); const rg = f.righe[+d.fr];
@@ -4240,7 +4251,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v128';
+  const VERSIONE_APP = 'repub-v129';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
