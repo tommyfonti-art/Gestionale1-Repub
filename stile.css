@@ -491,3 +491,5 @@ details.salute-riga[open] .salute-apri { transform: rotate(90deg); }
 ol.passi { padding-left: 22px; margin: 6px 0 10px; } ol.passi li { margin: 6px 0; line-height: 1.45; }
 pre.codice { background: #1f2a2e; color: #e8efe9; border-radius: 10px; padding: 12px; font-size: 12px; line-height: 1.4; overflow: auto; max-height: 420px; white-space: pre; }
 .rosso-t { color: #b3261e; }
+.olio-tab tr.spento td { opacity: .45; } .olio-tab td.nowrap { white-space: nowrap; } .olio-aggiungi { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; } .olio-aggiungi select { flex: 1 1 220px; } .olio-aggiungi input.mini { width: 90px; }
+.olio-aggiungi > .tendina-cerca, .olio-aggiungi > select { flex: 1 1 100%; } .olio-tab .btn.piccolo { padding: 5px 9px; font-size: 12.5px; }

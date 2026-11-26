@@ -1148,7 +1148,9 @@
     // «Da classificare» c'è già come reparto: non lo ripeto tra le categorie
     const cats = categorie().filter(c => sel.has(c) || (prod.some(p => p.categoria === c && nel(p)) && !(c === 'Da classificare' && repartiUsati().includes('Da classificare'))));
     const n = c => prod.filter(p => p.categoria === c && nel(p)).length;
-    return `<div class="chips">${prima || ''}${[['', 'Tutto']].concat(repartiUsati().map(r => [r, r])).map(([v, t]) => `<button class="chip ${!spento && (st.rep || '') === v ? 'on' : ''}" data-az="${az}" data-rep="${esc(v)}">${esc(t)}</button>`).join('')}</div>
+    // come in Ricette: Tutti / Bar / Cucina ben in vista, gli altri reparti come bottoni accanto
+    const segm = [['', 'Tutti']].concat(['Bar', 'Cucina'].filter(r => repartiUsati().includes(r)).map(r => [r, r])), altri = repartiUsati().filter(r => r !== 'Bar' && r !== 'Cucina');
+    return `<div class="filtri-ric">${prima || ''}<div class="segmentato">${segm.map(([v, t]) => `<button class="${!spento && (st.rep || '') === v ? 'on' : ''}" data-az="${az}" data-rep="${esc(v)}">${esc(t)}</button>`).join('')}</div>${altri.map(r => `<button class="chip ${!spento && st.rep === r ? 'on' : ''}" data-az="${az}" data-rep="${esc(r)}">${esc(r)}</button>`).join('')}</div><div class="chips"></div>
       ${spento ? '' : `<div class="chips sotto">${cats.map(c => `<button class="chip ${sel.has(c) ? 'on' : ''}" data-az="${az}" data-cat="${esc(c)}">${sel.has(c) ? '✓ ' : ''}${esc(c)} <span class="${sel.has(c) ? '' : 'tenue'}">${n(c)}</span></button>`).join('')}${sel.size ? `<button class="chip giallo" data-az="${az}" data-cat="">Togli le categorie</button>` : ''}</div>`}`;
   }
   const diFornitore = (p, id) => p.fornitoreId === id || (p.prezzi || []).some(e => e.fornitoreId === id) || (p.articoli || []).some(e => e.fornitoreId === id);
@@ -1159,7 +1161,18 @@
   const inElimina = (t) => ui.elim && ui.elim.tipo === t;
   function rigaElimina(id, nome, info) {
     const on = ui.elim.sel.includes(id);
-    return `<label class="riga spunta-riga ${on ? (ui.elim.tipo === 'u' ? 'da-unire' : 'da-togliere') : ''}"><input type="checkbox" data-elim="${id}" ${on ? 'checked' : ''}><span>${esc(nome)}<small>${info}</small></span></label>`;
+    return `<label class="riga spunta-riga ${on ? (ui.elim.tipo === 'u' || ui.elim.tipo === 's' ? 'da-unire' : 'da-togliere') : ''}"><input type="checkbox" data-elim="${id}" ${on ? 'checked' : ''}><span>${esc(nome)}<small>${info}</small></span></label>`;
+  }
+  function barraSposta() {
+    const n = ui.elim.sel.length;
+    return `<div class="card evidenza sposta-barra elim-barra"><b>Spunta i prodotti da spostare: <span data-elim-n>${n}</span> ${n === 1 ? 'prodotto' : 'prodotti'}</b>
+      <div class="due"><label>Nel reparto<select id="sposta-rep" data-spr="Rep">${M.REPARTI.map(r => `<option ${ui.spostaRep === r ? 'selected' : ''}>${r}</option>`).join('')}</select></label>
+      <label>Nella categoria <small class="tenue">(vuoto: non la cambio)</small><input id="sposta-cat" data-spr="Cat" list="sposta-cat-l" autocomplete="off" value="${esc(ui.spostaCat || '')}"><datalist id="sposta-cat-l">${categorie().filter(c => c && c !== 'Da classificare').map(c => `<option value="${esc(c)}">`).join('')}</datalist></label></div>
+      <div class="bottoni"><button class="btn primario" data-az="sposta-prod-ok">Sposta quelli spuntati</button>
+      <button class="btn" data-az="elim-tutte">Spunta tutti quelli visibili</button>
+      ${n ? '<button class="btn" data-az="elim-nessuno">Togli le spunte</button>' : ''}
+      <button class="btn" data-az="elim-fine">Annulla</button></div>
+      <p class="tenue piccolo">Puoi cercare (per esempio «olio») o scegliere una categoria, spuntare e spostare tutti insieme. Si può rifare quante volte vuoi.</p></div>`;
   }
   function barraUnisci() {
     const n = ui.elim.sel.length;
@@ -1211,6 +1224,7 @@
     ui.scorriP = l.map(p => p.id);
     if (!l.length) return '<p class="tenue centro">Nessun prodotto.</p>';
     if (inElimina('p')) return l.map(p => { const u = M.usatoIn('p:' + p.id).tutte.length; return rigaElimina(p.id, p.nomeBreve, `${esc((M.fornitore(p.fornitoreId) || {}).nome || 'senza fornitore')} · ${u ? `<b>usato in ${u} ${u === 1 ? 'ricetta' : 'ricette'}</b>` : 'non usato'}`); }).join('');
+    if (inElimina('s')) return l.map(p => rigaElimina(p.id, p.nomeBreve, `${esc(M.reparto(p))} · ${esc(p.categoria || '')} · ${esc((M.fornitore(p.fornitoreId) || {}).nome || 'senza fornitore')}`)).join('');
     if (inElimina('u')) return l.map(p => { const v = M.prezzoVoce(p), rif = M.prezzoRiferimento(p); return rigaElimina(p.id, p.nomeBreve, `${esc((M.fornitore(p.fornitoreId) || {}).nome || 'senza fornitore')} · ${rif ? n2(rif.valore) + ' ' + rif.etichetta : 'senza prezzo'}${v && v.data ? ' · ' + dataIt(v.data) : ''}`); }).join('');
     return l.map(p => {
       const pr = M.prezzo(p), rif = M.prezzoRiferimento(p);
@@ -1233,10 +1247,10 @@
       <div class="chips"><button class="chip ${ui.prodVista !== 'fornitori' ? 'on' : ''}" data-az="prod-vista" data-v="categorie">Per categoria</button><button class="chip ${ui.prodVista === 'fornitori' ? 'on' : ''}" data-az="prod-vista" data-v="fornitori">Per fornitore</button></div>
       ${ui.prodVista === 'fornitori' ? `<div class="chips">${fornitoriConProdotti().map(x => `<button class="chip ${ui.fornProd === x.f.id ? 'on' : ''}" data-az="forn-prod" data-v="${x.f.id}">${esc(x.f.nome)} (${x.n})</button>`).join('')}</div>` : chipsReparti(PF(), 'prod-filtro', nuoviDaCompletare() ? `<button class="chip ${ui.categoria === '__nuovi' ? 'on' : ''} giallo" data-az="categoria" data-v="__nuovi">Da completare (${nuoviDaCompletare()})</button>` : '', ui.categoria === '__nuovi')}
       <div class="filtri-tendine"><label><span>Ordina</span><select data-prod-ordine aria-label="Ordina">${ORDINI_PROD.map(([k, v]) => `<option value="${k}" ${(ui.ordineProd || 'nome') === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label></div>
-      ${inElimina('p') ? barraElimina('p') : inElimina('u') ? barraUnisci() : `<div class="azioni-riga">${ui.prodVista === 'fornitori'
+      ${inElimina('p') ? barraElimina('p') : inElimina('u') ? barraUnisci() : inElimina('s') ? barraSposta() : `<div class="azioni-riga">${ui.prodVista === 'fornitori'
         ? (ui.fornProd && M.fornitore(ui.fornProd) ? `<a class="btn primario piccolo" href="#/formati" data-az="fmt-fornitore" data-id="${ui.fornProd}">Metti a posto i prodotti di ${esc(nomeFornBreve(M.fornitore(ui.fornProd).nome))}, uno dopo l'altro</a>` : '')
         : `<a class="btn primario piccolo" href="#/formati" data-az="fmt-categoria">${ui.categoria !== '__nuovi' && PF().cats.length === 1 ? `Ricontrolla i formati: ${esc(PF().cats[0])}` : ui.categoria !== '__nuovi' && PF().rep ? `Ricontrolla i formati: ${esc(PF().rep)}` : 'Ricontrolla i formati, uno dopo l\'altro'}</a>`}
-        <details class="menu-azioni"><summary class="btn piccolo">Altro ▾</summary><div class="menu-azioni-voci"><button class="btn piccolo" data-az="elim-inizia" data-v="u">Unisci più prodotti in uno</button><button class="btn piccolo" data-az="elim-inizia" data-v="p">Elimina più prodotti</button><a class="btn piccolo" href="#/doppioni">Unisci i doppioni</a><a class="btn piccolo" href="#/foglio" data-az="fg-apri">Prodotti del foglio</a></div></details></div>`}
+        <details class="menu-azioni"><summary class="btn piccolo">Altro ▾</summary><div class="menu-azioni-voci"><button class="btn piccolo" data-az="elim-inizia" data-v="s">Sposta più prodotti in un reparto</button><button class="btn piccolo" data-az="elim-inizia" data-v="u">Unisci più prodotti in uno</button><button class="btn piccolo" data-az="elim-inizia" data-v="p">Elimina più prodotti</button><a class="btn piccolo" href="#/doppioni">Unisci i doppioni</a><a class="btn piccolo" href="#/foglio" data-az="fg-apri">Prodotti del foglio</a></div></details></div>`}
       ${avvisoCestino('p')}
       <div class="card lista" id="lista">${listaProdotti()}</div>`
     };
@@ -2177,39 +2191,73 @@
       f.righe.forEach(rg => { if (!scelti.has(rg.prodottoId) || rg.ignora) return; const t = segno * (Number(rg.totale) || 0); spesa += t; perProd[rg.prodottoId] = (perProd[rg.prodottoId] || 0) + t; }); });
     return { spesa, perProd };
   }
-  function calcoloOlio(per) {
-    const d = dateDiPeriodo(per); if (!d) return null;
-    const { spesa, perProd } = spesaOlio(d);
-    const g = grammiFrittiPerRicetta(); let grammi = 0; const perRic = [];
-    S.ricette.forEach(r => { const q = Number((r.vendite || {})[per]) || 0; if (!q || !g[r.id]) return; grammi += q * g[r.id]; perRic.push({ r, q, g: g[r.id], tot: q * g[r.id] }); });
-    perRic.sort((x, y) => y.tot - x.tot);
-    return { d, spesa, grammi, perProd, perRic, c: grammi ? spesa / grammi : null };
+  // pezzi venduti di ogni ricetta tra due date: i periodi della cassa che cadono dentro, in proporzione ai giorni
+  function vendutiTra(dal, al) {
+    const g = (x) => new Date(x + 'T00:00:00').getTime() / 864e5;
+    const out = {}; let giorni = 0;
+    senzaDoppi(S.periodiVendita.slice()).forEach(pp => {
+      const d = dateDiPeriodo(pp); if (!d) return;
+      const a = Math.max(g(d.dal), g(dal)), b = Math.min(g(d.al), g(al));
+      if (b < a) return;
+      const quota = (b - a + 1) / (g(d.al) - g(d.dal) + 1); let c = false;
+      S.ricette.forEach(r => { const q = Number((r.vendite || {})[pp]) || 0; if (q) { out[r.id] = (out[r.id] || 0) + q * quota; c = true; } });
+      if (c) giorni += b - a + 1;
+    });
+    return { venduti: out, giorni };
+  }
+  const rigaOlio = (r) => (r.righe || []).find(rg => rg.rif === 'p:p_olio' || (M.rif(rg.rif) || {}).speciale === 'olio');
+  const rifOlio = () => { const p = S.prodotti.find(x => x.speciale === 'olio'); return p ? 'p:' + p.id : null; };
+  function datePredefiniteOlio() {
+    // dalla prima fattura dell'olio a oggi (prima non ci sono fatture, il conto verrebbe sbagliato)
+    const scelti = new Set(olioScelti()); let primo = '';
+    S.fatture.forEach(f => { if (f.data && f.righe.some(rg => scelti.has(rg.prodottoId)) && (!primo || f.data < primo)) primo = f.data; });
+    return { dal: primo || (new Date().getFullYear() + '-01-01'), al: M.oggi() };
+  }
+  function calcoloOlio(dal, al) {
+    const { spesa, perProd } = spesaOlio({ dal, al });
+    const g = grammiFrittiPerRicetta(), { venduti, giorni } = vendutiTra(dal, al);
+    const esclusi = new Set(S.impostazioni.olio.esclusi || []);
+    let grammi = 0; const perRic = [];
+    Object.keys(g).forEach(id => { const r = M.ricetta(id); if (!r || r.tipo === 'semilavorato') return; const q = venduti[id] || 0; const via = esclusi.has(id); if (!via) grammi += q * g[id]; perRic.push({ r, q, g: g[id], tot: q * g[id], diretta: !!rigaOlio(r), via }); });
+    perRic.sort((x, y) => y.tot - x.tot || x.r.nome.localeCompare(y.r.nome));
+    const fatt = S.fatture.filter(f => f.data >= dal && f.data <= al && f.righe.some(rg => olioScelti().includes(rg.prodottoId))).map(f => f.data).sort();
+    return { spesa, grammi, perProd, perRic, giorni, fattDal: fatt[0], fattAl: fatt[fatt.length - 1], c: grammi ? spesa / grammi : null };
   }
   PAGINE.olio = function () {
     const o = S.impostazioni.olio;
     const c = M.costoOlioGrammo();
-    const pers = (S.periodiVendita || []).filter(p => dateDiPeriodo(p)).slice().sort((a, b) => dateDiPeriodo(b).dal.localeCompare(dateDiPeriodo(a).dal) || dateDiPeriodo(b).al.localeCompare(dateDiPeriodo(a).al));
-    // di partenza: il periodo più lungo che ha anche le fatture dell'olio
-    const lungo = (l) => l.slice().sort((a, b) => { const x = dateDiPeriodo(a), y = dateDiPeriodo(b); return (new Date(y.al) - new Date(y.dal)) - (new Date(x.al) - new Date(x.dal)) || y.al.localeCompare(x.al); })[0];
-    const per = ui.olioPer && pers.includes(ui.olioPer) ? ui.olioPer : (lungo(pers.filter(p => spesaOlio(dateDiPeriodo(p)).spesa > 0)) || pers[0]);
-    const k = per ? calcoloOlio(per) : null, scelti = olioScelti();
+    const def = datePredefiniteOlio();
+    const dal = ui.olioDal || def.dal, al = ui.olioAl || def.al;
+    const k = calcoloOlio(dal, al), scelti = olioScelti();
+    const giorniTot = Math.round((new Date(al) - new Date(dal)) / 864e5) + 1;
+    const avvisi = [];
+    if (k.fattDal && k.fattDal > dal) avvisi.push(`La prima fattura dell'olio in queste date è del ${dataIt(k.fattDal)}: prima di allora l'olio comprato non c'è, ma le vendite sì. Meglio partire da lì.`);
+    if (k.giorni < giorniTot - 3) avvisi.push(`Le vendite della cassa coprono ${k.giorni} giorni su ${giorniTot}: nei giorni scoperti l'olio c'è ma i fritti no, e il costo viene più alto del vero.`);
+    const candidati = S.ricette.filter(r => r.tipo !== 'semilavorato' && !rigaOlio(r)).sort((x, y) => x.nome.localeCompare(y.nome));
     const tot = (o.dettaglio || []).reduce((t, d) => t + d[1] * d[2], 0);
     return {
       titolo: 'Costo dell\'olio', indietro: '#/altro', html: `
-      <p class="tenue">Quanto hai speso di olio da frittura nelle fatture, diviso i grammi di cibo fritto che hai venduto nello stesso periodo. Viene il costo dell'olio per ogni grammo fritto, che entra da solo nel costo di patatine, fritti e panini con patatine.</p>
-      <div class="kpi-griglia">${kpi('Adesso: olio per kg fritto', c == null ? '—' : euro(c * 1000))}${kpi('Su una porzione di patatine (255 g)', c == null ? '—' : euro(c * 255))}${o.origine ? kpi('Calcolato da', esc(o.origine)) : ''}</div>
-      ${pers.length ? `<div class="card form larga"><h3>Ricalcolo dalle fatture e dalle vendite</h3>
-        <label>Periodo<select data-olio-per>${pers.map(p => `<option ${p === per ? 'selected' : ''}>${esc(p)}</option>`).join('')}</select></label>
-        ${k ? `<div class="kpi-griglia">${kpi('Olio comprato', euro(k.spesa, 0), 'dal ' + dataIt(k.d.dal) + ' al ' + dataIt(k.d.al))}${kpi('Cibo fritto venduto', qta(Math.round(k.grammi / 1000)) + ' kg')}${kpi('Olio per kg fritto', k.c == null ? '—' : euro(k.c * 1000), k.c == null ? '' : euro(k.c * 255) + ' su 255 g di patatine')}</div>
-        ${k.c && k.spesa > 0 ? `<div class="bottoni"><button class="btn primario" data-az="olio-usa" data-per="${esc(per)}">Usa questo costo</button></div>` : '<p class="msg giallo">In questo periodo mancano le fatture dell\'olio o le vendite dei fritti.</p>'}
-        <p class="tenue piccolo">Attenzione: il periodo delle fatture e quello delle vendite devono essere gli stessi. Se mancano fatture dell'olio (comprato in contanti, o da un fornitore che non hai caricato), il costo viene più basso del vero.</p>` : ''}</div>` : '<p class="msg giallo">Per ricalcolarlo servono le vendite della cassa con le date (Altro › Importa dati).</p>'}
+      <p class="tenue">Olio da frittura comprato (dalle fatture) diviso i grammi di cibo fritto venduto (dalla cassa), nelle stesse date. Tu dici solo cosa va fritto e quanti grammi a porzione: il resto lo calcola l'app.</p>
+      <div class="kpi-griglia">${kpi('Adesso: olio per kg fritto', c == null ? '—' : euro(c * 1000))}${kpi('Su 255 g di patatine', c == null ? '—' : euro(c * 255))}${o.origine ? kpi('Calcolato su', esc(o.origine)) : ''}</div>
+      <div class="card form larga"><h3>Il conto</h3>
+        <div class="due"><label>Dal<input type="date" data-olio-data="dal" value="${dal}"></label><label>Al<input type="date" data-olio-data="al" value="${al}"></label></div>
+        ${ui.olioDal || ui.olioAl ? '<button class="btn piccolo" data-az="olio-date-def">Rimetti dalla prima fattura dell\'olio a oggi</button>' : ''}
+        <div class="kpi-griglia">${kpi('Olio comprato', euro(k.spesa, 0), k.fattDal ? 'fatture dal ' + dataIt(k.fattDal) + ' al ' + dataIt(k.fattAl) : 'nessuna fattura in queste date')}${kpi('Cibo fritto venduto', qta(Math.round(k.grammi / 1000)) + ' kg', k.giorni + ' giorni di vendite')}${kpi('Olio per kg fritto', k.c ? euro(k.c * 1000) : '—', k.c ? euro(k.c * 255) + ' su 255 g di patatine' : '')}</div>
+        ${avvisi.map(t => `<p class="msg giallo">${t}</p>`).join('')}
+        ${k.c && k.spesa > 0 ? `<div class="bottoni"><button class="btn primario" data-az="olio-usa">Usa questo costo</button></div>` : '<p class="tenue piccolo">Servono sia le fatture dell\'olio sia le vendite dei fritti in queste date.</p>'}</div>
+      <div class="card larga"><h3>Cosa va fritto</h3>
+        <p class="tenue piccolo">Grammi di cibo che finiscono nell'olio per una porzione. I panini con patatine li conta da soli dalla ricetta delle patatine. Il ✕ toglie la frittura dalla ricetta; «Non contare» lascia stare la ricetta ma la toglie da questo conto (per esempio un panino che non fate più).</p>
+        <table class="tab olio-tab"><tr><th>Ricetta</th><th class="n">g a porzione</th><th class="n">Venduti</th><th class="n">kg fritti</th><th></th></tr>
+        ${k.perRic.map(x => `<tr class="${x.via ? 'spento' : ''}"><td><a href="#/ricetta/${x.r.id}">${esc(x.r.nome)}</a>${x.diretta ? '' : ' <small class="tenue">dalle preparazioni</small>'}</td>
+          <td class="n">${x.diretta ? `<input class="mini" type="text" inputmode="decimal" data-olio-g="${x.r.id}" value="${esc(String(rigaOlio(x.r).quantita))}">` : qta(Math.round(x.g))}</td>
+          <td class="n">${qta(Math.round(x.q))}</td><td class="n">${x.via ? '—' : qta(Math.round(x.tot / 100) / 10)}</td>
+          <td class="n nowrap"><button class="btn piccolo" data-az="olio-escludi" data-id="${x.r.id}">${x.via ? 'Conta' : 'Non contare'}</button>${x.diretta ? ` <button class="btn piccolo pericolo" data-az="olio-togli" data-id="${x.r.id}" aria-label="Togli la frittura">✕</button>` : ''}</td></tr>`).join('')}
+        </table>
+        <div class="olio-aggiungi"><select id="olio-nuova"><option value="">＋ Aggiungi una ricetta fritta…</option>${candidati.map(r => `<option value="${r.id}">${esc(r.nome)}</option>`).join('')}</select>
+          <input id="olio-nuova-g" type="text" inputmode="decimal" placeholder="grammi" class="mini"><button class="btn piccolo" data-az="olio-aggiungi">Aggiungi</button></div></div>
       <details class="card"><summary><b>Quali oli conto</b> <span class="tenue">· ${scelti.length} ${scelti.length === 1 ? 'prodotto' : 'prodotti'}</span></summary>
         <p class="tenue piccolo">Di solito solo quelli per friggere: semi, girasole, arachide, palma. L'extravergine per condire no.</p>
-        ${prodottiOlio().map(p => `<label class="interruttore"><input type="checkbox" data-olio-prod="${p.id}" ${scelti.includes(p.id) ? 'checked' : ''}> ${esc(p.nomeBreve)} <small class="tenue">${esc((M.fornitore(p.fornitoreId) || {}).nome || '')}${k && k.perProd[p.id] ? ' · ' + euro(k.perProd[p.id], 0) + ' nel periodo' : ''}</small></label>`).join('') || '<p class="tenue">Nessun prodotto con «olio» nel nome.</p>'}</details>
-      ${k && k.perRic.length ? `<details class="card"><summary><b>Da dove vengono i grammi fritti</b> <span class="tenue">· ${k.perRic.length} ricette</span></summary>
-        <table class="tab"><tr><th>Ricetta</th><th class="n">Venduti</th><th class="n">g fritti a pezzo</th><th class="n">Totale kg</th></tr>
-        ${k.perRic.map(x => `<tr><td><a href="#/ricetta/${x.r.id}">${esc(x.r.nome)}</a></td><td class="n">${qta(x.q)}</td><td class="n">${qta(Math.round(x.g))}</td><td class="n">${qta(Math.round(x.tot / 100) / 10)}</td></tr>`).join('')}</table>
-        <p class="tenue piccolo">I grammi fritti di ogni ricetta sono quelli della riga «Olio di frittura» nella ricetta (o nella preparazione che usa, per esempio le patatine dentro un panino con patatine). Se una ricetta fritta non compare, aggiungile quella riga.</p></details>` : ''}
+        ${prodottiOlio().map(p => `<label class="interruttore"><input type="checkbox" data-olio-prod="${p.id}" ${scelti.includes(p.id) ? 'checked' : ''}> ${esc(p.nomeBreve)} <small class="tenue">${esc((M.fornitore(p.fornitoreId) || {}).nome || '')}${k.perProd[p.id] ? ' · ' + euro(k.perProd[p.id], 0) + ' in queste date' : ''}</small></label>`).join('') || '<p class="tenue">Nessun prodotto con «olio» nel nome.</p>'}</details>
       <details class="card form"><summary><b>A mano</b> <span class="tenue">· spesa e grammi scritti da te</span></summary>
         <label>Spesa per l'olio (€)<input type="text" inputmode="decimal" autocomplete="off" data-olio="spesaAnnua" value="${esc(o.spesaAnnua)}"></label>
         <label>Grammi fritti nello stesso periodo<input type="text" inputmode="numeric" autocomplete="off" data-olio="grammiFritti" value="${esc(o.grammiFritti)}"></label>
@@ -3676,6 +3724,14 @@
     ui.cestino = { tipo: t, n: sel.size, gruppo };
     ui.elim = null; M.svuota(); salva(); ridisegnaMantenendo(); window.scrollTo(0, 0);
   };
+  AZ['sposta-prod-ok'] = () => {
+    const l = ui.elim.sel.map(id => M.prodotto(id)).filter(Boolean);
+    if (!l.length) { alert('Spunta almeno un prodotto.'); return; }
+    const rep = ($('#sposta-rep') || {}).value, cat = (($('#sposta-cat') || {}).value || '').trim();
+    l.forEach(p => { p.reparto = rep; if (cat) p.categoria = cat; });
+    ui.spostaRep = rep; ui.spostaCat = cat; ui.elim.sel = [];
+    M.svuota(); salva(); ridisegnaMantenendo(); avviso(`${l.length} ${l.length === 1 ? 'prodotto spostato' : 'prodotti spostati'} in ${rep}${cat ? ' › ' + cat : ''}.`);
+  };
   AZ['prod-separa'] = (el) => {
     const p = M.prodotto(el.dataset.id), u = p && (p.uniti || []).find(x => x.id === el.dataset.u); if (!u) return;
     if (!confirm(`Separo «${u.prodotto.nomeBreve}» da «${p.nomeBreve}»? Torna un prodotto a sé, con i suoi prezzi e le sue fatture.`)) return;
@@ -4125,7 +4181,12 @@
   AZ['nuovo-evento'] = () => { const n = prompt('Nome dell\'evento'); if (!n) return; const e = { id: M.uid('e'), nome: n.trim(), data: M.oggi(), righe: [], extraPerPezzo: [], note: '' }; S.eventi.push(e); salva(); vai('#/evento/' + e.id); };
   AZ['ev-togli'] = (el) => { const e = S.eventi.find(x => x.id === el.dataset.id); e.righe.splice(+el.dataset.k, 1); salva(); ridisegnaMantenendo(); };
   AZ['elimina-evento'] = (el) => { if (!confirm('Eliminare l\'evento? Finisce nel Cestino.')) return; const ev = S.eventi.find(x => x.id === el.dataset.id); if (ev) nelCestino('eventi', ev); S.eventi = S.eventi.filter(x => x.id !== el.dataset.id); salva(); vai('#/eventi'); };
-  AZ['olio-usa'] = (el) => { const k = calcoloOlio(el.dataset.per); if (!k || !k.c || k.spesa <= 0) return; const o = S.impostazioni.olio; o.spesaAnnua = Math.round(k.spesa * 100) / 100; o.grammiFritti = Math.round(k.grammi); o.origine = el.dataset.per; M.svuota(); salva(); ridisegnaMantenendo(); avviso('Costo dell\'olio aggiornato: le ricette dei fritti si ricalcolano.'); };
+  const dateOlio = () => { const d = datePredefiniteOlio(); return { dal: ui.olioDal || d.dal, al: ui.olioAl || d.al }; };
+  AZ['olio-usa'] = () => { const d = dateOlio(), k = calcoloOlio(d.dal, d.al); if (!k.c || k.spesa <= 0) return; const o = S.impostazioni.olio; o.spesaAnnua = Math.round(k.spesa * 100) / 100; o.grammiFritti = Math.round(k.grammi); o.origine = 'dal ' + dataIt(d.dal) + ' al ' + dataIt(d.al); M.svuota(); salva(); ridisegnaMantenendo(); avviso('Costo dell\'olio aggiornato: le ricette dei fritti si ricalcolano.'); };
+  AZ['olio-date-def'] = () => { ui.olioDal = ui.olioAl = null; ridisegnaMantenendo(); };
+  AZ['olio-escludi'] = (el) => { const o = S.impostazioni.olio, l = new Set(o.esclusi || []); if (l.has(el.dataset.id)) l.delete(el.dataset.id); else l.add(el.dataset.id); o.esclusi = Array.from(l); salva(); ridisegnaMantenendo(); };
+  AZ['olio-togli'] = (el) => { const r = M.ricetta(el.dataset.id), rg = r && rigaOlio(r); if (!rg) return; if (!confirm(`Tolgo la frittura da «${r.nome}»? Non costerà più olio.`)) return; r.righe = r.righe.filter(x => x !== rg); M.svuota(); salva(); ridisegnaMantenendo(); };
+  AZ['olio-aggiungi'] = () => { const id = ($('#olio-nuova') || {}).value, gr = numDa(($('#olio-nuova-g') || {}).value); const r = M.ricetta(id); if (!r) { alert('Scegli la ricetta.'); return; } if (!gr) { alert('Scrivi quanti grammi vanno nell\'olio per una porzione.'); return; } const rif = rifOlio(); if (!rif) { alert('Manca il prodotto «Olio di frittura».'); return; } r.righe = (r.righe || []).concat({ rif, quantita: gr }); M.svuota(); salva(); ridisegnaMantenendo(); avviso(`«${r.nome}» aggiunta ai fritti.`); };
   AZ['olio-da-tabella'] = () => { const o = S.impostazioni.olio; o.grammiFritti = o.dettaglio.reduce((s, d) => s + d[1] * d[2], 0); salva(); ridisegnaMantenendo(); };
   AZ['olio-riga'] = () => { S.impostazioni.olio.dettaglio.push(['Nuovo piatto', 0, 0]); salva(); ridisegnaMantenendo(); };
   AZ['esporta-excel'] = esportaExcel;
@@ -4189,6 +4250,7 @@
       return;
     }
     if (d.media && ui.bozza) { ui.bozza.media = el.checked; ridisegnaMantenendo(); return; }
+    if (d.spr) { ui['sposta' + d.spr] = el.value; return; }
     if (d.cs) { CS()[d.cs] = el.value.trim(); salva(); return; }
     if (d.b != null && ui.bozza && el.value === '__nuovo') return; // lo gestisce il «change»
     if (d.b != null && ui.bozza) { ui.bozza[d.b] = el.value; if (d.ridisegna) ridisegnaMantenendo(); return; }
@@ -4290,7 +4352,7 @@
       M.svuota(); salva(); ridisegnaMantenendo(); avviso('Prezzo cambiato: le ricette che lo usano sono aggiornate.'); return;
     }
     if (d.fgsel) { const set = new Set(ui.fgSel || []); if (el.checked) set.add(d.fgsel); else set.delete(d.fgsel); ui.fgSel = Array.from(set); el.closest('.riga').classList.toggle('da-togliere', el.checked); const n = document.querySelector('[data-fgsel-n]'); if (n) n.textContent = set.size; return; }
-    if (d.elim && ui.elim) { const set = new Set(ui.elim.sel); if (el.checked) set.add(d.elim); else set.delete(d.elim); ui.elim.sel = Array.from(set); el.closest('label').classList.toggle(ui.elim.tipo === 'u' ? 'da-unire' : 'da-togliere', el.checked); const n = document.querySelector('[data-elim-n]'); if (n) n.textContent = set.size; return; }
+    if (d.elim && ui.elim) { const set = new Set(ui.elim.sel); if (el.checked) set.add(d.elim); else set.delete(d.elim); ui.elim.sel = Array.from(set); el.closest('label').classList.toggle(ui.elim.tipo === 'u' || ui.elim.tipo === 's' ? 'da-unire' : 'da-togliere', el.checked); const n = document.querySelector('[data-elim-n]'); if (n) n.textContent = set.size; return; }
     if (d.sposta) { const set = new Set(ui.spostaSel || []); if (el.checked) set.add(d.sposta); else set.delete(d.sposta); ui.spostaSel = Array.from(set); const b = document.querySelector('.sposta-barra b'); if (b) b.textContent = `Sposta le ricette spuntate (${set.size})`; return; }
     if (d.grNome) { const v = el.value.trim(); if (!v) return; const t = (S.tipiExtra || []).find(x => x.id === d.grNome); if (t) t.nome = v; else { S.nomiTipi = S.nomiTipi || {}; S.nomiTipi[d.grNome] = v; } M.aggiornaTipi(); salva(); avviso('Nome cambiato.'); return; }
     if (d.grRep) { const t = (S.tipiExtra || []).find(x => x.id === d.grRep); if (t) t.reparto = el.value; else { S.repartiTipi = S.repartiTipi || {}; S.repartiTipi[d.grRep] = el.value; } M.aggiornaTipi(); salva(); avviso('Reparto cambiato.'); return; }
@@ -4352,7 +4414,8 @@
     if (d.imp) { const numerici = ['ivaVendita', 'sogliaAumento', 'mlDash', 'mlDrop']; S.impostazioni[d.imp] = numerici.includes(d.imp) ? numDa(el.value) : el.value.trim(); if (d.imp === 'mlDash' || d.imp === 'mlDrop') M.svuota(); salva(); avviso('Salvato.'); return; }
     if (d.cas) { S.casella[d.cas] = el.value.trim(); salva(); avviso('Salvato.'); return; }
     if (d.olio) { S.impostazioni.olio[d.olio] = numDa(el.value) || 0; delete S.impostazioni.olio.origine; salva(); ridisegnaMantenendo(); return; }
-    if (d.olioPer != null) { ui.olioPer = el.value; ridisegnaMantenendo(); return; }
+    if (d.olioData) { ui['olio' + (d.olioData === 'dal' ? 'Dal' : 'Al')] = el.value || null; ridisegnaMantenendo(); return; }
+    if (d.olioG) { const r = M.ricetta(d.olioG), rg = r && rigaOlio(r); const n = numDa(el.value); if (rg && n > 0) { rg.quantita = n; M.svuota(); salva(); ridisegnaMantenendo(); } return; }
     if (d.olioProd) { const o = S.impostazioni.olio; const l = new Set(olioScelti()); if (el.checked) l.add(d.olioProd); else l.delete(d.olioProd); o.prodotti = Array.from(l); salva(); ridisegnaMantenendo(); return; }
     if (d.od != null) { const riga = S.impostazioni.olio.dettaglio[+d.od]; riga[+d.c] = d.c === '0' ? el.value : (numDa(el.value) || 0); salva(); ridisegnaMantenendo(); return; }
     if (d.ev) { const ev = S.eventi.find(x => x.id === d.ev); ev.righe[+d.k][d.c] = numDa(el.value) || 0; salva(); ridisegnaMantenendo(); return; }
@@ -4369,7 +4432,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v132';
+  const VERSIONE_APP = 'repub-v133';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
