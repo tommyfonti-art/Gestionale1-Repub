@@ -2438,12 +2438,16 @@
     const vuote = l.filter(r => !(r.righe || []).length).length;
     return {
       titolo: 'Allergeni', indietro: '#/altro', html: `
-      <div class="no-stampa"><div class="filtri-ric"><div class="segmentato">${[['*tutto', 'Tutto'], ['*bar', 'Bar'], ['*cucina', 'Cucina']].map(([k, v]) => `<button class="${rep === k ? 'on' : ''}" data-az="all-rep" data-v="${k}">${v}</button>`).join('')}</div><button class="btn primario" data-az="all-pdf">Stampa o salva in PDF</button></div>
+      <div class="no-stampa"><div class="filtri-ric"><div class="segmentato">${[['*tutto', 'Tutto'], ['*bar', 'Bar'], ['*cucina', 'Cucina']].map(([k, v]) => `<button class="${rep === k ? 'on' : ''}" data-az="all-rep" data-v="${k}">${v}</button>`).join('')}</div><button class="btn ${ui.allMod ? 'primario' : ''}" data-az="all-mod">${ui.allMod ? '✓ Ho finito' : 'Segna a mano'}</button><button class="btn primario" data-az="all-pdf">Stampa o salva in PDF</button></div>
+        ${ui.allMod ? `<p class="msg piccolo">Tocca una casella vuota per aggiungere l'allergene, tocca un pallino arancione per toglierlo. I pallini verdi arrivano dagli ingredienti: toccali per vedere da quale prodotto.</p>` : ''}
         <p class="tenue piccolo">Gli allergeni arrivano dalle schede dei prodotti usati in ogni ricetta, più quelli segnati a mano nella ricetta. Prima di esporla, controlla che i prodotti abbiano gli allergeni giusti.${vuote ? ` <b>${vuote} ricette non hanno ancora gli ingredienti</b>: sono segnate con «da completare».` : ''}</p></div>
       <div class="stampa-testa"><h2>Repub · Allergeni</h2><p>Elenco delle sostanze che provocano allergie o intolleranze (Reg. UE 1169/2011), aggiornato al ${dataIt(M.oggi())}. Per informazioni chiedi al personale.</p></div>
-      <div class="card larga tab-allergeni-box"><table class="tab tab-allergeni"><thead><tr><th class="all-nome">Piatto o drink</th>${M.ALLERGENI.map(a => `<th class="all-col"><span>${esc(a)}</span></th>`).join('')}</tr></thead>
+      <div class="card larga tab-allergeni-box tiene-scroll"><table class="tab tab-allergeni ${ui.allMod ? 'modifica' : ''}"><thead><tr><th class="all-nome">Piatto o drink</th>${M.ALLERGENI.map(a => `<th class="all-col"><span>${esc(a)}</span></th>`).join('')}</tr></thead>
         <tbody>${gruppi.map(G => `<tr class="all-gruppo"><td colspan="${M.ALLERGENI.length + 1}">${esc(G.g)}</td></tr>` + G.l.map(r => { const al = M.allergeniRicetta(r), vuota = !(r.righe || []).length;
-          return `<tr><td class="all-nome">${esc(r.nome)}${vuota ? ' <small class="giallo-t">da completare</small>' : ''}</td>${M.ALLERGENI.map(a => `<td class="all-c">${al.includes(a) ? '●' : ''}</td>`).join('')}</tr>`; }).join('')).join('')}</tbody></table></div>`
+          const daIngr = ui.allMod ? M.allergeniRicetta(Object.assign({}, r, { allergeni: [] })) : [];
+          return `<tr><td class="all-nome">${esc(r.nome)}${vuota ? ' <small class="giallo-t">da completare</small>' : ''}</td>${M.ALLERGENI.map(a => ui.allMod
+            ? `<td class="all-c tocca ${!daIngr.includes(a) && al.includes(a) ? 'a-mano' : ''}" data-az="all-cella" data-id="${r.id}" data-v="${esc(a)}" title="${esc(a)}">${al.includes(a) ? '●' : ''}</td>`
+            : `<td class="all-c">${al.includes(a) ? '●' : ''}</td>`).join('')}</tr>`; }).join('')).join('')}</tbody></table></div>`
     };
   };
 
@@ -2544,7 +2548,9 @@
   function ridisegnaMantenendo() {
     // anche le strisce di etichette che scorrono di lato restano dove le avevi lasciate (prima tornavano all'inizio e i tasti «saltavano»)
     const lati = Array.from(document.querySelectorAll('#contenuto .striscia-gruppi, #contenuto .chips')).map(e => e.scrollLeft);
+    const riquadri = Array.from(document.querySelectorAll('#contenuto .tiene-scroll')).map(e => [e.scrollTop, e.scrollLeft]);
     const y = window.scrollY; disegna(); window.scrollTo(0, y);
+    document.querySelectorAll('#contenuto .tiene-scroll').forEach((e, i) => { if (riquadri[i]) { e.scrollTop = riquadri[i][0]; e.scrollLeft = riquadri[i][1]; } });
     document.querySelectorAll('#contenuto .striscia-gruppi, #contenuto .chips').forEach((e, i) => { if (lati[i]) e.scrollLeft = lati[i]; });
   }
 
@@ -4475,6 +4481,28 @@
     ui.prezziNuovi = {}; M.svuota(); salva(); ridisegnaMantenendo(); avviso('Prezzi cambiati.');
   };
   AZ['aum-per'] = (el) => { ui.aumGiorni = el.dataset.v; ridisegnaMantenendo(); };
+  AZ['all-mod'] = () => { ui.allMod = !ui.allMod; ridisegnaMantenendo(); };
+  // quali prodotti (anche dentro le preparazioni) portano un allergene in una ricetta
+  function fontiAllergene(r, a, pila) {
+    pila = pila || []; if (pila.includes(r.id)) return [];
+    let l = [];
+    (r.righe || []).forEach(rg => {
+      const o = M.rif(rg.rif); if (!o) return;
+      if (rg.rif.startsWith('p:')) { if ((o.allergeni || []).includes(a)) l.push(o.nomeBreve); }
+      else { if ((o.allergeni || []).includes(a)) l.push(o.nome + ' (segnato a mano)'); l = l.concat(fontiAllergene(o, a, pila.concat(r.id))); }
+    });
+    return Array.from(new Set(l));
+  }
+  AZ['all-cella'] = (el) => {
+    const r = M.ricetta(el.dataset.id), a = el.dataset.v; if (!r) return;
+    const fonti = fontiAllergene(r, a);
+    if (fonti.length) { avviso(`${a} in «${r.nome}» arriva da: ${fonti.join(', ')}. Per toglierlo cambia la scheda di quel prodotto.`); return; }
+    r.allergeni = r.allergeni || [];
+    const c = r.allergeni.includes(a);
+    r.allergeni = c ? r.allergeni.filter(x => x !== a) : r.allergeni.concat(a);
+    salva(); ridisegnaMantenendo();
+    avviso(c ? `Tolto: ${a} da «${r.nome}»` : `Aggiunto: ${a} a «${r.nome}»`);
+  };
   AZ['all-rep'] = (el) => { ui.allRep = el.dataset.v; ridisegnaMantenendo(); };
   AZ.stampa = () => window.print();
   // tabella degli allergeni in PDF (su iPhone e iPad «stampa» dall'app sulla schermata Home non funziona: il PDF si condivide, si stampa o si salva)
@@ -4764,7 +4792,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v139';
+  const VERSIONE_APP = 'repub-v140';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;

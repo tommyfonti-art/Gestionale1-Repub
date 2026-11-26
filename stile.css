@@ -506,7 +506,13 @@ small.blocco { display: block; }
 .riga-testa { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 4px; }
 .riga.migliore { background: #e2efe7; border-radius: 8px; padding-left: 8px; padding-right: 8px; }
 .stampa-testa { display: none; }
-.tab-allergeni-box { overflow-x: auto; }
+.tab-allergeni-box { overflow: auto; max-height: calc(100vh - 170px); max-height: calc(100dvh - 170px); padding-top: 0 !important; }
+.tab-allergeni thead th { position: sticky; top: 0; z-index: 2; background: var(--carta, #fff); }
+.tab-allergeni td.all-nome { position: sticky; left: 0; z-index: 1; background: var(--carta, #fff); }
+.tab-allergeni thead th.all-nome { left: 0; z-index: 3; }
+.tab-allergeni.modifica td.tocca { cursor: pointer; }
+.tab-allergeni.modifica td.tocca:active { background: rgba(0, 0, 0, .08); }
+.tab-allergeni.modifica td.a-mano { color: #d9822b; }
 .tab-allergeni { border-collapse: collapse; width: 100%; }
 .tab-allergeni th.all-col { height: 118px; vertical-align: bottom; padding: 4px 2px; white-space: nowrap; }
 .tab-allergeni th.all-col span { writing-mode: vertical-rl; transform: rotate(180deg); font-size: 12.5px; font-weight: 600; }
@@ -525,6 +531,7 @@ small.blocco { display: block; }
   .tab-allergeni { font-size: 10.5px; } .tab-allergeni td, .tab-allergeni th { padding: 2px 3px !important; border-bottom: 1px solid #ccc; }
   .tab-allergeni th.all-col { height: 90px; } .tab-allergeni tr { break-inside: avoid; }
   .tab-allergeni td.all-c { color: #000; }
+  .tab-allergeni-box { max-height: none !important; overflow: visible !important; }
   .tab-allergeni thead { display: table-header-group; }
 }
 .pc-riga { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 16px; padding: 10px 0; border-top: 1px solid var(--linea); }
@@ -550,3 +557,6 @@ small.blocco { display: block; }
 input.ha-testo { padding-right: 44px !important; }
 .tendina-cerca input.ha-testo { padding-right: 68px !important; }
 input[type=search]::-webkit-search-cancel-button { -webkit-appearance: none; display: none; }
+.tab-allergeni tbody tr:nth-child(even) td.all-nome { background: #f9f8f6; }
+.tab-allergeni thead th { box-shadow: inset 0 -1px 0 var(--linea); }
+.toast { max-width: calc(100vw - 40px); text-align: center; border-radius: 16px; }
