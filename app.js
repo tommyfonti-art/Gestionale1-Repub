@@ -2605,12 +2605,23 @@
   function caricaScript(src) { return new Promise((ok, ko) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => ko(new Error('Serve la connessione per esportare.')); document.head.appendChild(s); }); }
   // le tabelle leggibili (Excel e copia su Google): una lista di righe per foglio
   function fogliLeggibili() {
-    const r2 = (n) => n == null ? '' : Math.round(n * 1000) / 1000;
+    const r2 = (n) => n == null || isNaN(n) ? '' : Math.round(n * 100) / 100, r3 = (n) => n == null || isNaN(n) ? '' : Math.round(n * 1000) / 1000;
+    // periodo di vendite di riferimento: quello che finisce più tardi (a pari fine, il più lungo)
+    const pers = S.periodiVendita.filter(pp => dateDiPeriodo(pp) && S.ricette.some(r => (r.vendite || {})[pp]));
+    // tra quelli che finiscono nell'ultimo mese e mezzo, il più lungo (es. «Gen-nov 2026» invece di «Novembre 2026»)
+    const fine = pers.reduce((m, pp) => dateDiPeriodo(pp).al > m ? dateDiPeriodo(pp).al : m, ''), lim = fine ? new Date(new Date(fine) - 45 * 864e5).toISOString().slice(0, 10) : '';
+    const durata = (pp) => new Date(dateDiPeriodo(pp).al) - new Date(dateDiPeriodo(pp).dal);
+    const per = pers.filter(pp => dateDiPeriodo(pp).al >= lim).sort((x, y) => durata(y) - durata(x))[0];
+    const ultimaData = (p) => (p.prezzi || []).reduce((d, e) => e.data && e.data > d ? e.data : d, '');
+    const spesoForn = {};
+    S.fatture.forEach(f => { const x = spesoForn[f.fornitoreId] = spesoForn[f.fornitoreId] || { tot: 0, n: 0, ultima: '' }; x.tot += (f.tipoDoc === 'TD04' ? -1 : 1) * (Number(f.imponibile) || 0); x.n++; if (f.data > x.ultima) x.ultima = f.data; });
     return {
-      Prodotti: S.prodotti.map(p => ({ 'Nome breve': p.nomeBreve, 'Nome completo': p.nomeCompleto, Categoria: p.categoria, Fornitore: (M.fornitore(p.fornitoreId) || {}).nome || '', Confezione: p.confezione, Contenuto: p.contenuto, Unità: p.unita, 'Prezzo senza IVA': r2(M.prezzo(p)), 'IVA %': p.iva, 'In casa': p.giacenza, 'Valore': r2(M.valoreGiacenza(p)), 'Scorta minima': p.scortaMinima, Allergeni: (p.allergeni || []).join(', ') })),
-      Ricette: S.ricette.map(r => { const i = M.indicatori(r); return { Ricetta: r.nome, Tipo: M.TIPI_SINGOLARE[r.tipo], Costo: r2(i.costo), Prezzo: r.prezzo || '', 'Prezzo senza IVA': r2(i.netto), Moltiplicatore: r2(i.molt), 'Incidenza %': i.incidenza == null ? '' : r2(i.incidenza * 100), 'Margine a pezzo': r2(i.margine), Ingredienti: (r.righe || []).map(rg => `${M.nomeRif(rg.rif)} ${rg.quantita} ${rg.misura || M.unitaRif(rg.rif)}`).join('; '), Allergeni: M.allergeniRicetta(r).join(', ') }; }),
-      Fatture: S.fatture.map(f => ({ Fornitore: (M.fornitore(f.fornitoreId) || {}).nome || f.fornitoreNome, Numero: f.numero, Data: f.data, Tipo: f.tipoDoc === 'TD04' ? 'Nota di credito' : 'Fattura', Imponibile: f.imponibile, Totale: f.totale, Stato: f.stato === 'registrata' ? 'Registrata' : 'Da registrare' })),
-      Fornitori: S.fornitori.map(f => ({ Nome: f.nome, 'Partita IVA': f.piva || '', Telefono: f.telefono || '', Email: f.email || '', Referente: f.referente || '', 'Tipo di spesa': (CAT_SPESA[categoriaSpesa(f)] || [''])[0] }))
+      Prodotti: S.prodotti.filter(p => !p.speciale).map(p => { const rif = M.prezzoRiferimento(p); return { 'Nome breve': p.nomeBreve, 'Nome completo': p.nomeCompleto, Reparto: M.reparto(p), Categoria: p.categoria, Fornitore: (M.fornitore(p.fornitoreId) || {}).nome || '', Confezione: p.confezione, Contenuto: p.contenuto, Unità: p.unita, 'Prezzo senza IVA': r3(M.prezzo(p)), 'Prezzo al kg, litro o pezzo': rif ? r2(rif.valore) : '', 'Per': rif ? rif.etichetta : '', 'Ultimo prezzo del': ultimaData(p), 'IVA %': p.iva, 'In casa': p.giacenza, 'Valore': r2(M.valoreGiacenza(p)), 'Scorta minima': p.scortaMinima, 'Usato in ricette': M.usatoIn('p:' + p.id).tutte.length, Allergeni: (p.allergeni || []).join(', ') }; }),
+      Ricette: S.ricette.map(r => { const i = M.indicatori(r), q = per ? Number((r.vendite || {})[per]) || 0 : 0; const o = { Ricetta: r.nome, Gruppo: M.TIPI[r.tipo] || r.tipo, Reparto: r.tipo === 'semilavorato' ? 'Preparazione' : (M.REPARTO_TIPO[r.tipo] === 'cucina' ? 'Cucina' : 'Bar'), Costo: r2(i.costo), Prezzo: r.prezzo || '', 'Prezzo senza IVA': r2(i.netto), Moltiplicatore: r2(i.molt), Soglia: i.soglia || '', 'Sotto la soglia': i.sotto ? 'sì' : '', 'Costo %': i.incidenza == null ? '' : r2(i.incidenza * 100), 'Guadagno a pezzo': r2(i.margine) };
+        if (per) { o['Venduti (' + per + ')'] = q; o['Guadagno totale (' + per + ')'] = q && i.margine != null ? r2(q * i.margine) : ''; }
+        o.Ingredienti = (r.righe || []).map(rg => `${M.nomeRif(rg.rif)} ${rg.quantita} ${rg.misura || M.unitaRif(rg.rif)}`).join('; '); o.Allergeni = M.allergeniRicetta(r).join(', '); return o; }),
+      Fatture: S.fatture.slice().sort((x, y) => (y.data || '').localeCompare(x.data || '')).map(f => ({ Fornitore: (M.fornitore(f.fornitoreId) || {}).nome || f.fornitoreNome, Numero: String(f.numero || ''), Data: f.data, Tipo: f.tipoDoc === 'TD04' ? 'Nota di credito' : 'Fattura', 'Tipo di spesa': (CAT_SPESA[categoriaSpesa(f)] || [''])[0], Imponibile: r2(f.imponibile), Totale: r2(f.totale), Stato: f.stato === 'registrata' ? 'Registrata' : 'Da registrare' })),
+      Fornitori: S.fornitori.slice().sort((x, y) => ((spesoForn[y.id] || {}).tot || 0) - ((spesoForn[x.id] || {}).tot || 0)).map(f => { const x = spesoForn[f.id] || { tot: 0, n: 0, ultima: '' }; return { Nome: f.nome, 'Partita IVA': f.piva || '', 'Tipo di spesa': (CAT_SPESA[categoriaSpesa(f)] || [''])[0], 'Speso in tutto (senza IVA)': r2(x.tot), Fatture: x.n, 'Ultima fattura': x.ultima, Telefono: f.telefono || '', Email: f.email || '', Referente: f.referente || '' }; })
     };
   }
   async function esportaExcel() {
@@ -2636,9 +2647,9 @@
     try {
       const fl = fogliLeggibili(), fogli = {};
       // in tabella: prima riga i titoli; i testi che iniziano con «=» non devono diventare formule
-      const cella = (v) => typeof v === 'string' && /^[=+@-]/.test(v) ? ' ' + v : v == null ? '' : v;
+      const cella = (v) => v == null ? '' : typeof v !== 'string' ? v : /^[=+@-]/.test(v) ? ' ' + v : /^[\d.,\s/]+$/.test(v) && !/^\d{4}-\d\d-\d\d$/.test(v) ? "'" + v : v;
       Object.keys(fl).forEach(n => { const l = fl[n]; const tit = l.length ? Object.keys(l[0]) : ['Vuoto']; fogli[n] = [tit].concat(l.map(o => tit.map(t => cella(o[t])))); });
-      const r = await fetch(c.url, { method: 'POST', body: JSON.stringify({ chiave: c.chiave, versione: VERSIONE_APP, fogli, copia: JSON.stringify(S) }) });
+      const r = await fetch(c.url, { method: 'POST', body: JSON.stringify({ chiave: c.chiave, versione: VERSIONE_APP, fogli, copia: await comprimi(JSON.stringify(S)) }) });
       const j = await r.json();
       if (j.errore) throw new Error(j.errore);
       c.ultima = new Date().toISOString(); c.errore = ''; salva();
@@ -2648,6 +2659,19 @@
       if (manuale) { chiudiModale(); alert('La copia non è riuscita: ' + e.message); ridisegnaMantenendo(); }
     } finally { copiaInCorso = false; }
   }
+  // la copia completa viaggia compressa («GZ:» + base64): nel Foglio occupa circa un decimo
+  async function comprimi(testo) {
+    if (!window.CompressionStream) return testo;
+    const st = new Blob([testo]).stream().pipeThrough(new CompressionStream('gzip'));
+    const buf = new Uint8Array(await new Response(st).arrayBuffer());
+    let bin = ''; for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+    return 'GZ:' + btoa(bin);
+  }
+  async function decomprimi(testo) {
+    if (!String(testo).startsWith('GZ:')) return testo;
+    const bin = atob(testo.slice(3)), buf = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+    return await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+  }
   // l'ultima copia completa salvata sul Foglio Google, da scaricare (poi «Carica una copia dei dati»)
   async function scaricaUltimaCopia() {
     const c = CS(); if (!c.url || !c.chiave) { alert('Prima scrivi l\'indirizzo dell\'app web e la parola segreta.'); return; }
@@ -2656,7 +2680,8 @@
       const r = await fetch(c.url + (c.url.includes('?') ? '&' : '?') + 'chiave=' + encodeURIComponent(c.chiave));
       const t = await r.text(); let j; try { j = JSON.parse(t); } catch (e) { throw new Error('risposta non valida'); }
       if (j.errore) throw new Error(j.errore);
-      const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([j.copia], { type: 'application/json' })); a.download = 'Gestionale Repub copia del ' + String(j.quando || '').slice(0, 10) + '.json'; a.click();
+      const testo = await decomprimi(j.copia);
+      const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([testo], { type: 'application/json' })); a.download = 'Gestionale Repub copia del ' + String(j.quando || '').slice(0, 10) + '.json'; a.click();
       chiudiModale();
     } catch (e) { chiudiModale(); alert('Non sono riuscito a prenderla: ' + e.message); }
   }
@@ -4432,7 +4457,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v133';
+  const VERSIONE_APP = 'repub-v134';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
