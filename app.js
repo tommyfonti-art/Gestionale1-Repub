@@ -3260,6 +3260,7 @@
     let lista = `<div class="card form"><h3>3. Ricette da una lista scritta</h3>
       <p class="tenue piccolo">Scrivi (o incolla) una riga per ricetta: il nome, due punti, gli ingredienti separati da virgole. Le dosi sono facoltative, e anche gli ingredienti: una riga con il solo nome crea la ricetta vuota, da completare dopo.<br>Esempio: <i>Cipolle stufate: cipolla affettata 3 kg, olio 200 ml, paprika</i></p>
       <label>Diventano<select data-ls-tipo="1">${Object.entries(M.TIPI).map(([k, v]) => `<option value="${k}" ${tipoL === k ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></label>
+      ${tipoL === 'semilavorato' ? `<label>Reparto delle preparazioni<select data-ls-rep="1"><option value="" ${!ui.lsRep ? 'selected' : ''}>Scegli…</option><option value="bar" ${ui.lsRep === 'bar' ? 'selected' : ''}>Bar</option><option value="cucina" ${ui.lsRep === 'cucina' ? 'selected' : ''}>Cucina</option></select></label>` : ''}
       <textarea id="ls-testo" rows="6" placeholder="Cipolle stufate: cipolla, olio, paprika&#10;Salsa del Repub: maionese, senape, paprika">${esc(ui.lsTesto || '')}</textarea>
       <div class="bottoni"><button class="btn" data-az="ls-leggi">Leggi la lista</button></div></div>`;
     if (ui.lsAnte) {
@@ -3276,16 +3277,17 @@
   AZ['ls-annulla'] = () => { ui.lsAnte = null; ridisegnaMantenendo(); };
   AZ['ls-crea'] = () => {
     const tipo = ui.lsTipo || 'semilavorato'; let n = 0;
+    if (tipo === 'semilavorato' && !ui.lsRep) { alert('Scegli se le preparazioni sono del bar o della cucina.'); return; }
     ui.lsAnte.forEach(x => {
       if (x.gia) return;
       const righe = x.ingr.filter(g => g.rif).map(g => ({ rif: g.rif, quantita: g.q || 0, nota: '' }));
       const mancano = x.ingr.filter(g => !g.rif).map(g => g.testo);
-      S.ricette.push({ id: M.uid('r'), nome: x.nome, tipo, prezzo: null, righe, resa: null, unita: 'g', asporto: [], costiExtra: [], vendite: {},
+      S.ricette.push({ id: M.uid('r'), nome: x.nome, tipo, ...(tipo === 'semilavorato' ? { reparto: ui.lsRep } : {}), prezzo: null, righe, resa: null, unita: 'g', asporto: [], costiExtra: [], vendite: {},
         note: 'Ricetta da completare: mancano le dosi' + (tipo === 'semilavorato' ? ' e quanto ne viene' : '') + '.' + (mancano.length ? ' Ingredienti da aggiungere: ' + mancano.join(', ') + '.' : '') });
       n++;
     });
     ui.lsAnte = null; ui.lsTesto = ''; ui.tipoRicette = tipo; M.svuota(); salva(); ridisegnaMantenendo(); window.scrollTo(0, 0);
-    avviso(`Create ${n} ricette in «${M.TIPI[tipo]}». Le trovi con «ingredienti incompleti».`);
+    avviso(`Create ${n} ricette in «${M.TIPI[tipo]}»${tipo === 'semilavorato' ? ' (' + (ui.lsRep === 'bar' ? 'bar' : 'cucina') + ')' : ''}. Le trovi con «ingredienti incompleti».`);
   };
   AZ['cc-listino-annulla'] = () => { ui.ccListino = null; ridisegnaMantenendo(); };
   AZ['cc-vendite-annulla'] = () => { ui.ccVendite = null; ridisegnaMantenendo(); };
@@ -4571,7 +4573,8 @@
     if (d.carica === 'cassa-listino' || d.carica === 'cassa-vendite') { if (el.files[0]) caricaCassa(el.files[0], d.carica === 'cassa-listino' ? 'listino' : 'vendite'); el.value = ''; return; }
     if (d.ccG != null) { ui.ccAperto = +d.ccG; ui.ccListino.gruppi[+d.ccG].tipo = el.value; ui.ccListino.gruppi[+d.ccG].voci.forEach(v => { if (el.value !== 'salta' && v.scelta === '__salta' && v.prezzo > 0 && v.prezzo <= 100) v.scelta = ''; }); ridisegnaMantenendo(); return; }
     if (d.ccV != null) { const [gi, vi] = d.ccV.split(',').map(Number); ui.ccAperto = gi; ui.ccListino.gruppi[gi].voci[vi].scelta = el.value; ridisegnaMantenendo(); return; }
-    if (d.lsTipo) { ui.lsTipo = el.value; return; }
+    if (d.lsTipo) { ui.lsTipo = el.value; ridisegnaMantenendo(); return; }
+    if (d.lsRep) { ui.lsRep = el.value; return; }
     if (d.ls != null) { const [i, j] = d.ls.split(',').map(Number); ui.lsAnte[i].ingr[j].rif = el.value; return; }
     if (d.ccVv != null) { ui.ccVendite[+d.ccVv].scelta = el.value; if (!el.value || el.value === '__nuova') ui.ccVendite[+d.ccVv].proposta = false; ridisegnaMantenendo(); return; }
     if (d.ccData) { ui[d.ccData === 'dal' ? 'ccDal' : 'ccAl'] = el.value; ridisegnaMantenendo(); return; }
@@ -4643,7 +4646,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v136';
+  const VERSIONE_APP = 'repub-v137';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
