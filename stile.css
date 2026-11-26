@@ -516,8 +516,13 @@ small.blocco { display: block; }
 .tab-allergeni { border-collapse: collapse; width: 100%; }
 .tab-allergeni th.all-col { height: 118px; vertical-align: bottom; padding: 4px 2px; white-space: nowrap; }
 .tab-allergeni th.all-col span { writing-mode: vertical-rl; transform: rotate(180deg); font-size: 12.5px; font-weight: 600; }
-.tab-allergeni td.all-c { text-align: center; font-size: 15px; color: var(--accento); border-left: 1px solid var(--linea); width: 30px; padding: 6px 2px; }
-.tab-allergeni td.all-nome, .tab-allergeni th.all-nome { text-align: left; min-width: 150px; }
+.tab-allergeni td.all-c { text-align: center; font-size: 15px; color: var(--accento); border-left: 1px solid var(--linea); padding: 6px 2px; }
+.tab-allergeni td.all-nome, .tab-allergeni th.all-nome { text-align: left; width: 1%; min-width: 130px; max-width: 210px; }
+@media (min-width: 700px) { .tab-allergeni td.all-nome, .tab-allergeni th.all-nome { min-width: 185px; } }
+.tab-allergeni td.all-c { width: auto; min-width: 30px; }
+.tab-allergeni tr.via td { opacity: .38; }
+.tab-allergeni tr.via td.all-nome, .tab-allergeni tr.all-gruppo.via td { opacity: .55; }
+.all-spunta { display: flex; align-items: center; gap: 8px; cursor: pointer; } .all-spunta input { width: 20px; height: 20px; margin: 0; flex: none; accent-color: var(--accento); }
 .tab-allergeni tbody tr:nth-child(even) td { background: rgba(0, 0, 0, .025); }
 .tab-allergeni tr.all-gruppo td { font-weight: 700; background: #ebe6dc !important; padding-top: 8px; }
 @media print {
@@ -531,6 +536,7 @@ small.blocco { display: block; }
   .tab-allergeni { font-size: 10.5px; } .tab-allergeni td, .tab-allergeni th { padding: 2px 3px !important; border-bottom: 1px solid #ccc; }
   .tab-allergeni th.all-col { height: 90px; } .tab-allergeni tr { break-inside: avoid; }
   .tab-allergeni td.all-c { color: #000; }
+  .tab-allergeni tr.via { display: none; }
   .tab-allergeni-box { max-height: none !important; overflow: visible !important; }
   .tab-allergeni thead { display: table-header-group; }
 }

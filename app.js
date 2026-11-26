@@ -2430,22 +2430,43 @@
   };
 
   // ----- Tabella degli allergeni -----
-  PAGINE.allergeni = function () {
-    const rep = ui.allRep || '*tutto';
+  // ricette della tabella allergeni, divise per gruppo; quelle tolte dalla stampa si vedono solo mentre scegli
+  const allEsclusi = () => { const im = S.impostazioni; im.allEsclusi = im.allEsclusi || { gruppi: [], ricette: [] }; return im.allEsclusi; };
+  function gruppiAllergeni(tutte) {
+    const rep = ui.allRep || '*tutto', ex = allEsclusi();
     const l = S.ricette.filter(r => r.tipo !== 'semilavorato' && (rep === '*tutto' || M.REPARTO_TIPO[r.tipo] === rep.slice(1)) && (r.prezzo || (r.righe || []).length))
       .sort((a, b) => (M.TIPI[a.tipo] || '').localeCompare(M.TIPI[b.tipo] || '') || a.nome.localeCompare(b.nome));
-    const gruppi = []; l.forEach(r => { const g = M.TIPI[r.tipo] || ''; if (!gruppi.length || gruppi[gruppi.length - 1].g !== g) gruppi.push({ g, l: [] }); gruppi[gruppi.length - 1].l.push(r); });
+    const gruppi = [];
+    l.forEach(r => {
+      const g = M.TIPI[r.tipo] || '', via = ex.gruppi.includes(g) || ex.ricette.includes(r.id);
+      if (via && !tutte) return;
+      if (!gruppi.length || gruppi[gruppi.length - 1].g !== g) gruppi.push({ g, l: [], via: ex.gruppi.includes(g) });
+      gruppi[gruppi.length - 1].l.push(r);
+    });
+    return gruppi;
+  }
+  PAGINE.allergeni = function () {
+    const rep = ui.allRep || '*tutto', scegli = !!ui.allScegli, ex = allEsclusi();
+    const gruppi = gruppiAllergeni(scegli);
+    const l = [].concat(...gruppi.map(G => G.l));
     const vuote = l.filter(r => !(r.righe || []).length).length;
+    const nascoste = gruppiAllergeni(true).reduce((n, G) => n + G.l.length, 0) - gruppiAllergeni(false).reduce((n, G) => n + G.l.length, 0);
+    const colonne = M.ALLERGENI.length + 1;
     return {
       titolo: 'Allergeni', indietro: '#/altro', html: `
-      <div class="no-stampa"><div class="filtri-ric"><div class="segmentato">${[['*tutto', 'Tutto'], ['*bar', 'Bar'], ['*cucina', 'Cucina']].map(([k, v]) => `<button class="${rep === k ? 'on' : ''}" data-az="all-rep" data-v="${k}">${v}</button>`).join('')}</div><button class="btn ${ui.allMod ? 'primario' : ''}" data-az="all-mod">${ui.allMod ? '✓ Ho finito' : 'Segna a mano'}</button><button class="btn primario" data-az="all-pdf">Stampa o salva in PDF</button></div>
+      <div class="no-stampa"><div class="filtri-ric"><div class="segmentato">${[['*tutto', 'Tutto'], ['*bar', 'Bar'], ['*cucina', 'Cucina']].map(([k, v]) => `<button class="${rep === k ? 'on' : ''}" data-az="all-rep" data-v="${k}">${v}</button>`).join('')}</div>
+        <button class="btn ${scegli ? 'primario' : ''}" data-az="all-scegli">${scegli ? '✓ Ho scelto' : 'Scegli cosa stampare'}</button>
+        <button class="btn ${ui.allMod ? 'primario' : ''}" data-az="all-mod">${ui.allMod ? '✓ Ho finito' : 'Segna a mano'}</button>
+        <button class="btn primario" data-az="all-pdf">Stampa o salva in PDF</button></div>
+        ${scegli ? `<p class="msg piccolo">Togli la spunta ai gruppi o alle singole righe che non vuoi nella tabella da stampare (per esempio gli amari). La scelta resta salvata per le prossime volte.</p>` : nascoste ? `<p class="tenue piccolo">${nascoste} righe sono tolte dalla stampa. <a href="#" data-az="all-scegli">Cambia</a></p>` : ''}
         ${ui.allMod ? `<p class="msg piccolo">Tocca una casella vuota per aggiungere l'allergene, tocca un pallino arancione per toglierlo. I pallini verdi arrivano dagli ingredienti: toccali per vedere da quale prodotto.</p>` : ''}
         <p class="tenue piccolo">Gli allergeni arrivano dalle schede dei prodotti usati in ogni ricetta, più quelli segnati a mano nella ricetta. Prima di esporla, controlla che i prodotti abbiano gli allergeni giusti.${vuote ? ` <b>${vuote} ricette non hanno ancora gli ingredienti</b>: sono segnate con «da completare».` : ''}</p></div>
       <div class="stampa-testa"><h2>Repub · Allergeni</h2><p>Elenco delle sostanze che provocano allergie o intolleranze (Reg. UE 1169/2011), aggiornato al ${dataIt(M.oggi())}. Per informazioni chiedi al personale.</p></div>
       <div class="card larga tab-allergeni-box tiene-scroll"><table class="tab tab-allergeni ${ui.allMod ? 'modifica' : ''}"><thead><tr><th class="all-nome">Piatto o drink</th>${M.ALLERGENI.map(a => `<th class="all-col"><span>${esc(a)}</span></th>`).join('')}</tr></thead>
-        <tbody>${gruppi.map(G => `<tr class="all-gruppo"><td colspan="${M.ALLERGENI.length + 1}">${esc(G.g)}</td></tr>` + G.l.map(r => { const al = M.allergeniRicetta(r), vuota = !(r.righe || []).length;
+        <tbody>${gruppi.map(G => `<tr class="all-gruppo ${G.via ? 'via' : ''}"><td colspan="${colonne}">${scegli ? `<label class="all-spunta"><input type="checkbox" data-all-gruppo="${esc(G.g)}" ${G.via ? '' : 'checked'}> ${esc(G.g)}</label>` : esc(G.g)}</td></tr>` + G.l.map(r => {
+          const al = M.allergeniRicetta(r), vuota = !(r.righe || []).length, via = G.via || ex.ricette.includes(r.id);
           const daIngr = ui.allMod ? M.allergeniRicetta(Object.assign({}, r, { allergeni: [] })) : [];
-          return `<tr><td class="all-nome">${esc(r.nome)}${vuota ? ' <small class="giallo-t">da completare</small>' : ''}</td>${M.ALLERGENI.map(a => ui.allMod
+          return `<tr class="${via ? 'via' : ''}"><td class="all-nome">${scegli ? `<label class="all-spunta"><input type="checkbox" data-all-ricetta="${r.id}" ${via ? '' : 'checked'} ${G.via ? 'disabled' : ''}> ${esc(r.nome)}</label>` : esc(r.nome)}${vuota ? ' <small class="giallo-t">da completare</small>' : ''}</td>${M.ALLERGENI.map(a => ui.allMod
             ? `<td class="all-c tocca ${!daIngr.includes(a) && al.includes(a) ? 'a-mano' : ''}" data-az="all-cella" data-id="${r.id}" data-v="${esc(a)}" title="${esc(a)}">${al.includes(a) ? '●' : ''}</td>`
             : `<td class="all-c">${al.includes(a) ? '●' : ''}</td>`).join('')}</tr>`; }).join('')).join('')}</tbody></table></div>`
     };
@@ -4481,7 +4502,8 @@
     ui.prezziNuovi = {}; M.svuota(); salva(); ridisegnaMantenendo(); avviso('Prezzi cambiati.');
   };
   AZ['aum-per'] = (el) => { ui.aumGiorni = el.dataset.v; ridisegnaMantenendo(); };
-  AZ['all-mod'] = () => { ui.allMod = !ui.allMod; ridisegnaMantenendo(); };
+  AZ['all-scegli'] = () => { ui.allScegli = !ui.allScegli; if (ui.allScegli) ui.allMod = false; ridisegnaMantenendo(); };
+  AZ['all-mod'] = () => { if (!ui.allMod) ui.allScegli = false; ui.allMod = !ui.allMod; ridisegnaMantenendo(); };
   // quali prodotti (anche dentro le preparazioni) portano un allergene in una ricetta
   function fontiAllergene(r, a, pila) {
     pila = pila || []; if (pila.includes(r.id)) return [];
@@ -4513,8 +4535,7 @@
       if (!window.jspdf.jsPDF.API.autoTable) await caricaScript('jspdf.plugin.autotable.min.js');
       const { jsPDF } = window.jspdf, doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
       const rep = ui.allRep || '*tutto';
-      const l = S.ricette.filter(r => r.tipo !== 'semilavorato' && (rep === '*tutto' || M.REPARTO_TIPO[r.tipo] === rep.slice(1)) && (r.prezzo || (r.righe || []).length))
-        .sort((a, b) => (M.TIPI[a.tipo] || '').localeCompare(M.TIPI[b.tipo] || '') || a.nome.localeCompare(b.nome));
+      const l = [].concat(...gruppiAllergeni(false).map(G => G.l));
       const body = []; let g = null;
       l.forEach(r => { const gg = M.TIPI[r.tipo] || ''; if (gg !== g) { g = gg; body.push([{ content: gg, colSpan: M.ALLERGENI.length + 1, styles: { fillColor: [235, 230, 220], fontStyle: 'bold' } }]); } const al = M.allergeniRicetta(r); body.push([r.nome + (!(r.righe || []).length ? '  (da completare)' : '')].concat(M.ALLERGENI.map(a => al.includes(a) ? 'X' : ''))); });
       doc.setFontSize(15); doc.text('Repub · Allergeni' + (rep === '*bar' ? ' · Bar' : rep === '*cucina' ? ' · Cucina' : ''), 10, 12);
@@ -4523,7 +4544,7 @@
         startY: 21, head: [['Piatto o drink'].concat(M.ALLERGENI)], body, theme: 'grid', margin: { left: 10, right: 10 },
         styles: { fontSize: 7.5, cellPadding: 1.2, lineColor: [210, 205, 195], lineWidth: 0.1, valign: 'middle' },
         headStyles: { fillColor: [255, 255, 255], textColor: [40, 40, 40], fontStyle: 'bold', minCellHeight: 26, valign: 'bottom' },
-        columnStyles: Object.assign({ 0: { cellWidth: 'auto' } }, ...M.ALLERGENI.map((a, k) => ({ [k + 1]: { cellWidth: 11.5, halign: 'center' } }))),
+        columnStyles: Object.assign({ 0: { cellWidth: 'auto' } }, ...M.ALLERGENI.map((a, k) => ({ [k + 1]: { cellWidth: 14, halign: 'center' } }))),
         didParseCell: (d) => { if (d.section === 'head' && d.column.index > 0) { d.cell.raw0 = d.cell.text[0]; d.cell.text = ['']; } if (d.section === 'body' && d.column.index > 0 && d.cell.raw === 'X') { d.cell.text = ['']; d.cell.segno = true; } },
         didDrawCell: (d) => {
           if (d.section === 'head' && d.column.index > 0 && d.cell.raw0) { doc.setFontSize(7.5); doc.setFont(undefined, 'bold'); doc.text(d.cell.raw0, d.cell.x + d.cell.width / 2 + 1.2, d.cell.y + d.cell.height - 1.5, { angle: 90 }); }
@@ -4740,6 +4761,11 @@
       } else rg.confezioniPerUnita = numDa(el.value) || 1;
       salva(); ridisegnaMantenendo(); return;
     }
+    if (d.allGruppo != null || d.allRicetta) {
+      const ex = allEsclusi(), k = d.allGruppo != null ? 'gruppi' : 'ricette', v = d.allGruppo != null ? d.allGruppo : d.allRicetta;
+      ex[k] = el.checked ? ex[k].filter(x => x !== v) : ex[k].concat(v);
+      salva(); ridisegnaMantenendo(); return;
+    }
     if (d.fmtSel) { ui[d.fmtSel] = el.value; if (el.value && fmtFiltro() === 'ricette') ui.fmtFiltro = 'tutti'; ui.fmtIdx = 0; ridisegnaMantenendo(); return; }
     if (d.fmtf && el.value) {
       const p = M.prodotto(d.fmtf); if (!p) return;
@@ -4792,7 +4818,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v140';
+  const VERSIONE_APP = 'repub-v141';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
