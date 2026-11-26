@@ -501,6 +501,32 @@
   };
   const titolo = (s) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
   M.umScatola = (um) => /^(CT|CF|CRT|CONF|SC|SCAT|SCATOLA|PK|PAC|PACCO|CARTONE|CARTONI|CASSA|FARDELLO|FD|BAN|CS|COLLO|COLLI)$/.test(String(um || '').toUpperCase().replace(/[.\s]/g, ''));
+  // Impara dalle categorie già date a mano: un prodotto nuovo prende la categoria (e il reparto)
+  // dei prodotti già classificati che hanno un nome simile, meglio se dello stesso fornitore.
+  const PAROLE_VUOTE = new Set(['di', 'da', 'del', 'della', 'al', 'alla', 'con', 'in', 'per', 'e', 'il', 'la', 'lo', 'gr', 'kg', 'lt', 'cl', 'ml', 'pz', 'cf', 'ct', 'conf', 'bt', 'bott', 'x', 'vap', 'vetro', 'pet', 'lattina', 'cartone', 'cart']);
+  const paroleSimili = (d) => norm(d).split(' ').filter(w => w.length > 2 && !/\d/.test(w) && !PAROLE_VUOTE.has(w)).slice(0, 4);
+  M.categoriaDaSimili = function (descrizione, fornitoreId, regolaIncerta) {
+    const mie = paroleSimili(descrizione); if (!mie.length) return null;
+    const conti = {};
+    S.prodotti.forEach(x => {
+      if (x.speciale || !x.categoria || /da classificare/i.test(x.categoria)) return;
+      const nomi = [x.nomeBreve, x.nomeCompleto].concat((x.articoli || []).map(a => a.descrizione));
+      let meglio = 0;
+      nomi.forEach(n => {
+        const sue = new Set(paroleSimili(n)); if (!sue.size) return;
+        let pt = 0; mie.forEach((w, i) => { if (sue.has(w)) pt += i === 0 ? 2 : 1; });
+        if (pt > meglio) meglio = pt;
+      });
+      if (!meglio) return;
+      if (fornitoreId && (x.fornitoreId === fornitoreId || (x.articoli || []).some(a => a.fornitoreId === fornitoreId))) meglio += 0.5;
+      const k = x.categoria + '|' + (x.reparto || '');
+      if (!conti[k] || meglio > conti[k].punti) conti[k] = { punti: meglio, categoria: x.categoria, reparto: x.reparto || '' };
+    });
+    const migliore = Object.values(conti).sort((a, b) => b.punti - a.punti)[0];
+    if (!migliore) return null;
+    return migliore.punti >= (regolaIncerta ? 2 : 3) ? migliore : null;
+  };
+
   M.indovinaProdotto = function (rg) {
     const d = rg.descrizione || '', um = String(rg.um || '').toUpperCase().replace(/\./g, '');
     let unita = 'pz', contenuto = 1, confezione = 'pezzo', perUnita = 1;
@@ -582,6 +608,13 @@
       if (sim && sim.punti >= 0.8) { p.forseDoppioneDi = sim.p.id; p.daCompletare = true; }
       // stesso nome e stesso formato di un prodotto già arrivato da un'altra fattura (anche di un altro fornitore): quasi certo è lo stesso
       if (!p.forseDoppioneDi) { const ug = S.prodotti.find(x => x !== p && !x.speciale && M.chiaveDoppione(x) === M.chiaveDoppione(p)); if (ug) { p.forseDoppioneDi = ug.id; p.daCompletare = true; } }
+      // la categoria: se somiglia a un prodotto che ho già classificato io, prendo la sua
+      const gemello = p.forseDoppioneDi && M.prodotto(p.forseDoppioneDi);
+      if (gemello && gemello.categoria && !/da classificare/i.test(gemello.categoria)) { p.categoria = gemello.categoria; if (gemello.reparto) p.reparto = gemello.reparto; }
+      else {
+        const simile = M.categoriaDaSimili(rg.descrizione, f.fornitoreId, /da classificare/i.test(p.categoria));
+        if (simile) { p.categoria = simile.categoria; if (simile.reparto) p.reparto = simile.reparto; }
+      }
       // ricordo subito come compare in fattura, così le fatture successive lo riconoscono
       p.articoli.push({ fornitoreId: f.fornitoreId, codice: rg.codice, descrizione: rg.descrizione, confezioniPerUnita: g.perUnita });
       S.prodotti.push(p); creati.push(p.id);

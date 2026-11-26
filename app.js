@@ -1469,12 +1469,21 @@
 
 
   // ----- Ricontrollo dei formati, uno dopo l'altro (anche dei prodotti già accettati) -----
+  // il ricontrollo può essere di tutto, solo del formato, solo della categoria o solo del fornitore
+  const FMT_MODI = [['tutto', 'Tutto'], ['formato', 'Formato'], ['categoria', 'Categoria'], ['fornitore', 'Fornitore']];
+  const fmtModo = () => ui.fmtModo || 'tutto';
+  const FMT_FILTRO_INIZIALE = { tutto: 'ricette', formato: 'ricette', categoria: 'daclass', fornitore: 'senzaforn' };
+  const fmtFiltro = () => ui.fmtFiltro || FMT_FILTRO_INIZIALE[fmtModo()];
+  const fornitoriDi = (p) => Array.from(new Set([p.fornitoreId].concat((p.prezzi || []).map(e => e.fornitoreId), (p.articoli || []).map(a => a.fornitoreId)).filter(id => id && M.fornitore(id))));
+  const senzaFornitore = (p) => !M.fornitore(p.fornitoreId) && !/fatt[io] in casa/i.test(p.categoria || '');
+  const daClassificare = (p) => !p.categoria || p.categoria === 'Da classificare' || M.reparto(p) === 'Da classificare';
   function listaFormati() {
     const usati = new Set();
     S.ricette.forEach(r => (r.righe || []).concat(r.asporto || []).forEach(rg => { const m = /^p:(.+)$/.exec(rg.rif); if (m) usati.add(m[1]); }));
-    const filtro = ui.fmtFiltro || 'ricette';
+    const filtro = fmtFiltro();
     const daForn = (p) => p.fornitoreId === ui.fmtForn || (p.prezzi || []).some(e => e.fornitoreId === ui.fmtForn) || (p.articoli || []).some(e => e.fornitoreId === ui.fmtForn);
-    return S.prodotti.filter(p => !p.speciale && (filtro === 'tutti' || (filtro === 'ricette' ? usati.has(p.id) : filtro === 'cartoni' ? cartoneSospetto(p) : !p.formatoOk))
+    const passa = (p) => filtro === 'tutti' || (filtro === 'ricette' ? usati.has(p.id) : filtro === 'cartoni' ? cartoneSospetto(p) : filtro === 'daclass' ? daClassificare(p) : filtro === 'senzaforn' ? senzaFornitore(p) : filtro === 'piuforn' ? fornitoriDi(p).length > 1 : !p.formatoOk);
+    return S.prodotti.filter(p => !p.speciale && passa(p)
       && (!ui.fmtRep || M.reparto(p) === ui.fmtRep) && (!ui.fmtCat || p.categoria === ui.fmtCat) && (!ui.fmtForn || daForn(p)))
       .sort((x, y) => ui.fmtForn ? x.nomeBreve.localeCompare(y.nomeBreve) : (x.categoria || '').localeCompare(y.categoria || '') || x.nomeBreve.localeCompare(y.nomeBreve));
   }
@@ -1492,10 +1501,14 @@
   }
   PAGINE.formati = function () {
     const lista = listaFormati();
-    const filtro = ui.fmtFiltro || 'ricette';
+    const filtro = fmtFiltro(), modo = fmtModo();
     const forniConProdotti = S.fornitori.filter(f => !f.servizi && S.prodotti.some(p => p.fornitoreId === f.id || (p.prezzi || []).some(e => e.fornitoreId === f.id))).sort((x, y) => x.nome.localeCompare(y.nome));
     const nCartoni = S.prodotti.filter(p => !p.speciale && cartoneSospetto(p)).length;
-    const chips = `<div class="chips">${[['ricette', 'Usati nelle ricette'], ['cartoni', 'Cartoni senza pezzi (' + nCartoni + ')'], ['dacontrollare', 'Non ancora ricontrollati'], ['tutti', 'Tutti']].map(([k, v]) => `<button class="chip ${filtro === k ? 'on' : ''}" data-az="fmt-filtro" data-v="${k}">${v}</button>`).join('')}</div>
+    const filtriModo = modo === 'categoria' ? [['daclass', 'Da classificare (' + S.prodotti.filter(p => !p.speciale && daClassificare(p)).length + ')'], ['tutti', 'Tutti']]
+      : modo === 'fornitore' ? [['senzaforn', 'Senza fornitore (' + S.prodotti.filter(p => !p.speciale && senzaFornitore(p)).length + ')'], ['piuforn', 'Comprati da più fornitori (' + S.prodotti.filter(p => !p.speciale && fornitoriDi(p).length > 1).length + ')'], ['tutti', 'Tutti']]
+      : [['ricette', 'Usati nelle ricette'], ['cartoni', 'Cartoni senza pezzi (' + nCartoni + ')'], ['dacontrollare', 'Non ancora ricontrollati'], ['tutti', 'Tutti']];
+    const chips = `<div class="filtri-ric"><span class="tenue piccolo">Cosa controllo</span><div class="segmentato">${FMT_MODI.map(([k, v]) => `<button class="${modo === k ? 'on' : ''}" data-az="fmt-modo" data-v="${k}">${v}</button>`).join('')}</div></div>
+      <div class="chips">${filtriModo.map(([k, v]) => `<button class="chip ${filtro === k ? 'on' : ''}" data-az="fmt-filtro" data-v="${k}">${v}</button>`).join('')}</div>
       <div class="card form filtri-fmt"><div class="filtri3">
         <label>Solo il reparto<select data-fmt-sel="fmtRep"><option value="">Tutti i reparti</option>${M.REPARTI.map(r => `<option ${ui.fmtRep === r ? 'selected' : ''}>${r}</option>`).join('')}</select></label>
         <label>Solo la categoria<select data-fmt-sel="fmtCat"><option value="">Tutte le categorie</option>${categorie().map(c => `<option ${ui.fmtCat === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>
@@ -1505,6 +1518,31 @@
     if (ui.fmtIdx == null || ui.fmtIdx >= lista.length) ui.fmtIdx = 0;
     const p = lista[ui.fmtIdx];
     const forn = M.fornitore(p.fornitoreId);
+    const navig = `<div class="bottoni"><button class="btn piccolo" data-az="fmt-indietro">‹ Precedente</button><button class="btn piccolo" data-az="fmt-salta">Salta ›</button><a class="btn piccolo" href="#/prodotto/${p.id}">Apri la scheda</a></div>`;
+    const testaP = `<h3 class="grande-t">${esc(p.nomeBreve)}</h3><div class="sottotitolo">${esc(p.nomeCompleto)}<br>${esc(forn ? forn.nome : 'senza fornitore')} · ${esc(p.categoria || '')}</div>`;
+    // solo la categoria: un tocco sulla categoria e si passa al prossimo
+    if (modo === 'categoria') {
+      const rep = M.reparto(p) === 'Da classificare' ? (ui.fmtcRep || '') : M.reparto(p);
+      const cats = categorie().filter(c => c && c !== 'Da classificare' && (!rep || S.prodotti.some(x => x.categoria === c && M.reparto(x) === rep)));
+      return { titolo: `Categorie · ${ui.fmtIdx + 1} di ${lista.length}`, indietro: '#/prodotti', html: chips + `
+        <div class="ctrl"><div class="card form">${testaP}
+          <p class="tenue piccolo">1. Il reparto</p>
+          <div class="segmentato">${M.REPARTI.map(r => `<button class="${rep === r ? 'on' : ''}" data-az="fmtc-rep" data-id="${p.id}" data-v="${esc(r)}">${esc(r)}</button>`).join('')}</div>
+          <p class="tenue piccolo">2. La categoria${rep ? '' : ' (prima scegli il reparto)'} — tocca e passa al prossimo</p>
+          <div class="chips a-capo">${rep ? cats.map(c => `<button class="chip ${p.categoria === c ? 'on' : ''}" data-az="fmtc-cat" data-id="${p.id}" data-v="${esc(c)}">${esc(c)}</button>`).join('') : ''}</div>
+          ${rep ? `<div class="olio-aggiungi"><input id="fmtc-nuova" placeholder="Oppure scrivi una categoria nuova" autocomplete="off"><button class="btn piccolo" data-az="fmtc-nuova" data-id="${p.id}">Usa questa</button></div>` : ''}
+        </div>${navig}</div>
+        <p class="tenue piccolo">I prodotti che arriveranno nelle prossime fatture con un nome simile prenderanno da soli la categoria che scegli qui.</p>` };
+    }
+    // solo il fornitore principale
+    if (modo === 'fornitore') {
+      const fl = fornitoriDi(p), ult = M.ultimiPerFornitore(p);
+      return { titolo: `Fornitori · ${ui.fmtIdx + 1} di ${lista.length}`, indietro: '#/prodotti', html: chips + `
+        <div class="ctrl"><div class="card form">${testaP}
+          ${fl.length ? `<p class="tenue piccolo">L'hai comprato da: tocca quello principale e passa al prossimo</p>${fl.map(id => { const f = M.fornitore(id), e = ult[id]; return `<button class="btn largo scelta-forn ${p.fornitoreId === id ? 'on' : ''}" data-az="fmtf-scegli" data-id="${p.id}" data-v="${id}"><span>${esc(f.nome)}</span><small>${e ? euro(e.prezzo) + ' · ' + dataIt(e.data) : ''}</small></button>`; }).join('')}` : '<p class="tenue">Nessuna fattura con questo prodotto.</p>'}
+          <label>Oppure un altro fornitore<select data-fmtf="${p.id}"><option value="">Scegli…</option><option value="__nuovo">＋ Nuovo fornitore…</option>${S.fornitori.filter(f => !f.servizi).sort((a, b) => a.nome.localeCompare(b.nome)).map(f => `<option value="${f.id}">${esc(f.nome)}</option>`).join('')}</select></label>
+        </div>${navig}</div>` };
+    }
     const ur = ultimaRiga(p);
     const art = ur ? (p.articoli || []).find(a => a.fornitoreId === ur.f.fornitoreId && ((ur.rg.codice && a.codice === ur.rg.codice) || a.descrizione === ur.rg.descrizione)) : null;
     const perRiga = ur ? (Number(ur.rg.confezioniPerUnita) || 1) : null;
@@ -1523,11 +1561,11 @@
       <div class="card form">
         <h3 class="grande-t">${esc(p.nomeBreve)}${p.formatoOk ? ' <span class="badge verde">ricontrollato</span>' : ''}</h3>
         <div class="sottotitolo">${esc(p.nomeCompleto)}<br>${esc(forn ? forn.nome : 'senza fornitore')} · ${esc(p.categoria || '')}${usoRic ? ` · usato in ${usoRic} ${usoRic === 1 ? 'ricetta' : 'ricette'}` : ''}</div>
-        <label>Nome breve<input data-ctrl="${p.id}" data-k="nomeBreve" value="${esc(p.nomeBreve)}"></label>
+        ${modo === 'formato' ? '' : `<label>Nome breve<input data-ctrl="${p.id}" data-k="nomeBreve" value="${esc(p.nomeBreve)}"></label>
         <div class="due">
           <label>Reparto<select data-ctrl="${p.id}" data-k="reparto">${M.REPARTI.map(r => `<option ${M.reparto(p) === r ? 'selected' : ''}>${r}</option>`).join('')}</select></label>
           <label>Categoria<input list="cat-fmt" data-ctrl="${p.id}" data-k="categoria" value="${esc(p.categoria)}"><datalist id="cat-fmt">${categorie().map(c => `<option value="${esc(c)}">`).join('')}</datalist></label>
-        </div>
+        </div>`}
         <label>Si compra a<input data-ctrl="${p.id}" data-k="confezione" value="${esc(p.confezione)}" placeholder="bottiglia, kg, cartone…"></label>
         <div class="due">
           <label>Che contiene<input type="text" inputmode="decimal" autocomplete="off" data-ctrl="${p.id}" data-k="contenuto" value="${esc(p.contenuto)}"></label>
@@ -2254,12 +2292,12 @@
         ${k.c && k.spesa > 0 ? `<div class="bottoni"><button class="btn primario" data-az="olio-usa">Usa questo costo</button></div>` : '<p class="tenue piccolo">Servono sia le fatture dell\'olio sia le vendite dei fritti in queste date.</p>'}</div>
       <div class="card larga"><h3>Cosa va fritto</h3>
         <p class="tenue piccolo">Grammi di cibo che finiscono nell'olio per una porzione. I panini con patatine li conta da soli dalla ricetta delle patatine. Il ✕ toglie la frittura dalla ricetta; «Non contare» lascia stare la ricetta ma la toglie da questo conto (per esempio un panino che non fate più).</p>
-        <table class="tab olio-tab"><tr><th>Ricetta</th><th class="n">g a porzione</th><th class="n">Venduti</th><th class="n">kg fritti</th><th></th></tr>
+        <div class="scorre-x"><table class="tab olio-tab"><tr><th>Ricetta</th><th class="n">g a porzione</th><th class="n">Venduti</th><th class="n">kg fritti</th><th></th></tr>
         ${k.perRic.map(x => `<tr class="${x.via ? 'spento' : ''}"><td><a href="#/ricetta/${x.r.id}">${esc(x.r.nome)}</a>${x.diretta ? '' : ' <small class="tenue">dalle preparazioni</small>'}</td>
           <td class="n">${x.diretta ? `<input class="mini" type="text" inputmode="decimal" data-olio-g="${x.r.id}" value="${esc(String(rigaOlio(x.r).quantita))}">` : qta(Math.round(x.g))}</td>
           <td class="n">${qta(Math.round(x.q))}</td><td class="n">${x.via ? '—' : qta(Math.round(x.tot / 100) / 10)}</td>
           <td class="n nowrap"><button class="btn piccolo" data-az="olio-escludi" data-id="${x.r.id}">${x.via ? 'Conta' : 'Non contare'}</button>${x.diretta ? ` <button class="btn piccolo pericolo" data-az="olio-togli" data-id="${x.r.id}" aria-label="Togli la frittura">✕</button>` : ''}</td></tr>`).join('')}
-        </table>
+        </table></div>
         <div class="olio-aggiungi"><select id="olio-nuova"><option value="">＋ Aggiungi una ricetta fritta…</option>${candidati.map(r => `<option value="${r.id}">${esc(r.nome)}</option>`).join('')}</select>
           <input id="olio-nuova-g" type="text" inputmode="decimal" placeholder="grammi" class="mini"><button class="btn piccolo" data-az="olio-aggiungi">Aggiungi</button></div></div>
       <details class="card"><summary><b>Quali oli conto</b> <span class="tenue">· ${scelti.length} ${scelti.length === 1 ? 'prodotto' : 'prodotti'}</span></summary>
@@ -2929,7 +2967,31 @@
   AZ['fmt-categoria'] = () => { ui.fmtCat = ui.categoria !== '__nuovi' && PF().cats.length === 1 ? PF().cats[0] : ''; ui.fmtRep = ui.categoria !== '__nuovi' ? (PF().rep || '') : ''; ui.fmtForn = ''; ui.fmtFiltro = ui.fmtCat || ui.fmtRep ? 'tutti' : 'ricette'; ui.fmtIdx = 0; vai('#/formati'); };
   AZ['fmt-fornitore'] = (el) => { ui.fmtForn = el.dataset.id; ui.fmtCat = ''; ui.fmtRep = ''; ui.fmtFiltro = 'tutti'; ui.fmtIdx = 0; vai('#/formati'); };
   AZ['fmt-filtro'] = (el) => { ui.fmtFiltro = el.dataset.v; ui.fmtIdx = 0; ui.st_fmt = []; ridisegnaMantenendo(); };
-  AZ['fmt-giusto'] = (el) => { ricorda('fmt', 'fmtIdx'); const p = M.prodotto(el.dataset.id); p.formatoOk = true; p.daCompletare = false; delete p.dubbio; if (!['dacontrollare', 'cartoni'].includes(ui.fmtFiltro || 'ricette')) ui.fmtIdx = (ui.fmtIdx || 0) + 1; salva(); ridisegnaMantenendo(); window.scrollTo(0, 0); };
+  AZ['fmt-giusto'] = (el) => { ricorda('fmt', 'fmtIdx'); const p = M.prodotto(el.dataset.id); p.formatoOk = true; p.daCompletare = false; delete p.dubbio; if (!['dacontrollare', 'cartoni'].includes(fmtFiltro())) ui.fmtIdx = (ui.fmtIdx || 0) + 1; salva(); ridisegnaMantenendo(); window.scrollTo(0, 0); };
+  // ogni modo del ricontrollo ricorda il suo filtro e il punto a cui ero arrivato
+  AZ['fmt-modo'] = (el) => {
+    const m = ui.fmtModi = ui.fmtModi || {};
+    m[fmtModo()] = { idx: ui.fmtIdx || 0, filtro: ui.fmtFiltro, st: ui.st_fmt };
+    ui.fmtModo = el.dataset.v;
+    const t = m[ui.fmtModo] || {};
+    ui.fmtIdx = t.idx || 0; ui.fmtFiltro = t.filtro; ui.st_fmt = t.st || [];
+    if (!t.filtro && (ui.fmtRep || ui.fmtCat || ui.fmtForn)) ui.fmtFiltro = 'tutti';
+    ridisegnaMantenendo(); window.scrollTo(0, 0);
+  };
+  // dopo una scelta: se il prodotto esce dalla lista resto sullo stesso numero, altrimenti vado avanti
+  function fmtAvanti(p) {
+    if (listaFormati().includes(p)) ui.fmtIdx = (ui.fmtIdx || 0) + 1;
+    salva(); ridisegnaMantenendo(); window.scrollTo(0, 0);
+  }
+  AZ['fmtc-rep'] = (el) => { const p = M.prodotto(el.dataset.id); p.reparto = el.dataset.v; salva(); ridisegnaMantenendo(); };
+  AZ['fmtc-cat'] = (el) => { ricorda('fmt', 'fmtIdx'); const p = M.prodotto(el.dataset.id); if (!p.reparto) p.reparto = M.reparto(p); p.categoria = el.dataset.v; fmtAvanti(p); };
+  AZ['fmtc-nuova'] = (el) => {
+    const v = (document.getElementById('fmtc-nuova') || {}).value; if (!v || !v.trim()) { avviso('Scrivi il nome della categoria.'); return; }
+    ricorda('fmt', 'fmtIdx'); const p = M.prodotto(el.dataset.id); if (!p.reparto) p.reparto = M.reparto(p);
+    const t = v.trim(), gia = categorie().find(c => c && c.toLowerCase() === t.toLowerCase());
+    p.categoria = gia || t.charAt(0).toUpperCase() + t.slice(1); fmtAvanti(p);
+  };
+  AZ['fmtf-scegli'] = (el) => { ricorda('fmt', 'fmtIdx'); const p = M.prodotto(el.dataset.id); p.fornitoreId = el.dataset.v; fmtAvanti(p); };
   AZ['fmt-salta'] = () => { ricordaPosto('fmt', 'fmtIdx'); ui.fmtIdx = (ui.fmtIdx || 0) + 1; ridisegnaMantenendo(); window.scrollTo(0, 0); };
   AZ['fmt-indietro'] = () => tornaIndietro('fmt', 'fmtIdx');
   function pulMemoria(conDati) {
@@ -4606,7 +4668,19 @@
       } else rg.confezioniPerUnita = numDa(el.value) || 1;
       salva(); ridisegnaMantenendo(); return;
     }
-    if (d.fmtSel) { ui[d.fmtSel] = el.value; if (el.value && (ui.fmtFiltro || 'ricette') === 'ricette') ui.fmtFiltro = 'tutti'; ui.fmtIdx = 0; ridisegnaMantenendo(); return; }
+    if (d.fmtSel) { ui[d.fmtSel] = el.value; if (el.value && fmtFiltro() === 'ricette') ui.fmtFiltro = 'tutti'; ui.fmtIdx = 0; ridisegnaMantenendo(); return; }
+    if (d.fmtf && el.value) {
+      const p = M.prodotto(d.fmtf); if (!p) return;
+      let id = el.value;
+      if (id === '__nuovo') {
+        const n = prompt('Nome del fornitore nuovo'); if (!n || !n.trim()) { el.value = ''; return; }
+        const gia = S.fornitori.find(f => f.nome.trim().toLowerCase() === n.trim().toLowerCase());
+        const f = gia || { id: M.uid('f'), nome: n.trim(), piva: '', telefono: '', email: '', referente: '', giorniConsegna: '', note: '' };
+        if (!gia) S.fornitori.push(f);
+        id = f.id;
+      }
+      ricorda('fmt', 'fmtIdx'); p.fornitoreId = id; fmtAvanti(p); return;
+    }
     if (d.fmtRighe) {
       const n = numDa(el.value); if (!n || n <= 0) return;
       M.cambiaPezziPerRiga(d.fmtRighe, d.fattura, n); const pp = M.prodotto(d.fmtRighe); if (pp) { delete pp.dubbio; if (pp.unita === 'pz' && n > 1 && /cartone|confezione|scatola|pezzo/i.test(pp.confezione)) pp.confezione = 'pezzo'; } salva(); ridisegnaMantenendo(); avviso('Prezzi ricalcolati.'); return;
@@ -4646,7 +4720,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v137';
+  const VERSIONE_APP = 'repub-v138';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;

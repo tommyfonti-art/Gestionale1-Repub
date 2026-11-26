@@ -540,3 +540,6 @@ small.blocco { display: block; }
 .tab-allergeni { min-width: 560px; }
 .tab-allergeni th.all-col { min-width: 26px; width: 26px; }
 .tab-allergeni th.all-col span { display: inline-block; line-height: 1.05; }
+
+.btn.scelta-forn { display: flex; justify-content: space-between; align-items: center; gap: 10px; width: 100%; margin: 6px 0; text-align: left; } .btn.scelta-forn small { opacity: .7; white-space: nowrap; } .btn.scelta-forn.on { outline: 2px solid var(--accento); }
+.scorre-x { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
