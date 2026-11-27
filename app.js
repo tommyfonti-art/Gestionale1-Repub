@@ -147,11 +147,7 @@
     S.fornitori.filter(fo => fo.casseAMeta || fo.casseRicontrollo !== 2).forEach(fo => {
       S.fatture.filter(f => f.fornitoreId === fo.id && f.stato === 'registrata').forEach(f => {
         const an = M.analizzaFattura(f);
-        an.prodotti.forEach(x => {
-          const p = M.prodotto(x.prodottoId); const e = p && (p.prezzi || []).find(v => v.fatturaId === f.id); if (!e || x.nuovo == null) return;
-          if (x.raddoppiata && (!e.raddoppiato || Math.abs(e.prezzo - x.nuovo) > 0.0001)) { e.prezzo = x.nuovo; e.listino = x.listino; e.raddoppiato = true; }
-          else if (!x.raddoppiata && e.raddoppiato) { e.prezzo = x.nuovo; e.listino = x.listino; delete e.raddoppiato; }
-        });
+        an.prodotti.forEach(x => applicaRaddoppio(x, f, true));
       });
       fo.casseRicontrollo = 2;
     });
@@ -1282,7 +1278,7 @@
     const p = M.prodotto(id);
     if (!p) return { titolo: 'Prodotto', html: '<p>Prodotto non trovato.</p>' };
     const pr = M.prezzo(p), rif = M.prezzoRiferimento(p), forn = M.fornitore(p.fornitoreId);
-    const storico = (p.prezzi || []).slice().sort((a, b) => a.data < b.data ? -1 : 1);
+    const storico = (p.prezzi || []).filter((e, i, a) => !e.fatturaId || a.findIndex(v => v.fatturaId === e.fatturaId && Math.abs(v.prezzo - e.prezzo) < 0.005) === i).sort((a, b) => a.data < b.data ? -1 : 1);
     const uso = M.usatoIn('p:' + p.id);
     const ultimi = Object.entries(M.ultimiPerFornitore(p));
     const vd = p.venditaDiretta;
@@ -1327,7 +1323,7 @@
       ${(p.allergeni || []).length ? `<div class="card"><h3>Allergeni</h3><div class="chips">${p.allergeni.map(a => `<span class="chip on">${esc(a)}</span>`).join('')}</div></div>` : ''}
       ${p.speciale ? '' : `<div class="card"><h3>Storico dei prezzi</h3>
         ${grafico(storico.map(e => ({ data: e.data, y: e.prezzo })), 'Prezzo')}
-        ${(() => { const rigaP = e => `<tr><td>${dataIt(e.data)}</td><td>${esc(nomeFornBreve((M.fornitore(e.fornitoreId) || {}).nome) || '—')}</td><td class="n">${euro(e.prezzo)}${e.sconto ? `<small>sconto ${n2(e.sconto, 0)}%</small>` : ''}${e.raddoppiato ? '<small>cassa ×2</small>' : ''}</td><td>${e.fatturaId ? `<a href="#/fattura/${e.fatturaId}">${esc(String(e.origine || '').replace(/^Fattura /, 'n. '))}</a>` : esc(e.origine || 'a mano')}</td></tr>`;
+        ${(() => { const rigaP = e => `<tr><td>${dataIt(e.data)}</td><td>${esc(nomeFornBreve((M.fornitore(e.fornitoreId) || {}).nome) || '—')}</td><td class="n">${euro(e.prezzo)}${e.sconto ? `<small>sconto ${n2(e.sconto, 0)}%</small>` : ''}${e.raddoppiato ? '<small>×2</small>' : ''}</td><td>${e.fatturaId ? `<a href="#/fattura/${e.fatturaId}">${esc(String(e.origine || '').replace(/^Fattura /, 'n. '))}</a>` : esc(e.origine || 'a mano')}</td></tr>`;
           const testa = '<tr><th>Data</th><th>Fornitore</th><th class="n">Prezzo</th><th>Da</th></tr>', l = storico.slice().reverse();
           return `<table class="tab">${testa}${l.slice(0, 8).map(rigaP).join('')}</table>${l.length > 8 ? `<details><summary>Vedi tutti i ${l.length} prezzi</summary><table class="tab">${l.slice(8).map(rigaP).join('')}</table></details>` : ''}`; })()}
         <button class="btn piccolo" data-az="prezzo-mano" data-id="${p.id}">＋ Aggiungi un prezzo a mano</button></div>`}
@@ -4395,6 +4391,15 @@
   AZ['registra-fattura'] = (el) => { const f = S.fatture.find(x => x.id === el.dataset.id); M.registraFattura(f); salva(); window.scrollTo(0, 0); disegna(); avviso('Fattura registrata: costi aggiornati.'); };
   AZ['annulla-fattura'] = (el) => { if (!confirm('Annullare la registrazione? Tolgo i prezzi di questa fattura.')) return; const f = S.fatture.find(x => x.id === el.dataset.id); M.annullaFattura(f); salva(); ridisegnaMantenendo(); };
   AZ['stato-fatt'] = (el) => { ui.statoFatt = el.dataset.v; ridisegnaMantenendo(); };
+  // porta il prezzo giusto (doppio o come in fattura) su TUTTE le voci di quella fattura del prodotto:
+  // dopo un'unione lo stesso prodotto può avere due voci della stessa fattura, e vanno tenute uguali
+  function applicaRaddoppio(x, f, soloSeCambia) {
+    const p = M.prodotto(x.prodottoId); if (!p || x.nuovo == null) return;
+    (p.prezzi || []).filter(v => v.fatturaId === f.id).forEach(e => {
+      if (x.raddoppiata) { if (!soloSeCambia || !e.raddoppiato || Math.abs(e.prezzo - x.nuovo) > 0.0001) { e.prezzo = x.nuovo; e.listino = x.listino; e.raddoppiato = true; } }
+      else if (e.raddoppiato) { e.prezzo = x.nuovo; e.listino = x.listino; delete e.raddoppiato; }
+    });
+  }
   // prodotti comprati da un fornitore, con l'ultima riga di fattura: si spuntano quelli da contare il doppio
   function prodottiDelFornitore(fid) {
     const m = {};
@@ -4421,7 +4426,7 @@
   function ricalcolaRaddoppi(fo) {
     S.fatture.filter(f => f.fornitoreId === fo.id && f.stato === 'registrata').forEach(f => {
       const an = M.analizzaFattura(f);
-      an.prodotti.forEach(x => { const p = M.prodotto(x.prodottoId); const e = p && (p.prezzi || []).find(v => v.fatturaId === f.id); if (!e || x.nuovo == null) return; if (x.raddoppiata) { e.prezzo = x.nuovo; e.listino = x.listino; e.raddoppiato = true; } else if (e.raddoppiato) { e.prezzo = x.nuovo; e.listino = x.listino; delete e.raddoppiato; } });
+      an.prodotti.forEach(x => applicaRaddoppio(x, f));
     });
     M.svuota();
   }
@@ -4431,7 +4436,7 @@
     // ricalcolo i prezzi delle sue fatture registrate, nell'altro verso se l'ho spento
     S.fatture.filter(f => f.fornitoreId === fo.id && f.stato === 'registrata').forEach(f => {
       const an = M.analizzaFattura(f);
-      an.prodotti.forEach(x => { const p = M.prodotto(x.prodottoId); const e = p && (p.prezzi || []).find(v => v.fatturaId === f.id); if (!e || x.nuovo == null) return; if (x.raddoppiata) { e.prezzo = x.nuovo; e.listino = x.listino; e.raddoppiato = true; } else if (e.raddoppiato) { e.prezzo = x.nuovo; e.listino = x.listino; delete e.raddoppiato; } });
+      an.prodotti.forEach(x => applicaRaddoppio(x, f));
     });
     M.svuota(); salva(); ridisegnaMantenendo(); avviso(fo.casseAMeta ? 'Ora spunta qui sotto i prodotti da contare il doppio.' : 'Prezzi tornati come in fattura.');
   };
@@ -4877,7 +4882,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v143';
+  const VERSIONE_APP = 'repub-v144';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
