@@ -415,6 +415,8 @@
   };
   M.moltiplicaRiga = function (f, rg, cassa) {
     const fo = M.fornitore(f.fornitoreId); if (!fo || !fo.casseAMeta) return 1;
+    // i prodotti scelti a mano nella scheda del fornitore: tutte le loro righe contano il doppio
+    if (Array.isArray(fo.raddoppia)) return fo.raddoppia.includes(rg.prodottoId) ? 2 : 1;
     if (PESO_UM.test(String(rg.um || '').toUpperCase().replace(/\./g, ''))) return 1;
     // solo le righe dove c'è scritto CASSA
     return /\bCASS[AE]\b/i.test(rg.descrizione || '') ? 2 : 1;
@@ -701,6 +703,8 @@
     const da = M.prodotto(daId), a = M.prodotto(aId);
     if (!da || !a || da === a) return 'Scegli un prodotto diverso.';
     if (da.unita !== a.unita) return `Non posso unirli: uno è in ${da.unita}, l'altro in ${a.unita}.`;
+    // se il doppione era tra i prodotti da raddoppiare di un fornitore, lo diventa anche quello giusto
+    S.fornitori.forEach(fo => { if (Array.isArray(fo.raddoppia) && fo.raddoppia.includes(da.id) && !fo.raddoppia.includes(a.id)) fo.raddoppia.push(a.id); });
     const k = (da.contenuto || 1) / (a.contenuto || 1); // 1 confezione del doppione = k confezioni del prodotto giusto
     // memoria dell'unione, per poterla annullare con «Separa»
     const u = { id: 'u' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), quando: new Date().toISOString().slice(0, 10), prodotto: JSON.parse(JSON.stringify(da)), giacenzaPrima: Number(a.giacenza) || 0, allergeniAggiunti: (da.allergeni || []).filter(x => !(a.allergeni || []).includes(x)), fatture: [], ricette: [] };

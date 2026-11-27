@@ -135,6 +135,14 @@
       S.fornitori.forEach(fo => { if (fo.piva === '04686340409' || /frutteria/i.test(fo.nome || '')) fo.casseAMeta = true; });
       S.casseFrutteria = true;
     }
+    // una volta: i prodotti da raddoppiare si scelgono a mano; parto da quelli che oggi hanno righe «CASSA»
+    S.fornitori.forEach(fo => {
+      if (fo.casseAMeta && !Array.isArray(fo.raddoppia)) {
+        const l = new Set();
+        S.fatture.forEach(f => { if (f.fornitoreId === fo.id) f.righe.forEach(rg => { if (rg.prodottoId && /\bCASS[AE]\b/i.test(rg.descrizione || '') && !/^(KG|KGM|KGS|GR|G|LT|L|LTR)$/.test(String(rg.um || '').toUpperCase().replace(/\./g, ''))) l.add(rg.prodottoId); }); });
+        fo.raddoppia = Array.from(l);
+      }
+    });
     // i prezzi delle fatture di questi fornitori seguono la regola: doppio solo dove la riga dice CASSA (rifaccio il conto se è cambiato)
     S.fornitori.filter(fo => fo.casseAMeta || fo.casseRicontrollo !== 2).forEach(fo => {
       S.fatture.filter(f => f.fornitoreId === fo.id && f.stato === 'registrata').forEach(f => {
@@ -2029,8 +2037,8 @@
       <div class="kpi-griglia">${kpi('Prodotti', prod.length)}${kpi('Fatture registrate', fatt.filter(x => x.stato === 'registrata').length)}</div>
       ${prod.length && !f.servizi ? `<a class="btn primario largo" href="#/formati" data-az="fmt-fornitore" data-id="${id}">Ricontrolla i formati di tutto quello che compriamo da ${esc(f.nome)}</a>` : ''}
       <div class="card form"><label class="interruttore"><input type="checkbox" data-az="toggle-servizi" data-id="${id}" ${f.servizi ? 'checked' : ''}> Non vende merce (bollette, banca, pagamenti, servizi): le sue fatture restano in archivio e non creano prodotti</label></div>
-      ${!f.servizi ? `<div class="card form"><label class="interruttore"><input type="checkbox" data-az="toggle-casse" data-id="${id}" ${f.casseAMeta ? 'checked' : ''}> In fattura le casse hanno il prezzo a metà: le conto il doppio (solo le righe dove c'è scritto CASSA)</label>
-        ${f.casseAMeta ? (() => { const l = Array.from(M.prodottiACassa(id)).map(M.prodotto).filter(Boolean); return `<p class="tenue piccolo">Prodotti a cassa raddoppiati: ${l.length ? l.map(p => `<a href="#/prodotto/${p.id}">${esc(p.nomeBreve)}</a> (ora ${euro(M.prezzo(p))} a ${esc(p.confezione)})`).join(', ') : 'nessuno'}. Conto il doppio solo le righe dove c'è scritto CASSA; le altre righe dello stesso prodotto restano come in fattura.</p>`; })() : ''}</div>` : ''}
+      ${!f.servizi ? `<div class="card form"><label class="interruttore"><input type="checkbox" data-az="toggle-casse" data-id="${id}" ${f.casseAMeta ? 'checked' : ''}> Alcuni prodotti in fattura hanno il prezzo a metà: li conto il doppio</label>
+        ${f.casseAMeta ? listaRaddoppia(f) : ''}</div>` : ''}
       <div class="card form"><h3>Tipo di spesa</h3><p class="tenue piccolo">Serve per «Costi del locale». ${f.catSpesa ? '' : 'Ora è indovinato dal nome: cambialo se è sbagliato.'}</p>
         <select data-cat-spesa="${id}">${Object.entries(CAT_SPESA).map(([k, v]) => `<option value="${k}" ${categoriaSpesa(f) === k ? 'selected' : ''}>${v[0]}</option>`).join('')}</select></div>
       <div class="card form"><h3>Contatti</h3>${campo('Nome', 'nome')}${campo('Partita IVA', 'piva')}${campo('Referente', 'referente')}${campo('Telefono', 'telefono', 'tel')}${campo('Email', 'email', 'email')}${campo('Giorni di consegna', 'giorniConsegna')}
@@ -4387,14 +4395,45 @@
   AZ['registra-fattura'] = (el) => { const f = S.fatture.find(x => x.id === el.dataset.id); M.registraFattura(f); salva(); window.scrollTo(0, 0); disegna(); avviso('Fattura registrata: costi aggiornati.'); };
   AZ['annulla-fattura'] = (el) => { if (!confirm('Annullare la registrazione? Tolgo i prezzi di questa fattura.')) return; const f = S.fatture.find(x => x.id === el.dataset.id); M.annullaFattura(f); salva(); ridisegnaMantenendo(); };
   AZ['stato-fatt'] = (el) => { ui.statoFatt = el.dataset.v; ridisegnaMantenendo(); };
+  // prodotti comprati da un fornitore, con l'ultima riga di fattura: si spuntano quelli da contare il doppio
+  function prodottiDelFornitore(fid) {
+    const m = {};
+    S.fatture.forEach(f => {
+      if (f.fornitoreId !== fid) return;
+      f.righe.forEach(rg => {
+        if (!rg.prodottoId || rg.ignora) return;
+        const x = m[rg.prodottoId] || (m[rg.prodottoId] = { p: M.prodotto(rg.prodottoId), data: '', rg: null });
+        if ((f.data || '') >= x.data) { x.data = f.data || ''; x.rg = rg; }
+      });
+    });
+    return Object.values(m).filter(x => x.p);
+  }
+  function listaRaddoppia(fo) {
+    const scelti = new Set(fo.raddoppia || []), ord = ui.raddOrd || 'data';
+    const l = prodottiDelFornitore(fo.id).sort((a, b) => ord === 'nome' ? a.p.nomeBreve.localeCompare(b.p.nomeBreve) : (b.data.localeCompare(a.data) || a.p.nomeBreve.localeCompare(b.p.nomeBreve)));
+    return `<p class="tenue piccolo">Spunta i prodotti che in fattura hanno il prezzo a metà: tutte le loro righe di questo fornitore le conto il doppio, anche nelle fatture già registrate. Gli altri restano come in fattura.</p>
+      <div class="filtri-ric"><div class="segmentato">${[['data', 'Ultima fattura'], ['nome', 'Dalla A alla Z']].map(([k, v]) => `<button class="${ord === k ? 'on' : ''}" data-az="radd-ord" data-v="${k}">${v}</button>`).join('')}</div><span class="tenue piccolo">${scelti.size} di ${l.length} spuntati</span></div>
+      <div class="radd-lista">${l.map(x => { const on = scelti.has(x.p.id), pf = x.rg ? (x.rg.totale && x.rg.quantita ? x.rg.totale / x.rg.quantita : x.rg.prezzoUnitario) : null; return `<label class="radd-riga ${on ? 'on' : ''}"><input type="checkbox" data-radd="${fo.id}" data-id="${x.p.id}" ${on ? 'checked' : ''}>
+        <span class="radd-nome"><b>${esc(x.p.nomeBreve)}</b><small class="tenue">${x.data ? 'ultima fattura ' + dataIt(x.data) : ''}${x.rg ? ' · ' + esc(x.rg.descrizione || '') : ''}</small></span>
+        <span class="radd-prezzo">${pf != null ? `<small class="tenue">in fattura ${euro(pf)}</small>` : ''}<b>${euro(M.prezzo(x.p))}</b></span></label>`; }).join('') || '<p class="tenue">Ancora nessuna fattura registrata.</p>'}</div>`;
+  }
+  // rifà i prezzi delle fatture registrate di un fornitore secondo la scelta attuale
+  function ricalcolaRaddoppi(fo) {
+    S.fatture.filter(f => f.fornitoreId === fo.id && f.stato === 'registrata').forEach(f => {
+      const an = M.analizzaFattura(f);
+      an.prodotti.forEach(x => { const p = M.prodotto(x.prodottoId); const e = p && (p.prezzi || []).find(v => v.fatturaId === f.id); if (!e || x.nuovo == null) return; if (x.raddoppiata) { e.prezzo = x.nuovo; e.listino = x.listino; e.raddoppiato = true; } else if (e.raddoppiato) { e.prezzo = x.nuovo; e.listino = x.listino; delete e.raddoppiato; } });
+    });
+    M.svuota();
+  }
+  AZ['radd-ord'] = (el) => { ui.raddOrd = el.dataset.v; ridisegnaMantenendo(); };
   AZ['toggle-casse'] = (el) => {
-    const fo = M.fornitore(el.dataset.id); if (!fo) return; fo.casseAMeta = el.checked;
+    const fo = M.fornitore(el.dataset.id); if (!fo) return; fo.casseAMeta = el.checked; if (fo.casseAMeta && !Array.isArray(fo.raddoppia)) fo.raddoppia = [];
     // ricalcolo i prezzi delle sue fatture registrate, nell'altro verso se l'ho spento
     S.fatture.filter(f => f.fornitoreId === fo.id && f.stato === 'registrata').forEach(f => {
       const an = M.analizzaFattura(f);
       an.prodotti.forEach(x => { const p = M.prodotto(x.prodottoId); const e = p && (p.prezzi || []).find(v => v.fatturaId === f.id); if (!e || x.nuovo == null) return; if (x.raddoppiata) { e.prezzo = x.nuovo; e.listino = x.listino; e.raddoppiato = true; } else if (e.raddoppiato) { e.prezzo = x.nuovo; e.listino = x.listino; delete e.raddoppiato; } });
     });
-    M.svuota(); salva(); ridisegnaMantenendo(); avviso(fo.casseAMeta ? 'Prezzi a cassa raddoppiati.' : 'Prezzi a cassa tornati come in fattura.');
+    M.svuota(); salva(); ridisegnaMantenendo(); avviso(fo.casseAMeta ? 'Ora spunta qui sotto i prodotti da contare il doppio.' : 'Prezzi tornati come in fattura.');
   };
   AZ['riga-merce'] = (el) => {
     const f = S.fatture.find(x => x.id === el.dataset.id); if (!f) return; const rg = f.righe[+el.dataset.k]; if (!rg) return;
@@ -4773,6 +4812,14 @@
       } else rg.confezioniPerUnita = numDa(el.value) || 1;
       salva(); ridisegnaMantenendo(); return;
     }
+    if (d.radd) {
+      const fo = M.fornitore(d.radd); if (!fo) return;
+      fo.raddoppia = (fo.raddoppia || []).filter(x => x !== d.id);
+      if (el.checked) fo.raddoppia.push(d.id);
+      ricalcolaRaddoppi(fo); salva(); ridisegnaMantenendo();
+      const p = M.prodotto(d.id); avviso(el.checked ? `${p.nomeBreve}: conto il doppio (ora ${euro(M.prezzo(p))})` : `${p.nomeBreve}: torna come in fattura (ora ${euro(M.prezzo(p))})`);
+      return;
+    }
     if (d.allGruppo != null || d.allRicetta) {
       const ex = allEsclusi(), k = d.allGruppo != null ? 'gruppi' : 'ricette', v = d.allGruppo != null ? d.allGruppo : d.allRicetta;
       ex[k] = el.checked ? ex[k].filter(x => x !== v) : ex[k].concat(v);
@@ -4830,7 +4877,7 @@
   }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   // l'app aperta sul telefono resta in memoria per giorni: quando torni a usarla controllo se c'è una versione nuova e la carico
-  const VERSIONE_APP = 'repub-v142';
+  const VERSIONE_APP = 'repub-v143';
   let avvisoAggiornamento = false;
   async function controllaVersione() {
     if (location.protocol !== 'https:') return;
